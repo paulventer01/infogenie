@@ -1,6 +1,7 @@
 'use strict';
 
 const { sqlBounds } = require('./period');
+const { safeQuery, buildMetricMeta } = require('./availability');
 
 // Identifiers below are fixed server configuration, never request interpolation.
 const SOURCES = Object.freeze({
@@ -29,44 +30,77 @@ async function data(db, name, spec, tenantId, clientId, cursor, limit, dateRange
   const bounds = sqlBounds(dateRange);
   const join = `FROM ${spec.table} r JOIN ${spec.mappings} m
     ON m.tenant_id=$1 AND m.${spec.key}=r.id AND m.client_id=$2 WHERE r.tenant_id=$1`;
-  const roots = await db.query(`SELECT ${spec.columns} ${join} AND r.id>$3 ORDER BY r.id ASC LIMIT $4`,
-    [tenantId, clientId, cursor, limit + 1]);
-  const count = await db.query(`SELECT count(*)::int AS mapped_records ${join}`, [tenantId, clientId]);
+  const rootsResult = await safeQuery('roots', () => db.query(`SELECT ${spec.columns} ${join} AND r.id>$3 ORDER BY r.id ASC LIMIT $4`,
+    [tenantId, clientId, cursor, limit + 1]));
+  const countResult = await safeQuery('mapped_count', () => db.query(`SELECT count(*)::int AS mapped_records ${join}`, [tenantId, clientId]));
   const childJoin = (table) => `FROM ${table} c JOIN ${spec.table} r ON r.id=c.${spec.key} AND r.tenant_id=$1
     JOIN ${spec.mappings} m ON m.${spec.key}=r.id AND m.tenant_id=$1 AND m.client_id=$2 WHERE c.tenant_id=$1`;
   const rangeParams = bounds.start ? [tenantId, clientId, bounds.start, bounds.end] : [tenantId, clientId];
   const rangeFilter = (column) => bounds.start ? ` AND c.${column} >= $3::timestamptz AND c.${column} < $4::timestamptz` : '';
+  const queryStatus = {
+    roots: rootsResult,
+    mapped_count: countResult,
+  };
   let summary, recent;
   if (name === 'search-intel') {
-    const totals = await db.query(`SELECT count(*)::int AS runs,
+    const totalsResult = await safeQuery('search_totals', () => db.query(`SELECT count(*)::int AS runs,
       count(*) FILTER (WHERE c.error IS NULL)::int AS successful_runs,
       count(*) FILTER (WHERE c.error IS NULL AND c.brand_mentioned)::int AS brand_mentions
-      ${childJoin('search_intel_llm_runs')}${rangeFilter('ran_at')}`, rangeParams);
-    const runs = await db.query(`SELECT c.id,c.query_id,c.provider,c.brand_mentioned,c.brand_position,c.ran_at,
+      ${childJoin('search_intel_llm_runs')}${rangeFilter('ran_at')}`, rangeParams));
+    queryStatus.search_totals = totalsResult;
+    const runsResult = await safeQuery('recent_runs', () => db.query(`SELECT c.id,c.query_id,c.provider,c.brand_mentioned,c.brand_position,c.ran_at,
       (c.error IS NOT NULL) AS failed ${childJoin('search_intel_llm_runs')}${rangeFilter('ran_at')}
-      ORDER BY c.ran_at DESC,c.id DESC LIMIT 50`, rangeParams);
-    summary = { ...count.rows[0], ...totals.rows[0] };
-    recent = { llm_runs: runs.rows };
+      ORDER BY c.ran_at DESC,c.id DESC LIMIT 50`, rangeParams));
+    queryStatus.recent_runs = runsResult;
+    const mappedRecords = countResult.ok ? countResult.rows[0]?.mapped_records ?? 0 : 0;
+    const totals = totalsResult.ok ? totalsResult.rows[0] : { runs: null, successful_runs: null, brand_mentions: null };
+    summary = { mapped_records: mappedRecords, ...totals };
+    recent = { llm_runs: runsResult.ok ? runsResult.rows : [] };
   } else {
     const perfJoin = `${childJoin('ad_performance_hourly')}${rangeFilter('bucket_hour')}`;
-    const totals = await db.query(`SELECT r.currency,count(*)::int AS performance_rows,
+    const totalsResult = await safeQuery('campaign_totals', () => db.query(`SELECT r.currency,count(*)::int AS performance_rows,
       sum(c.spend) AS spend,sum(c.impressions) AS impressions,sum(c.clicks) AS clicks,
       sum(c.conversions) AS conversions,sum(c.revenue) AS revenue ${perfJoin}
-      GROUP BY r.currency ORDER BY r.currency`, rangeParams);
-    const performance = await db.query(`SELECT c.id,c.campaign_id,r.currency,c.bucket_hour,c.spend,c.impressions,
+      GROUP BY r.currency ORDER BY r.currency`, rangeParams));
+    queryStatus.campaign_totals = totalsResult;
+    const performanceResult = await safeQuery('recent_performance', () => db.query(`SELECT c.id,c.campaign_id,r.currency,c.bucket_hour,c.spend,c.impressions,
       c.clicks,c.conversions,c.revenue ${perfJoin}
-      ORDER BY c.bucket_hour DESC,c.id DESC LIMIT 50`, rangeParams);
+      ORDER BY c.bucket_hour DESC,c.id DESC LIMIT 50`, rangeParams));
+    queryStatus.recent_performance = performanceResult;
     const actionJoin = `${childJoin('optimizer_actions')}${rangeFilter('created_at')}`;
-    const actions = await db.query(`SELECT c.id,c.campaign_id,c.action_type,c.applied,c.created_at ${actionJoin}
-      ORDER BY c.created_at DESC,c.id DESC LIMIT 50`, rangeParams);
-    summary = { ...count.rows[0], by_currency: totals.rows };
-    recent = { performance: performance.rows, optimizer_actions: actions.rows };
+    const actionsResult = await safeQuery('recent_actions', () => db.query(`SELECT c.id,c.campaign_id,c.action_type,c.applied,c.created_at ${actionJoin}
+      ORDER BY c.created_at DESC,c.id DESC LIMIT 50`, rangeParams));
+    queryStatus.recent_actions = actionsResult;
+    const mappedRecords = countResult.ok ? countResult.rows[0]?.mapped_records ?? 0 : 0;
+    summary = {
+      mapped_records: mappedRecords,
+      by_currency: totalsResult.ok ? totalsResult.rows : [],
+    };
+    recent = {
+      performance: performanceResult.ok ? performanceResult.rows : [],
+      optimizer_actions: actionsResult.ok ? actionsResult.rows : [],
+    };
+  }
+  const metric_meta = buildMetricMeta(name, summary, queryStatus);
+  if (!rootsResult.ok || !countResult.ok) {
+    throw Object.assign(new Error('source_query_failed'), { status: 500 });
+  }
+  const totalsKey = name === 'search-intel' ? 'search_totals' : 'campaign_totals';
+  if (!queryStatus[totalsKey]?.ok) {
+    throw Object.assign(new Error('source_query_failed'), { status: 500 });
+  }
+  if (name === 'search-intel') {
+    if (!queryStatus.recent_runs?.ok) {
+      throw Object.assign(new Error('source_query_failed'), { status: 500 });
+    }
+  } else if (!queryStatus.recent_performance?.ok || !queryStatus.recent_actions?.ok) {
+    throw Object.assign(new Error('source_query_failed'), { status: 500 });
   }
   const scope = dateRange?.startDate
     ? `mapped_records_in_period:${dateRange.startDate}:${dateRange.endDate}`
     : 'all_mapped_records';
-  return { source: name, ...page(roots.rows, limit), summary, recent, recent_limit: 50,
-    summary_scope: scope, excluded_sections: spec.excluded, period: dateRange || null };
+  return { source: name, ...page(rootsResult.rows, limit), summary, metric_meta, recent, recent_limit: 50,
+    summary_scope: scope, excluded_sections: spec.excluded, period: dateRange || null, query_status: queryStatus };
 }
 
 module.exports = { source, candidates, data };

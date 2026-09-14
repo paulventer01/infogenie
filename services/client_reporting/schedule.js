@@ -1,6 +1,7 @@
 'use strict';
 
 const delivery = require('./delivery');
+const { buildReportEmailBody } = require('./availability');
 const snapshot = require('./snapshot');
 const _audit = require('../admin/audit');
 
@@ -169,11 +170,7 @@ async function processScheduleClaim(pool, row) {
     const reportSnapshot = { ...built.snapshot, format };
     const { buffer, filename, contentType } = await delivery.bufferReport(reportSnapshot);
     const subject = `${reportSnapshot.report.title} — ${reportSnapshot.client.name}`;
-    const text = `Attached is the ${format.toUpperCase()} report "${reportSnapshot.report.title}" for ${reportSnapshot.client.name}.`;
-    const html = `<div style="font-family:sans-serif;max-width:560px;line-height:1.6">
-      <p>Attached is the <strong>${format.toUpperCase()}</strong> report <strong>${reportSnapshot.report.title}</strong> for ${reportSnapshot.client.name}.</p>
-      <p style="color:#64748B;font-size:13px">Scheduled delivery from the saved client reporting profile (version ${profileVersion}).</p>
-    </div>`;
+    const { text, html } = buildReportEmailBody(reportSnapshot);
     try {
       await delivery.sendReportEmail({ to: recipientEmail, subject, html, text, filename, content: buffer, contentType });
       result = { tenantId, clientId, window, recipient: recipientEmail, profileVersion, format, status: 'sent', errorCode: null };

@@ -2,6 +2,9 @@
 
 const { labelFor } = require('./metrics');
 const { SEARCH_SCALAR, CAMPAIGN_SCALAR } = require('./metrics');
+const {
+  resolveMeta, resolveCurrencyMeta, formatDisplayValue, scalarRowMeta,
+} = require('./availability');
 
 function cell(value, limit = 160) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : '';
@@ -22,15 +25,17 @@ function branding(value) {
 }
 function buildReport(client, profile, data, workspaceBrand, selectedMetrics, dateRange) {
   const sections = [];
-  const table = (title, headers, rows, drilldownRows = null) => {
+  const table = (title, headers, rows, drilldownRows = null, rowMeta = null) => {
     const safeRows = rows.length ? rows : [['No recorded data']];
     for (let offset = 0; offset < safeRows.length; offset += 20) {
       const chunk = safeRows.slice(offset, offset + 20);
       const chunkMeta = drilldownRows ? drilldownRows.slice(offset, offset + 20) : null;
+      const chunkRowMeta = rowMeta ? rowMeta.slice(offset, offset + 20) : null;
       sections.push({
         kind: 'table', title: title + (safeRows.length > 20 ? ` ${offset / 20 + 1}` : ''), headers,
         rows: chunk.map((row) => headers.map((_, index) => cell(row[index]))),
         drilldown_rows: chunkMeta,
+        row_meta: chunkRowMeta,
       });
     }
   };
@@ -52,19 +57,34 @@ function buildReport(client, profile, data, workspaceBrand, selectedMetrics, dat
     ['Layout', 'PDF and slides shorten long cells; spreadsheet keeps bounded text'],
     ['Generation', 'Fresh snapshot at generation; may differ from preview'],
   ]);
+  const metricMeta = data.metric_meta || {};
   const flushSearchScalars = (keys) => {
     if (!keys.length) return;
-    const rows = keys.map((key) => [labelFor(data.source, key), summary[key]]);
-    const drilldownRows = keys.map((key) => ({ metric_key: key, currency: null, drillable: true }));
-    table('Search totals', ['Metric', 'Recorded value'], rows, drilldownRows);
+    const rows = [];
+    const drilldownRows = [];
+    const rowMeta = [];
+    for (const key of keys) {
+      const meta = resolveMeta(metricMeta, key, summary[key]);
+      rows.push([labelFor(data.source, key), formatDisplayValue(meta)]);
+      drilldownRows.push({ metric_key: key, currency: null, drillable: true });
+      rowMeta.push(scalarRowMeta(data.source, key, meta));
+    }
+    table('Search totals', ['Metric', 'Recorded value'], rows, drilldownRows, rowMeta);
   };
   const flushCampaignScalars = (keys) => {
     if (!keys.length) return;
-    const rows = summary.by_currency.slice(0, 100).flatMap((r) =>
-      keys.map((key) => [r.currency, labelFor(data.source, key), r[key]]));
-    const drilldownRows = summary.by_currency.slice(0, 100).flatMap((r) =>
-      keys.map((key) => ({ metric_key: key, currency: r.currency, drillable: true })));
-    table('Currency totals', ['Currency', 'Metric', 'Recorded value'], rows, drilldownRows);
+    const rows = [];
+    const drilldownRows = [];
+    const rowMeta = [];
+    for (const r of summary.by_currency.slice(0, 100)) {
+      for (const key of keys) {
+        const meta = resolveCurrencyMeta(metricMeta, r.currency, key, r[key]);
+        rows.push([r.currency, labelFor(data.source, key), formatDisplayValue(meta)]);
+        drilldownRows.push({ metric_key: key, currency: r.currency, drillable: true });
+        rowMeta.push(scalarRowMeta(data.source, key, meta, r.currency));
+      }
+    }
+    table('Currency totals', ['Currency', 'Metric', 'Recorded value'], rows, drilldownRows, rowMeta);
     table('Currency coverage', ['Item', 'Coverage'], [['Currency groups', `First ${Math.min(100, summary.by_currency.length)} of ${summary.by_currency.length}`],
       ['Money', 'Currencies reported separately; no conversion or combined money total']]);
   };

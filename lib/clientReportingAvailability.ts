@@ -1,0 +1,115 @@
+/**
+ * PR10G.6 — shared client report metric availability helpers for React panels.
+ */
+
+export type ClientReportAvailability = "available" | "unavailable" | "partial" | string;
+
+export interface ClientReportMetricMeta {
+  metric_key?: string;
+  currency?: string | null;
+  value?: number | string | null;
+  availability?: ClientReportAvailability | null;
+  availability_reason?: string | null;
+  is_proxy?: boolean | null;
+}
+
+const SAFE_REASONS = new Set([
+  "database_unavailable",
+  "source_query_failed",
+  "input_unavailable",
+  "input_partial",
+  "no_data",
+  "not_configured",
+]);
+
+const SOURCE_QUERY_LABELS = new Set([
+  "roots",
+  "mapped_count",
+  "search_totals",
+  "recent_runs",
+  "campaign_totals",
+  "recent_performance",
+  "recent_actions",
+]);
+
+const INPUT_UNAVAILABLE_LABELS = new Set([
+  "numerator",
+  "denominator",
+]);
+
+function controlledClientReportReason(reason?: string | null): string {
+  if (!reason) return "source_query_failed";
+  if (SAFE_REASONS.has(reason)) return reason;
+  if (reason.startsWith("source_query_failed:")) {
+    const label = reason.slice("source_query_failed:".length);
+    return SOURCE_QUERY_LABELS.has(label) ? reason : "source_query_failed";
+  }
+  if (reason.startsWith("input_unavailable:")) {
+    const label = reason.slice("input_unavailable:".length);
+    return INPUT_UNAVAILABLE_LABELS.has(label) ? reason : "input_unavailable";
+  }
+  if (/error|exception|ECONN|relation|syntax|password|pg_/i.test(reason)) {
+    return "source_query_failed";
+  }
+  return "source_query_failed";
+}
+
+export function safeClientReportReason(reason?: string | null): string {
+  const safe = controlledClientReportReason(reason);
+  const base = safe.includes(":") ? safe.split(":")[0] : safe;
+  return base.replace(/_/g, " ");
+}
+
+export function hasClientReportAvailability(meta?: ClientReportMetricMeta | null): boolean {
+  return Boolean(meta?.availability);
+}
+
+export function isUnavailableClientReport(meta?: ClientReportMetricMeta | null): boolean {
+  return meta?.availability === "unavailable";
+}
+
+export function isPartialClientReport(meta?: ClientReportMetricMeta | null): boolean {
+  return meta?.availability === "partial";
+}
+
+export function isUnverifiedClientReport(meta?: ClientReportMetricMeta | null): boolean {
+  const avail = meta?.availability;
+  return !avail || avail === "unavailable";
+}
+
+export function formatClientReportValue(meta?: ClientReportMetricMeta | null): string {
+  const reason = safeClientReportReason(meta?.availability_reason);
+  if (isUnavailableClientReport(meta)) return `Unavailable (${reason})`;
+  if (meta?.value == null) {
+    if (isPartialClientReport(meta)) return `Partial (${reason})`;
+    return "—";
+  }
+  const numeric = typeof meta.value === "number"
+    ? (Number.isInteger(meta.value)
+      ? meta.value.toLocaleString()
+      : meta.value.toLocaleString(undefined, { maximumFractionDigits: 2 }))
+    : String(meta.value);
+  const tags: string[] = [];
+  if (meta?.is_proxy) tags.push("Proxy");
+  if (isPartialClientReport(meta)) tags.push(`Partial (${reason})`);
+  return tags.length ? `${numeric} · ${tags.join(" · ")}` : numeric;
+}
+
+export function clientReportCellDisplay(
+  cell: string | number | null | undefined,
+  meta?: ClientReportMetricMeta | null,
+): string {
+  if (meta && hasClientReportAvailability(meta)) return formatClientReportValue(meta);
+  if (cell === null || cell === undefined) return "—";
+  return String(cell);
+}
+
+export const CLIENT_REPORT_BADGE_STYLE: Record<string, string | number> = {
+  fontSize: 9,
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  borderRadius: 999,
+  padding: "1px 6px",
+  lineHeight: 1.4,
+};

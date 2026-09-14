@@ -277,6 +277,43 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
       () => button(owner, 'View contributing records for row 2', SECTION));
     await text(owner, '2 contributing records total', SECTION);
   });
+  await t.test('verified zero and availability metadata render in preview', async () => {
+    const alpine = (await pool.query('SELECT id FROM search_intel_queries WHERE tenant_id=$1 AND query=$2 LIMIT 1',
+      [actors.owner.tid, 'ALPINE'])).rows[0]?.id;
+    assert.ok(alpine);
+    await pool.query('DELETE FROM search_intel_llm_runs WHERE tenant_id=$1 AND query_id=$2', [actors.owner.tid, alpine]);
+    await owner.reload({ waitUntil: 'networkidle2' });
+    await selectClient(owner, first.id);
+    const current = await call(owner, profilePath(first.id));
+    assert.equal(current.status, 200);
+    version = current.body.profile.version;
+    const profileResult = await call(owner, profilePath(first.id), 'PUT', {
+      ...profile('pdf', 'search-intel', version),
+      selected_metrics: ['runs'],
+      reporting_period: 'all_time',
+      expected_version: version,
+    });
+    assert.equal(profileResult.status, 200);
+    version = profileResult.body.profile.version;
+    await owner.reload({ waitUntil: 'networkidle2' });
+    await selectClient(owner, first.id);
+    const data = await preview();
+    const totals = data.report.sections.find((section) => section.title === 'Search totals');
+    assert.equal(totals.row_meta[0].metric_key, 'runs');
+    assert.equal(totals.row_meta[0].value, 0);
+    assert.equal(totals.row_meta[0].availability, 'available');
+    assert.equal(totals.rows[0][1], '0');
+    const runsDisplay = await owner.$eval(`${SECTION} article`, (article) => {
+      const headings = [...article.querySelectorAll('h4')];
+      const totalsHeading = headings.find((h) => h.textContent === 'Search totals');
+      const table = totalsHeading?.parentElement?.querySelector('table');
+      const rows = table ? [...table.querySelectorAll('tbody tr')] : [];
+      const runsRow = rows.find((row) => row.cells[0]?.textContent === 'Runs');
+      return runsRow?.cells[1]?.querySelector('div')?.textContent ?? null;
+    });
+    assert.equal(runsDisplay, '0');
+    assert.equal(await owner.$eval(SECTION, (el) => el.innerText.includes('Unavailable')), false);
+  });
   await t.test('preview honors saved metric order from profile', async () => {
     await save('pdf');
     await owner.reload({ waitUntil: 'networkidle2' });

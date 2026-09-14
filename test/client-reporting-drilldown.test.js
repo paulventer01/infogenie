@@ -9,6 +9,7 @@ const express = require('express');
 const metrics = require('../services/client_reporting/metrics');
 const drilldown = require('../services/client_reporting/drilldown');
 const { buildReport } = require('../services/client_reporting/report');
+const { availableMetricMetaFromSummary } = require('../services/client_reporting/availability');
 const period = require('../services/client_reporting/period');
 
 const ROOT = path.join(__dirname, '..');
@@ -71,12 +72,15 @@ test('metric catalog marks scalar metrics drillable and list metrics unsupported
 
 test('buildReport attaches drilldown metadata to scalar total rows only', () => {
   const data = { source: 'search-intel', records: [], summary: { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 },
+    metric_meta: availableMetricMetaFromSummary('search-intel', { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 }),
     recent: { llm_runs: [] }, summary_scope: 'all_mapped_records' };
   const out = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, data, null, ['runs'], null);
   const totals = out.report.sections.find((section) => section.title === 'Search totals');
   assert.deepEqual(totals.drilldown_rows, [{ metric_key: 'runs', currency: null, drillable: true }]);
   const campaigns = { source: 'campaigns', records: [], summary: { mapped_records: 1,
     by_currency: [{ currency: 'USD', spend: 1, impressions: 2, clicks: 3, conversions: 0, revenue: 0, performance_rows: 1 }] },
+    metric_meta: availableMetricMetaFromSummary('campaigns', { mapped_records: 1,
+      by_currency: [{ currency: 'USD', spend: 1, impressions: 2, clicks: 3, conversions: 0, revenue: 0, performance_rows: 1 }] }),
     recent: { performance: [], optimizer_actions: [] }, summary_scope: 'all_mapped_records' };
   const campaignOut = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, campaigns, null,
     ['spend'], null);

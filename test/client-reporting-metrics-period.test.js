@@ -8,6 +8,7 @@ const express = require('express');
 const metrics = require('../services/client_reporting/metrics');
 const period = require('../services/client_reporting/period');
 const { buildReport } = require('../services/client_reporting/report');
+const { availableMetricMetaFromSummary } = require('../services/client_reporting/availability');
 const ROOT = path.join(__dirname, '..');
 const PREFIX = '/api/client-reporting';
 const PERMISSION = 'tenant.settings.manage';
@@ -94,6 +95,8 @@ test('sqlBounds convert profile timezone midnights to UTC instants including DST
 test('buildReport interleaves detail sections with scalar totals in selected_metrics order', () => {
   const campaigns = { source: 'campaigns', records: [], summary: { mapped_records: 1,
     by_currency: [{ currency: 'USD', spend: 1, impressions: 2, clicks: 3, conversions: 0, revenue: 0, performance_rows: 1 }] },
+    metric_meta: availableMetricMetaFromSummary('campaigns', { mapped_records: 1,
+      by_currency: [{ currency: 'USD', spend: 1, impressions: 2, clicks: 3, conversions: 0, revenue: 0, performance_rows: 1 }] }),
     recent: { performance: [], optimizer_actions: [{ campaign_id: 1, action_type: 'pause', applied: true, created_at: '2026-03-01' }] },
     summary_scope: 'all_mapped_records' };
   const mixed = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, campaigns, null,
@@ -105,6 +108,7 @@ test('buildReport interleaves detail sections with scalar totals in selected_met
   assert.ok(actionsIndex < totalsIndex, titles.join(' | '));
   const search = { source: 'search-intel', records: [{ id: 1, query: 'q', brand: 'b', locale: 'en' }],
     summary: { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 },
+    metric_meta: availableMetricMetaFromSummary('search-intel', { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 }),
     recent: { llm_runs: [] }, summary_scope: 'all_mapped_records' };
   const searchMixed = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, search, null,
     ['mapped_queries', 'runs'], null);
@@ -117,12 +121,14 @@ test('buildReport interleaves detail sections with scalar totals in selected_met
 
 test('buildReport preserves selected metric order in search totals and campaign currency rows', () => {
   const data = { source: 'search-intel', records: [], summary: { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 },
+    metric_meta: availableMetricMetaFromSummary('search-intel', { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 }),
     recent: { llm_runs: [] }, summary_scope: 'all_mapped_records' };
   const out = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, data, null,
     ['brand_mentions', 'runs'], null);
   const totals = out.report.sections.find((section) => section.title === 'Search totals');
   assert.deepEqual(totals.rows.map((row) => row[0]), ['Brand mentions', 'Runs']);
   const campaigns = { source: 'campaigns', records: [], summary: { mapped_records: 1, by_currency: [{ currency: 'USD', spend: 1, impressions: 2, clicks: 3, conversions: 0, revenue: 0, performance_rows: 1 }] },
+    metric_meta: availableMetricMetaFromSummary('campaigns', { mapped_records: 1, by_currency: [{ currency: 'USD', spend: 1, impressions: 2, clicks: 3, conversions: 0, revenue: 0, performance_rows: 1 }] }),
     recent: { performance: [], optimizer_actions: [] }, summary_scope: 'all_mapped_records' };
   const campaignOut = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, campaigns, null,
     ['clicks', 'spend'], null);
@@ -142,6 +148,7 @@ test('custom date validation enforces order, future end and supported lookback',
 
 test('buildReport honors selected metrics and queried period labels', () => {
   const data = { source: 'search-intel', records: [], summary: { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 },
+    metric_meta: availableMetricMetaFromSummary('search-intel', { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 }),
     recent: { llm_runs: [] }, summary_scope: 'mapped_records_in_period:2026-03-01:2026-03-10' };
   const range = period.validateCustomRange('2026-03-01', '2026-03-10', 'UTC', new Date('2026-03-15T12:00:00.000Z'));
   const out = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, data, null, ['runs'], range);
@@ -174,6 +181,7 @@ test('report preview accepts custom date query and rejects invalid ranges', asyn
     reporting_period: 'last_30_days', reporting_timezone: 'UTC' };
   const data = { source: 'campaigns', records: [{ id: 1, name: 'A', platform: 'google', currency: 'USD', status: 'active' }],
     summary: { mapped_records: 1, by_currency: [{ currency: 'USD', performance_rows: 1, spend: 1, impressions: 1, clicks: 1, conversions: 0, revenue: 0 }] },
+    metric_meta: availableMetricMetaFromSummary('campaigns', { mapped_records: 1, by_currency: [{ currency: 'USD', performance_rows: 1, spend: 1, impressions: 1, clicks: 1, conversions: 0, revenue: 0 }] }),
     recent: { performance: [], optimizer_actions: [] } };
   const filename = path.join(ROOT, 'services/client_reporting/api.js'), native = createRequire(filename), module = { exports: {} };
   const overrides = {
