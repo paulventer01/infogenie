@@ -34,7 +34,7 @@ Audit of services that read `computeCanonicalMetrics`, `readMetric`, or `/api/me
 |---|---|
 | `components/features/grow/Goals.tsx` | **Updated (PR10G.3)** | Availability badges, partial/proxy labels, insufficient-data suggest handling |
 | `components/features/manage/MarketingOKR.tsx` | **Updated (PR10G.3)** | KR metadata on list + refresh; unavailable/partial/proxy display |
-| `services/canonical_metrics/compute.js` `goals_vs_actuals` | Reads stored OKR/agent goal rows, not live canonical recompute |
+| `services/canonical_metrics/compute.js` `goals_vs_actuals` | **Updated (PR10G.7)** | Live canonical actuals for auto-tracked OKR/growth goals; preserves targets, manual and channel-scoped rows |
 | Budget Board pacing anomalies in `anomaly_detector` | Uses `spend_events` directly (out of canonical economics scope) |
 
 ## Rules for new consumers

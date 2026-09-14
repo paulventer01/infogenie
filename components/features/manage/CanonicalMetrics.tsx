@@ -9,6 +9,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { goToView } from "@/lib/nav";
+import {
+  formatMetricValue,
+  isUnverifiedCanonical,
+  isCanonicalGoalMetric,
+  isCanonicalAutoKr,
+} from "@/lib/metricAvailability";
 
 interface Kpi {
   key: string;
@@ -25,11 +31,21 @@ interface Kpi {
 interface GoalRow {
   source: string;
   label: string;
+  metric?: string;
+  linked_channel?: string | null;
   target: number;
   actual: number | null;
   unit?: string;
   pct?: number | null;
   status?: string;
+  objective_status?: string | null;
+  measurement_source?: string | null;
+  unverified_reason?: string | null;
+  period_mismatch?: boolean;
+  metric_availability?: string | null;
+  metric_availability_reason?: string | null;
+  metric_is_proxy?: boolean;
+  from_canonical?: boolean;
 }
 interface PaceAction {
   priority?: string;
@@ -69,6 +85,70 @@ function availabilitySuffix(kpi?: Kpi) {
   if (!kpi?.availability || kpi.availability === "available") return "";
   const reason = kpi.availability_reason?.replace(/_/g, " ") || kpi.availability;
   return kpi.availability === "partial" ? ` · partial (${reason})` : ` · unavailable (${reason})`;
+}
+
+function goalRecognizedCanonical(g: GoalRow): boolean {
+  if (g.source === "growth_goals") return isCanonicalGoalMetric(g.metric);
+  if (g.source === "okr") {
+    return isCanonicalAutoKr({ metric_type: g.metric || "", linked_channel: g.linked_channel });
+  }
+  return false;
+}
+
+function fmtGoalActual(g: GoalRow) {
+  const unit = g.unit || "";
+  if (g.measurement_source === "stored" && g.actual != null) {
+    const n = g.actual;
+    if (unit === "$") return `$${n} (stored)`;
+    if (unit === "x") return `${n}x (stored)`;
+    if (unit === "%") return `${n}% (stored)`;
+    return `${n} (stored)`;
+  }
+  if (g.unverified_reason === "period_mismatch" && g.actual == null) {
+    return "unverified (period mismatch)";
+  }
+  const recognized = goalRecognizedCanonical(g);
+  const meta = {
+    metric_availability: g.metric_availability,
+    metric_availability_reason: g.metric_availability_reason,
+    metric_is_proxy: g.metric_is_proxy,
+  };
+  let base = formatMetricValue(g.actual, unit, meta, recognized);
+  if (g.metric_is_proxy && !base.includes("(proxy)")) base += " (proxy)";
+  if (g.metric_availability === "partial" && g.actual != null && !base.includes("partial")) {
+    const reason = meta.metric_availability_reason?.replace(/_/g, " ") || "partial";
+    base += ` · partial (${reason})`;
+  }
+  return base;
+}
+
+function fmtGoalStatus(g: GoalRow): { text: string; color: string } {
+  if (g.status === "complete") {
+    return { text: "complete", color: "#1d4ed8" };
+  }
+  const recognized = goalRecognizedCanonical(g);
+  const unverified = g.status === "unverified" || isUnverifiedCanonical(g, recognized);
+  let text: string;
+  if (unverified) {
+    if (g.unverified_reason === "period_mismatch") text = "unverified (period mismatch)";
+    else if (g.measurement_source === "stored") {
+      text = `unverified (stored)${g.pct != null ? ` (${g.pct}%)` : ""}`;
+    } else if (g.metric_availability === "partial" && g.pct != null) {
+      text = `unverified (${g.pct}% partial)`;
+    } else {
+      text = "unverified";
+    }
+  } else {
+    text = `${g.status || "unknown"}${g.pct != null ? ` (${g.pct}%)` : ""}`;
+  }
+  const color = unverified
+    ? "#475569"
+    : g.status === "on-track"
+      ? "#16A34A"
+      : g.status === "at-risk"
+        ? "#F59E0B"
+        : "#DC2626";
+  return { text, color };
 }
 
 function fmt(v: number | null | undefined, unit: string, kpi?: Kpi) {
@@ -306,17 +386,20 @@ export default function CanonicalMetrics({ embedded = false }: { embedded?: bool
                     </tr>
                   </thead>
                   <tbody>
-                    {(snap.goals_vs_actuals || []).map((g, i) => (
+                    {(snap.goals_vs_actuals || []).map((g, i) => {
+                      const status = fmtGoalStatus(g);
+                      return (
                       <tr key={i} style={{ borderTop: "1px solid #F1F5F9" }}>
                         <td style={{ padding: "8px 6px", fontWeight: 600 }}>{g.label}</td>
                         <td style={{ padding: "8px 6px" }}>{g.source}</td>
                         <td style={{ padding: "8px 6px" }}>{g.target}{g.unit || ""}</td>
-                        <td style={{ padding: "8px 6px" }}>{g.actual ?? "—"}{g.unit || ""}</td>
-                        <td style={{ padding: "8px 6px", fontWeight: 700, color: g.status === "on-track" ? "#16A34A" : g.status === "at-risk" ? "#F59E0B" : "#DC2626" }}>
-                          {g.status}{g.pct != null ? ` (${g.pct}%)` : ""}
+                        <td style={{ padding: "8px 6px" }}>{fmtGoalActual(g)}</td>
+                        <td style={{ padding: "8px 6px", fontWeight: 700, color: status.color }}>
+                          {status.text}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               )}

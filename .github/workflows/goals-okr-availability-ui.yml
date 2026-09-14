@@ -14,6 +14,7 @@ on:
       - 'package*.json'
       - 'test/goals-okr-availability-ui.test.js'
       - 'test/browser/goals-okr-availability.test.js'
+      - 'test/browser/canonical-metrics-goals-table.test.js'
       - 'test/helpers/**'
       - '.github/workflows/goals-okr-availability-ui.yml'
 
@@ -34,7 +35,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify goals and OKR availability UI behavior
-        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/goals-okr-availability-ui.test.js test/canonical-metrics-consumer-consistency.test.js
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/goals-okr-availability-ui.test.js test/canonical-metrics-consumer-consistency.test.js test/canonical-metrics-goals-vs-actuals.test.js
 
   browser-postgres:
     name: Goals OKR availability Chromium + PostgreSQL (zero skips)
@@ -90,10 +91,14 @@ jobs:
         env:
           PR10E9_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/infogenie_agency_browser
           PR10G3_REQUIRE_BROWSER: '1'
+          PR10G7_REQUIRE_BROWSER: '1'
           NEXT_TELEMETRY_DISABLED: '1'
         run: |
           set -o pipefail
-          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/browser/goals-okr-availability.test.js | tee /tmp/goals-okr-browser.tap
+          : > /tmp/goals-okr-browser.tap
+          for f in test/browser/goals-okr-availability.test.js test/browser/canonical-metrics-goals-table.test.js; do
+            node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit "$f" | tee -a /tmp/goals-okr-browser.tap
+          done
           grep -Eq '^# tests [1-9][0-9]*$' /tmp/goals-okr-browser.tap
           grep -Eq '^# fail 0$' /tmp/goals-okr-browser.tap
           grep -Eq '^# skipped 0$' /tmp/goals-okr-browser.tap
