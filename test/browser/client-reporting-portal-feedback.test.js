@@ -98,19 +98,30 @@ test('PR10H.2 portal feedback browser journey', {
   await portal.waitForFunction(() => location.pathname === '/client-report/view');
   await portal.waitForSelector('[aria-label="Report feedback"]');
   await portal.click('[aria-label="Report feedback"] input[value="change_request"]');
-  await portal.type('[aria-label="Report feedback"] textarea', 'Please adjust the executive summary.');
+  const portalMessage = '[aria-label="Report feedback"] textarea';
+  await portal.waitForSelector(portalMessage, { visible: true });
+  await portal.locator(portalMessage).fill('Please adjust the executive summary.');
   await Promise.all([
     portal.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/client-reporting/portal/feedback/threads'),
-    portal.click('[aria-label="Report feedback"] button[type="submit"]'),
+    button(portal, 'Submit', '[aria-label="Report feedback"]'),
   ]);
   await text(portal, 'Please adjust the executive summary.', 'main');
 
   await owner.reload({ waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
-  await owner.waitForSelector(FEEDBACK);
+  await owner.waitForSelector(FEEDBACK, { visible: true });
   await text(owner, 'Please adjust the executive summary.', FEEDBACK);
-  await owner.type(`${FEEDBACK} textarea`, 'Thanks — we will revise the summary.');
-  await owner.click(`${FEEDBACK} button[type="submit"]`);
+  const agencyReply = `${FEEDBACK} textarea`;
+  await owner.waitForSelector(agencyReply, { visible: true });
+  await owner.evaluate((selector) => {
+    document.querySelector(selector)?.scrollIntoView({ block: 'center', inline: 'nearest' });
+  }, agencyReply);
+  await owner.locator(agencyReply).fill('Thanks — we will revise the summary.');
+  await Promise.all([
+    owner.waitForResponse((r) => r.request().method() === 'POST'
+      && /\/portal\/feedback\/threads\/\d+\/replies$/.test(new URL(r.url()).pathname)),
+    button(owner, 'Send reply', FEEDBACK),
+  ]);
   await text(owner, 'Thanks — we will revise the summary.', FEEDBACK);
   await button(owner, 'Mark resolved', FEEDBACK);
   await text(owner, 'resolved', FEEDBACK);
