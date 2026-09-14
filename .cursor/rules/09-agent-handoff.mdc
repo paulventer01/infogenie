@@ -1,81 +1,47 @@
 ---
-description: Required handoff block and bounce protocol between InfoGenie agents
+description: Optional completion reporting — authoritative workflow is development-workflow.mdc
 alwaysApply: true
 ---
 
 # Agent handoff
 
-Specialists do not silently keep a task that is outside `.cursor/agents/<role>.md` ownership. Lead re-routes. This rule does not change product behavior in `01`–`07`.
+**Authoritative workflow:** `.cursor/rules/development-workflow.mdc`. Mandatory multi-agent handoffs and duplicate review stages are **removed**. One coding agent completes implementation, then one Security/QA review pass (rule `08`). This rule covers optional stop/reporting only. It does not change product behavior in `01`–`07`.
 
-## When to hand off
+## When to stop
 
-Emit a block and **stop implementing** when any of these is true:
+Stop implementing only for:
 
-- Paths you would edit are in another agent’s Owns list
-- You would need to reorder `server.js` middleware, edit vault crypto, change existing `ROUTE_GROUPS`, or flip `PERMISSION_ENFORCEMENT` / `MULTITENANT_ENFORCEMENT` (Security + Lead; weakening is refused)
-- The work is cross-domain and you are not Lead
-- You are QA and product code must change
-- You are Reviewer and the bar fails or QA did not run independently
-- You are Lead and the request is a single-domain implementation (delegate)
+- Genuine access blockers
+- Material scope decisions needing user input
+- Final human approval (merge/deploy)
 
-Do not “just this one file” across a boundary. Do not implement the other specialist’s slice so the PR looks finished.
+Do not weaken `PERMISSION_ENFORCEMENT`, `MULTITENANT_ENFORCEMENT`, reorder `server.js` middleware, edit vault crypto, or change existing `ROUTE_GROUPS` to ship faster. Security review is required when those areas are touched (development-workflow.mdc, rule `08`).
 
-Canonical example: **Frontend receives a database task** (new table, `schema.js`, `db.js`, migration). Frontend does not edit those files. It emits:
+## Optional completion block
 
-```
-STATUS: needs-handoff
-TASK: add/migrate database table
-FILES CHANGED: none
-TESTS: none
-HANDOFF REQUIRED: yes
-TARGET AGENT: infogenie-lead
-REASON: database task; correct specialist is database (Security reviews tenant isolation)
-RISKS: tenant
-MODEL: composer-2.5
-MODEL SOURCE: frontmatter
-ESCALATION REASON: none
-```
-
-Lead then delegates to `database`, not back to Frontend.
-
-## Required block
-
-Every stop, bounce, or specialist completion uses **exactly** these fields (values may be `none` / `yes` / `no` as appropriate):
+When summarizing a completed stage, you may use these fields (values may be `none` / `yes` / `no` as appropriate):
 
 ```
-STATUS: blocked | done | needs-handoff | needs-review
+STATUS: blocked | done | needs-review
 TASK: <one-line summary>
 FILES CHANGED: <paths or none>
 TESTS: <commands run and result, or none>
-HANDOFF REQUIRED: yes | no
-TARGET AGENT: infogenie-lead | frontend | backend | database | integrations | ai-llm | security | qa | reviewer
-REASON: <why this agent cannot continue, or what the target must do>
+REVIEW: <Security/QA pass outcome; note if not independent>
+REASON: <why stopped, or what remains>
 RISKS: <tenant, permission, secrets, honesty, boot, none>
 MODEL: <catalog slug or inherit>
 MODEL SOURCE: frontmatter | lead-override | inherit | cursor-fallback
 ESCALATION REASON: <none | trigger from rule 11>
 ```
 
-- Out-of-ownership bounce: `HANDOFF REQUIRED: yes`, `TARGET AGENT: infogenie-lead`, name the correct specialist in `REASON`.
-- Slice complete, more domains remain: `TARGET AGENT: infogenie-lead` with the next specialist named.
-- Implementer complete for this change: `TARGET AGENT: qa` (independent pass).
-- QA green: `TARGET AGENT: reviewer`.
-- Reviewer green: Lead opens/updates the **PR** for the user. `HANDOFF REQUIRED: no` only after Reviewer passed. Agents do not merge. **You approve → main**.
-- Record the provider/model used at every stage. If Lead escalated Composer, `MODEL SOURCE` is `lead-override` and `ESCALATION REASON` names the trigger. Never put API keys in this block.
-
-## Lead on receipt
-
-- Re-route to the named specialist with a scoped task (owned paths, prohibited paths, tests).
-- Do not send the work back to the bouncing agent to implement anyway.
-- Preserve `RISKS` in the next task brief.
-- Preserve `MODEL` / `MODEL SOURCE` / `ESCALATION REASON` when re-routing; apply rule 11 if the next specialist needs a different pin (QA independence, Reviewer vs Security Opus).
-- Keep one feature branch (rule 10); do not open a second product direction in the same PR.
+- Implementation complete, review pending: `STATUS: needs-review`.
+- Review complete: open or update the PR (rule `10`). Agents do not merge. **You approve → main**.
+- Record `MODEL` / `MODEL SOURCE` / `ESCALATION REASON` when applicable. Never put API keys in this block.
 
 ## STATUS meanings
 
 | STATUS | Meaning |
 |---|---|
-| `done` | This agent’s owned work finished |
-| `needs-handoff` | Wrong owner or next specialist required |
-| `needs-review` | Implementation claimed done; Reviewer not yet passed |
-| `blocked` | Cannot proceed (missing env, user decision, failed tests QA cannot fix) |
+| `done` | Implementation and review complete; PR ready for user |
+| `needs-review` | Implementation claimed done; Security/QA review not yet complete |
+| `blocked` | Cannot proceed (missing env, user decision, failed tests) |
