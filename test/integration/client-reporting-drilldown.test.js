@@ -121,7 +121,10 @@ test('Client reporting drilldown: totals reconcile, isolation, pagination and po
   await seedRuns(ta.id, qOther, 5, true, null);
   await seedRuns(tb.id, qForeign, 4, true, null);
   const preview = await call(a, 'GET', `${prefix}/clients/${ca}/report-preview`);
-  assert.equal(preview.report.sections.find((section) => section.title === 'Search totals').rows.find((row) => row[0] === 'Runs')[1], 4);
+  const previewTotals = preview.report.sections.find((section) => section.title === 'Search totals');
+  const runsRow = previewTotals.rows.findIndex((row) => row[0] === 'Runs');
+  assert.equal(previewTotals.row_meta[runsRow].value, 4);
+  assert.equal(previewTotals.rows[runsRow][1], '4');
   const ctx = drilldownQuery(preview);
   const page1 = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/runs?limit=2&${ctx}`);
   assert.equal(page1.total_count, 4);
