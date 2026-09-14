@@ -105,7 +105,7 @@ async function compute(tid = 1, days = 30) {
   return computeCanonicalMetrics(tid, { days });
 }
 
-describe('goals_vs_actuals live canonical resolution (PR10G.7)', () => {
+describe('goals_vs_actuals live canonical resolution (PR10G.7 / PR10G.8)', () => {
   beforeEach(() => {
     delete require.cache[require.resolve('../services/canonical_metrics/compute')];
     kvStore = {};
@@ -116,15 +116,25 @@ describe('goals_vs_actuals live canonical resolution (PR10G.7)', () => {
     delete require.cache[require.resolve('../services/canonical_metrics/compute')];
   });
 
-  it('rejects rolling snapshots for calendar-quarter OKRs until compute supplies authoritative bounds', async () => {
+  it('rejects rolling-only snapshots for calendar-quarter OKRs without authoritative bounds', () => {
     const quarter = currentQuarter();
     const goalPeriod = okrMeasurementPeriod(quarter);
     const rolling = mockSnapshot({ days: 90, blended_roas: 9 });
     assert.equal(snapshotMatchesGoalPeriod(rolling, goalPeriod), false);
 
+    const historical = buildOkrRow(okrRow({ quarter: '2024-Q1' }), mockSnapshot({ days: 30 }));
+    assert.equal(historical.unverified_reason, 'period_mismatch');
+    assert.match(formatGoalActualDisplay(historical), /period mismatch/i);
+  });
+
+  it('resolves quarterly OKRs from authoritative calendar-quarter compute snapshots', async () => {
+    const quarter = currentQuarter();
     installMockDb(async (sql) => {
-      if (/ad_performance_hourly/i.test(sql) && /GROUP BY 1/i.test(sql)) {
-        return { rows: [adPerfRow({ spend: 500, revenue: 1500 })] };
+      if (/timestamptz/i.test(sql) && /ad_performance_hourly/i.test(sql) && /GROUP BY 1/i.test(sql)) {
+        return { rows: [adPerfRow({ spend: 400, revenue: 1200 })] };
+      }
+      if (/now\(\) -/i.test(sql) && /ad_performance_hourly/i.test(sql) && /GROUP BY 1/i.test(sql)) {
+        return { rows: [adPerfRow({ spend: 100, revenue: 200 })] };
       }
       if (/spend_events/i.test(sql)) return { rows: [] };
       if (/offline_conversions/i.test(sql)) return { rows: [{ cents: '0', n: 0 }] };
@@ -132,19 +142,39 @@ describe('goals_vs_actuals live canonical resolution (PR10G.7)', () => {
         return { rows: [okrRow({ quarter, target_value: 3, current_value: 0.5 })] };
       }
       if (/agent_goals/i.test(sql)) return { rows: [] };
+      if (/budgets/i.test(sql)) return { rows: [] };
       return { rows: [] };
     });
 
-    const snap = await compute(1, goalPeriod.days);
+    const snap = await compute(1, 30);
     const gva = snap.goals_vs_actuals.find((g) => g.metric === 'roas');
     assert.ok(gva);
-    assert.equal(gva.actual, null);
-    assert.equal(gva.unverified_reason, 'period_mismatch');
-    assert.equal(isVerifiedGoalRow(gva), false);
+    assert.equal(gva.actual, 3);
+    assert.equal(gva.from_canonical, true);
+    assert.equal(isVerifiedGoalRow(gva), true);
+    assert.match(gva.measurement_period_label || '', new RegExp(quarter.replace('-', '\\-')));
+    assert.doesNotMatch(gva.measurement_period_label || '', /rolling/i);
+  });
 
-    const historical = buildOkrRow(okrRow({ quarter: '2024-Q1' }), mockSnapshot({ days: 30 }));
-    assert.equal(historical.unverified_reason, 'period_mismatch');
-    assert.match(formatGoalActualDisplay(historical), /period mismatch/i);
+  it('labels future quarters as not started instead of verified zero', async () => {
+    installMockDb(async (sql) => {
+      if (/ad_performance_hourly/i.test(sql)) return { rows: [adPerfRow()] };
+      if (/spend_events/i.test(sql)) return { rows: [] };
+      if (/offline_conversions/i.test(sql)) return { rows: [{ cents: '0', n: 0 }] };
+      if (/okr_key_results/i.test(sql)) {
+        return { rows: [okrRow({ quarter: '2030-Q1', metric_type: 'spend', target_value: 100, unit: '$' })] };
+      }
+      if (/agent_goals/i.test(sql)) return { rows: [] };
+      if (/budgets/i.test(sql)) return { rows: [] };
+      return { rows: [] };
+    });
+
+    const snap = await compute(1, 30);
+    const gva = snap.goals_vs_actuals.find((g) => g.metric === 'spend');
+    assert.ok(gva);
+    assert.equal(gva.actual, null);
+    assert.equal(gva.unverified_reason, 'not_started');
+    assert.match(formatGoalActualDisplay(gva), /not started/i);
   });
 
   it('90-day window ending June 30 noon is not Q2 even when UTC date endpoints align', () => {

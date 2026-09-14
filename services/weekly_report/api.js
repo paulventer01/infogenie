@@ -133,9 +133,10 @@ async function _gatherSections(brand, tid) {
       sections.push({
         title: '🎯 Goals vs Actuals',
         kind: 'table',
-        headers: ['Goal', 'Target', 'Actual', 'Status'],
+        headers: ['Goal', 'Period', 'Target', 'Actual', 'Status'],
         rows: m.goals_vs_actuals.slice(0, 10).map((g) => [
           String(g.label || '').slice(0, 50),
+          String(g.measurement_period_label || (g.source === 'growth_goals' ? 'Rolling window' : '—')),
           String(g.target ?? '—'),
           formatGoalActualDisplay(g),
           formatGoalStatusDisplay(g),

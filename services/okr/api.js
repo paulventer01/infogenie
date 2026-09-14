@@ -19,39 +19,32 @@ function _safe(h) {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function _quarterBounds(quarter) {
-  const m = quarter.match(/^(\d{4})-Q([1-4])$/);
-  if (!m) return null;
-  const year = parseInt(m[1], 10);
-  const q    = parseInt(m[2], 10);
-  const startMonth = (q - 1) * 3 + 1;
-  const endMonth   = startMonth + 2;
-  const start = `${year}-${String(startMonth).padStart(2,'0')}-01`;
-  const endDate = new Date(year, endMonth, 0);
-  const end = endDate.toISOString().slice(0,10);
-  return { start, end };
-}
+const {
+  CANONICAL_OKR_AUTO,
+  OKR_METRIC_TO_CANONICAL,
+} = require('../canonical_metrics/goals_vs_actuals');
+const { quarterBounds } = require('../canonical_metrics/period');
 
 async function _pullAutoMetric(tid, metric_type, linked_channel, quarter) {
   if (!hasDb()) return { value: null, from_canonical: false };
-  const bounds = _quarterBounds(quarter);
+  const bounds = quarterBounds(quarter);
   if (!bounds) return { value: null, from_canonical: false };
   const {
     resolveConsumerMetric,
     unavailableConsumerMetric,
   } = require('../canonical_metrics/consumer');
 
-  // Canonical SSOT for ROAS family (channel filter still uses legacy path below)
-  if (!linked_channel && ['roas', 'true_roas', 'blended_roas'].includes(metric_type)) {
+  // Canonical SSOT for tenant-wide auto metrics (PR10G.8 calendar-quarter bounds)
+  if (!linked_channel && CANONICAL_OKR_AUTO.has(metric_type)) {
     try {
       const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
-      const days = Math.max(1, Math.ceil((new Date(bounds.end) - new Date(bounds.start)) / 864e5));
-      const snap = await computeCanonicalMetrics(tid, { days: Math.min(90, days) });
-      const key = metric_type === 'true_roas' ? 'true_roas' : metric_type === 'blended_roas' ? 'blended_roas' : 'roas';
-      const detail = resolveConsumerMetric(snap, key);
-      if (detail.availability === 'unavailable') return detail;
-      if (detail.value != null || detail.availability === 'available') return detail;
-      return detail;
+      const snap = await computeCanonicalMetrics(tid, { quarter, _skipGoals: true, _skipPacing: true });
+      if (snap.period_cutoff === 'not_started') {
+        return unavailableConsumerMetric('not_started');
+      }
+      const canonicalKey = OKR_METRIC_TO_CANONICAL[metric_type];
+      if (!canonicalKey) return unavailableConsumerMetric();
+      return resolveConsumerMetric(snap, canonicalKey);
     } catch (_) {
       return unavailableConsumerMetric();
     }

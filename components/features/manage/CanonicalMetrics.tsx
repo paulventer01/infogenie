@@ -42,6 +42,7 @@ interface GoalRow {
   measurement_source?: string | null;
   unverified_reason?: string | null;
   period_mismatch?: boolean;
+  measurement_period_label?: string | null;
   metric_availability?: string | null;
   metric_availability_reason?: string | null;
   metric_is_proxy?: boolean;
@@ -107,6 +108,9 @@ function fmtGoalActual(g: GoalRow) {
   if (g.unverified_reason === "period_mismatch" && g.actual == null) {
     return "unverified (period mismatch)";
   }
+  if (g.unverified_reason === "not_started" && g.actual == null) {
+    return "unverified (not started)";
+  }
   const recognized = goalRecognizedCanonical(g);
   const meta = {
     metric_availability: g.metric_availability,
@@ -131,6 +135,7 @@ function fmtGoalStatus(g: GoalRow): { text: string; color: string } {
   let text: string;
   if (unverified) {
     if (g.unverified_reason === "period_mismatch") text = "unverified (period mismatch)";
+    else if (g.unverified_reason === "not_started") text = "unverified (not started)";
     else if (g.measurement_source === "stored") {
       text = `unverified (stored)${g.pct != null ? ` (${g.pct}%)` : ""}`;
     } else if (g.metric_availability === "partial" && g.pct != null) {
@@ -379,6 +384,7 @@ export default function CanonicalMetrics({ embedded = false }: { embedded?: bool
                   <thead>
                     <tr style={{ textAlign: "left", color: "#64748B" }}>
                       <th style={{ padding: "8px 6px" }}>Goal</th>
+                      <th style={{ padding: "8px 6px" }}>Period</th>
                       <th style={{ padding: "8px 6px" }}>Source</th>
                       <th style={{ padding: "8px 6px" }}>Target</th>
                       <th style={{ padding: "8px 6px" }}>Actual</th>
@@ -391,6 +397,9 @@ export default function CanonicalMetrics({ embedded = false }: { embedded?: bool
                       return (
                       <tr key={i} style={{ borderTop: "1px solid #F1F5F9" }}>
                         <td style={{ padding: "8px 6px", fontWeight: 600 }}>{g.label}</td>
+                        <td style={{ padding: "8px 6px", color: "#64748B", fontSize: "0.82rem" }}>
+                          {g.measurement_period_label || (g.source === "growth_goals" ? "Rolling window" : "—")}
+                        </td>
                         <td style={{ padding: "8px 6px" }}>{g.source}</td>
                         <td style={{ padding: "8px 6px" }}>{g.target}{g.unit || ""}</td>
                         <td style={{ padding: "8px 6px" }}>{fmtGoalActual(g)}</td>
