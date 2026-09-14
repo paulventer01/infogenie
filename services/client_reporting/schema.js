@@ -192,6 +192,53 @@ async function ensureClientReportingSchema() {
     ALTER TABLE client_reporting_portal_feedback_messages
       ADD CONSTRAINT client_reporting_portal_feedback_messages_check
       CHECK ((author_type = 'client' AND author_user_id IS NULL) OR author_type = 'agency');
+    CREATE TABLE IF NOT EXISTS client_reporting_approval_snapshots (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      submission_number INT NOT NULL CHECK (submission_number > 0),
+      profile_version INT NOT NULL CHECK (profile_version > 0),
+      reporting_period TEXT NOT NULL CHECK (reporting_period IN ('all_time', 'last_7_days', 'last_30_days', 'previous_calendar_month', 'custom')),
+      reporting_timezone TEXT NOT NULL CHECK (length(reporting_timezone) > 0 AND length(reporting_timezone) <= 64),
+      period_start DATE,
+      period_end DATE,
+      selected_metrics JSONB NOT NULL DEFAULT '[]'::jsonb,
+      snapshot_json JSONB NOT NULL,
+      content_hash CHAR(64) NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
+      CHECK (jsonb_typeof(snapshot_json) = 'object'),
+      CHECK (jsonb_typeof(selected_metrics) = 'array'),
+      CHECK ((reporting_period = 'all_time' AND period_start IS NULL AND period_end IS NULL)
+        OR (reporting_period <> 'all_time' AND period_start IS NOT NULL AND period_end IS NOT NULL)),
+      UNIQUE (tenant_id, client_id, submission_number)
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_approval_snapshots_client_idx
+      ON client_reporting_approval_snapshots (tenant_id, client_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS client_reporting_approval_requests (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      snapshot_id BIGINT NOT NULL UNIQUE REFERENCES client_reporting_approval_snapshots(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'changes_requested', 'withdrawn')),
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      submitted_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      decided_at TIMESTAMPTZ,
+      decision_actor_type TEXT CHECK (decision_actor_type IS NULL OR decision_actor_type IN ('portal_client')),
+      decision_comment TEXT CHECK (decision_comment IS NULL OR (decision_comment = btrim(decision_comment) AND length(decision_comment) >= 1 AND length(decision_comment) <= 4000)),
+      withdrawn_at TIMESTAMPTZ,
+      withdrawn_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
+      CHECK ((status = 'pending' AND decided_at IS NULL AND decision_actor_type IS NULL AND withdrawn_at IS NULL)
+        OR (status = 'approved' AND decided_at IS NOT NULL AND decision_actor_type = 'portal_client' AND withdrawn_at IS NULL)
+        OR (status = 'changes_requested' AND decided_at IS NOT NULL AND decision_actor_type = 'portal_client' AND decision_comment IS NOT NULL AND withdrawn_at IS NULL)
+        OR (status = 'withdrawn' AND withdrawn_at IS NOT NULL AND decided_at IS NULL AND decision_actor_type IS NULL))
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_approval_requests_client_idx
+      ON client_reporting_approval_requests (tenant_id, client_id, submitted_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS client_reporting_approval_requests_pending_idx
+      ON client_reporting_approval_requests (tenant_id, client_id) WHERE status = 'pending';
   `);
 }
 

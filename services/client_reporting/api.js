@@ -14,6 +14,7 @@ const _snapshot = require('./snapshot');
 const schedule = require('./schedule');
 const portal = require('./portal');
 const feedback = require('./feedback');
+const approvals = require('./approvals');
 const _audit = require('../admin/audit');
 const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
@@ -589,6 +590,63 @@ router.post('/clients/:clientId/portal/feedback/threads/:threadId/replies', writ
     context: { client_id: id, thread_id: threadId, author_type: 'agency' },
   });
   return res.json({ ok: true, client, thread });
+}));
+
+router.get('/clients/:clientId/approval-requests', readLimiter, safe(async (req, res) => {
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const client = await activeClient(_db.getPool(), tenantId, id);
+  const requests = await approvals.listRequests(_db.getPool(), tenantId, id);
+  const pending = requests.find((row) => row.status === 'pending') || null;
+  return res.json({ ok: true, client, pending, requests });
+}));
+
+router.get('/clients/:clientId/approval-requests/:requestId', readLimiter, safe(async (req, res) => {
+  const requestId = positiveId(req.params.requestId);
+  if (!requestId) throw fail(400, 'invalid_approval');
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const client = await activeClient(_db.getPool(), tenantId, id);
+  const request = await approvals.getRequestById(_db.getPool(), tenantId, id, requestId, false, true);
+  return res.json({ ok: true, client, request });
+}));
+
+router.post('/clients/:clientId/approval-requests', writeLimiter, safe(async (req, res) => {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) ||
+      !Number.isInteger(body.expected_version) || body.expected_version < 1 || body.expected_version >= 2147483647) {
+    throw fail(400, 'invalid_approval');
+  }
+  const customRange = customRangeFromBody(body);
+  const allowed = customRange ? ['expected_version', 'start_date', 'end_date'] : ['expected_version'];
+  if (Object.keys(body).some((key) => !allowed.includes(key))) throw fail(400, 'invalid_approval');
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const client = await activeClient(_db.getPool(), tenantId, id);
+  const request = await approvals.createSubmission(_db.getPool(), tenantId, id, positiveId(req.user.id),
+    body.expected_version, customRange);
+  await _audit.recordAudit({
+    action: 'client_reporting.approval_submit', actorUserId: req.user.id, actorEmail: req.user.email,
+    tenantId, detail: `${client.name}: report approval submitted (submission #${request.snapshot.submission_number})`,
+    context: { client_id: id, request_id: request.id, snapshot_id: request.snapshot.id,
+      profile_version: request.snapshot.profile_version },
+  });
+  return res.status(201).json({ ok: true, client, request });
+}));
+
+router.post('/clients/:clientId/approval-requests/:requestId/withdraw', writeLimiter, safe(async (req, res) => {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 0) {
+    throw fail(400, 'invalid_approval');
+  }
+  const requestId = positiveId(req.params.requestId);
+  if (!requestId) throw fail(400, 'invalid_approval');
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const client = await activeClient(_db.getPool(), tenantId, id);
+  const request = await approvals.withdrawRequest(_db.getPool(), tenantId, id, requestId, positiveId(req.user.id));
+  await _audit.recordAudit({
+    action: 'client_reporting.approval_withdraw', actorUserId: req.user.id, actorEmail: req.user.email,
+    tenantId, detail: `${client.name}: pending report approval withdrawn`,
+    context: { client_id: id, request_id: requestId },
+  });
+  return res.json({ ok: true, client, request });
 }));
 
 router.post('/clients/:clientId/portal/feedback/threads/:threadId/resolve', writeLimiter, safe(async (req, res) => {

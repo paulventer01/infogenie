@@ -4,6 +4,7 @@ import { apiBlob, apiGet, apiPost } from "@/lib/api";
 import { API, PERIOD_HELP, accessLost, responseError, validClient, validProfile, type Draft, type ProfileResponse } from "@/lib/clientReporting";
 import { validRecipient, type RecipientResponse } from "@/lib/clientReportingDelivery";
 import { validPreview, validReportBlob, type Preview } from "@/lib/clientReportingReport";
+import ClientReportingApprovals from "@/components/features/manage/ClientReportingApprovals";
 import ClientReportingDrilldown, { DrilldownControl } from "@/components/features/manage/ClientReportingDrilldown";
 import ClientReportAvailabilityBadges from "@/components/features/shared/ClientReportAvailabilityBadges";
 import { clientReportCellDisplay } from "@/lib/clientReportingAvailability";
@@ -211,5 +212,8 @@ export default function ClientReportingReport({ clientId, version, format, timez
       <ClientReportingDrilldown mode="admin" clientId={clientId} target={drilldown} onClose={() => setDrilldown(null)} />
       {preview.brand.footerText && <p>{preview.brand.footerText}</p>}
     </article>}
+    <ClientReportingApprovals clientId={clientId} version={version} checkAccess={checkAccess}
+      canSubmit={previewCurrent && !!preview?.can_generate}
+      customDates={useCustomDates && startDate && endDate ? { start_date: startDate, end_date: endDate } : null} />
   </section>;
 }

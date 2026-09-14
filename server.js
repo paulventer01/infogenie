@@ -483,6 +483,10 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/client-reporting\/portal\/metric-drilldown\/[a-z0-9_]+$/, // portal metric drilldown (infogenie.crp cookie)
   /^\/api\/client-reporting\/portal\/feedback\/threads$/, // portal feedback list/create (infogenie.crp cookie)
   /^\/api\/client-reporting\/portal\/feedback\/threads\/\d+\/replies$/, // portal client replies
+  /^\/api\/client-reporting\/portal\/approval-requests\/pending$/, // portal pending approval view
+  /^\/api\/client-reporting\/portal\/approval-requests\/\d+$/, // portal approval detail
+  /^\/api\/client-reporting\/portal\/approval-requests\/\d+\/approve$/, // portal approval decision
+  /^\/api\/client-reporting\/portal\/approval-requests\/\d+\/request-changes$/, // portal change request
 ];
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
@@ -715,6 +719,10 @@ const _CLIENT_REPORTING_OWNER_GATE_ALLOW = [
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/portal\/feedback\/threads\/?$/],
   [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/portal\/feedback\/threads\/[1-9]\d*\/replies\/?$/],
   [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/portal\/feedback\/threads\/[1-9]\d*\/resolve\/?$/],
+  [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/approval-requests\/?$/],
+  [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/approval-requests\/[1-9]\d*\/?$/],
+  [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/approval-requests\/?$/],
+  [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/approval-requests\/[1-9]\d*\/withdraw\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/sources\/(search-intel|campaigns)\/records\/?$/],
   [/^(POST|DELETE)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/mappings\/(search-intel|campaigns)\/[1-9]\d*\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/data\/(search-intel|campaigns)\/?$/],
