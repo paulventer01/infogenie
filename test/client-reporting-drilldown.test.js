@@ -91,6 +91,7 @@ test('drilldown route rejects invalid pagination, unknown metrics and list metri
     },
   });
   assert.equal((await request('GET', '/clients/11/metric-drilldown/runs?limit=101')).status, 400);
+  assert.equal((await request('GET', '/clients/11/metric-drilldown/runs?cursor=0&limit=50')).status, 200);
   assert.equal((await request('GET', '/clients/11/metric-drilldown/not_real')).body.error, 'invalid_metric');
   assert.equal((await request('GET', '/clients/11/metric-drilldown/mapped_queries')).body.error, 'metric_not_drillable');
 });

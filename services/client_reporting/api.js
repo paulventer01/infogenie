@@ -263,9 +263,10 @@ function drilldownRangeFromQuery(query) {
 function drilldownPagination(req) {
   const allowed = ['cursor', 'limit', 'currency', 'start_date', 'end_date'];
   if (Object.keys(req.query).some((key) => !allowed.includes(key))) throw fail(400, 'invalid_drilldown');
-  const cursor = req.query.cursor === undefined ? 0 : positiveId(req.query.cursor);
-  const limit = req.query.limit === undefined ? 50 : positiveId(req.query.limit);
-  if (cursor === null || cursor > 2147483647 || !limit || limit > 100) throw fail(400, 'invalid_pagination');
+  const cursor = req.query.cursor === undefined ? 0 : Number(req.query.cursor);
+  const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+  if (!Number.isInteger(cursor) || cursor < 0 || cursor > 2147483647) throw fail(400, 'invalid_pagination');
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw fail(400, 'invalid_pagination');
   const currency = req.query.currency === undefined ? null : req.query.currency;
   if (currency !== null && typeof currency !== 'string') throw fail(400, 'invalid_currency');
   return { cursor, limit, currency, customRange: drilldownRangeFromQuery(req.query) };
