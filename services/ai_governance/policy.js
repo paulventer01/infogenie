@@ -1,10 +1,10 @@
 /**
- * AI Governance policy — non-restrictive defaults are HARD REQUIREMENTS.
- * Platform default mode is always shadow; enforce is tenant opt-in only.
+ * AI Governance policy — PR10H.1: content safety enforces by default;
+ * warning-only is explicit tenant opt-in. Action tiers unchanged.
  */
 
-// H1: platform default is always shadow — enforce is tenant opt-in via Hub UI only.
-const PLATFORM_MODE = 'shadow';
+const PLATFORM_CONTENT_SAFETY_MODE = 'enforce';
+const PLATFORM_MODE = 'shadow'; // action-tier governance remains shadow-first
 
 const FAIL_OPEN = process.env.AI_GOVERNANCE_FAIL_OPEN !== '0';
 const BLOCK_ON_CAUTION_ENV = process.env.AI_GOVERNANCE_BLOCK_ON_CAUTION === '1';
@@ -28,12 +28,15 @@ const DEFAULT_ACTION_TIERS = Object.freeze({
 
 const ACTION_TIER_KEYS = Object.keys(DEFAULT_ACTION_TIERS);
 
+const CONTENT_SAFETY_MODES = Object.freeze(['enforce', 'warning_only']);
+
 const PRESETS = Object.freeze({
   aggressive: {
     id: 'aggressive',
     label: 'Aggressive (default)',
     risk_appetite: 'aggressive',
     default_mode: 'shadow',
+    content_safety_mode: PLATFORM_CONTENT_SAFETY_MODE,
     block_on_caution: false,
     require_context: false,
     action_tiers: { ...DEFAULT_ACTION_TIERS },
@@ -43,6 +46,7 @@ const PRESETS = Object.freeze({
     label: 'Balanced',
     risk_appetite: 'balanced',
     default_mode: 'shadow',
+    content_safety_mode: PLATFORM_CONTENT_SAFETY_MODE,
     block_on_caution: false,
     require_context: false,
     action_tiers: {
@@ -55,7 +59,8 @@ const PRESETS = Object.freeze({
     id: 'conservative',
     label: 'Conservative',
     risk_appetite: 'conservative',
-    default_mode: 'shadow', // still shadow until tenant explicitly enables enforce
+    default_mode: 'shadow',
+    content_safety_mode: PLATFORM_CONTENT_SAFETY_MODE,
     block_on_caution: false,
     require_context: false,
     action_tiers: {
@@ -77,17 +82,29 @@ function _normalizeTiers(raw) {
   return out;
 }
 
+function _normalizeContentSafetyMode(raw, explicit, legacyDefaultMode) {
+  if (raw === 'warning_only' && explicit) return 'warning_only';
+  if (raw === 'enforce' || raw === 'warning_only') {
+    return raw === 'warning_only' ? 'warning_only' : 'enforce';
+  }
+  // Legacy inherited shadow → enforce unless tenant explicitly chose warning_only
+  if (explicit && legacyDefaultMode === 'shadow') return 'warning_only';
+  return PLATFORM_CONTENT_SAFETY_MODE;
+}
+
 function defaultPolicy(tenantId) {
   return {
     id: null,
     tenant_id: tenantId ?? null,
-    default_mode: PLATFORM_MODE, // always 'shadow'
+    default_mode: PLATFORM_MODE,
+    content_safety_mode: PLATFORM_CONTENT_SAFETY_MODE,
+    content_safety_explicit: false,
     risk_appetite: DEFAULT_APPETITE === 'balanced' || DEFAULT_APPETITE === 'conservative'
       ? DEFAULT_APPETITE
       : 'aggressive',
     action_tiers: { ...DEFAULT_ACTION_TIERS },
-    block_on_caution: BLOCK_ON_CAUTION_ENV, // env opt-in only; default false
-    require_context: REQUIRE_CONTEXT_ENV,   // env opt-in only; default false
+    block_on_caution: BLOCK_ON_CAUTION_ENV,
+    require_context: REQUIRE_CONTEXT_ENV,
     policy_document: '',
     policy_version: 1,
     ethics_contact: null,
@@ -96,6 +113,7 @@ function defaultPolicy(tenantId) {
     preset: 'aggressive',
     platform: {
       mode_env: process.env.AI_GOVERNANCE_MODE || 'shadow',
+      content_safety_env: process.env.AI_GOVERNANCE_CONTENT_SAFETY || PLATFORM_CONTENT_SAFETY_MODE,
       fail_open: FAIL_OPEN,
       block_on_caution_env: BLOCK_ON_CAUTION_ENV,
       require_context_env: REQUIRE_CONTEXT_ENV,
@@ -108,6 +126,7 @@ function applyPreset(presetId) {
   return {
     risk_appetite: p.risk_appetite,
     default_mode: p.default_mode,
+    content_safety_mode: p.content_safety_mode,
     block_on_caution: p.block_on_caution,
     require_context: p.require_context,
     action_tiers: { ...p.action_tiers },
@@ -145,6 +164,8 @@ function resolveTier(policy, surface, action) {
 
 module.exports = {
   PLATFORM_MODE,
+  PLATFORM_CONTENT_SAFETY_MODE,
+  CONTENT_SAFETY_MODES,
   FAIL_OPEN,
   DEFAULT_ACTION_TIERS,
   ACTION_TIER_KEYS,
@@ -152,6 +173,7 @@ module.exports = {
   defaultPolicy,
   applyPreset,
   _normalizeTiers,
+  _normalizeContentSafetyMode,
   mapActionToTierKey,
   resolveTier,
 };

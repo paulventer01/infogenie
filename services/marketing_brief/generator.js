@@ -492,6 +492,28 @@ async function generateBrief(brand, tenantId) {
 
   const { headline, greeting, sections, actions } = body;
 
+  const briefText = JSON.stringify({ headline, greeting, sections, actions });
+  try {
+    const { gateGeneratedContent } = require('../ai_governance/hooks');
+    const gated = await gateGeneratedContent({
+      tenantId,
+      surface: 'marketing_brief',
+      action: 'generate_brief',
+      text: briefText,
+      hasContext: signals.length > 0,
+    });
+    if (!gated.ok) {
+      const err = new Error(gated.userMessage || 'content_safety_blocked');
+      err.code = 'content_safety_blocked';
+      throw err;
+    }
+  } catch (e) {
+    if (e.code === 'content_safety_blocked') throw e;
+    const err = new Error('Content safety checks are temporarily unavailable. Brief generation was stopped.');
+    err.code = 'content_safety_unavailable';
+    throw err;
+  }
+
   const r = await pool.query(
     `INSERT INTO marketing_briefs
        (tenant_id, brand, headline, greeting, signals, actions, sections, active_pillars, generated_by)

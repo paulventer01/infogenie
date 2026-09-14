@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * AI Governance Hub — Phase A foundation.
- * Non-restrictive defaults are hard requirements: shadow mode, generate/apply auto,
- * launch/budget suggest (soft cue only), fail-open.
+ * AI Governance Hub — PR10H.1 content safety enforcement.
+ * Generated content enforces by default; warning-only requires settings permission.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -19,6 +18,8 @@ interface ActionTiers {
 
 interface Policy {
   default_mode?: string;
+  content_safety_mode?: string;
+  content_safety_explicit?: boolean;
   risk_appetite?: string;
   action_tiers?: ActionTiers;
   block_on_caution?: boolean;
@@ -32,6 +33,7 @@ interface Policy {
 interface StatusPayload {
   ok?: boolean;
   mode?: string;
+  content_safety_mode?: string;
   risk_appetite?: string;
   banner?: string;
   last24h?: {
@@ -114,12 +116,22 @@ export default function AiGovernanceHub() {
       setMsg(r.error || "Save failed");
       return;
     }
-    setMsg("Policy saved — defaults stay non-restrictive unless you opted into Enforce.");
+    setMsg("Policy saved.");
     await load();
   }
 
   async function applyPreset(preset: string) {
     await savePolicy({ preset }, "preset");
+  }
+
+  async function toggleContentSafetyWarningOnly(enable: boolean) {
+    if (enable) {
+      const ok = window.confirm(
+        "Enable warning-only mode for generated content?\n\nBlocked compliance issues will be logged but content will still be returned. Requires settings permission.",
+      );
+      if (!ok) return;
+    }
+    await savePolicy({ content_safety_mode: enable ? "warning_only" : "enforce" }, "content-safety");
   }
 
   async function toggleEnforce(enable: boolean) {
@@ -151,6 +163,7 @@ export default function AiGovernanceHub() {
 
   const tiers = policy?.action_tiers || {};
   const mode = policy?.default_mode || status?.mode || "shadow";
+  const contentSafetyMode = policy?.content_safety_mode || status?.content_safety_mode || "enforce";
   const counts = status?.last24h || {};
 
   return (
@@ -170,16 +183,16 @@ export default function AiGovernanceHub() {
         </div>
         <h1 className="ih-title">AI Governance Hub</h1>
         <p className="ih-sub">
-          Prove what AI did — without slowing Brief → action → calendar. Shadow-first by default;
-          Enforce is tenant opt-in only.
+          Generated content is checked before it reaches you. Publish, send, and launch approval
+          gates are unchanged.
         </p>
       </div>
 
       <div style={{ padding: "20px 24px", maxWidth: 1040, margin: "0 auto" }}>
         <div
           style={{
-            background: mode === "shadow" ? "#ECFDF5" : "#FEF3C7",
-            border: `1px solid ${mode === "shadow" ? "#A7F3D0" : "#FCD34D"}`,
+            background: contentSafetyMode === "enforce" ? "#ECFDF5" : "#FEF3C7",
+            border: `1px solid ${contentSafetyMode === "enforce" ? "#A7F3D0" : "#FCD34D"}`,
             borderRadius: 12,
             padding: "12px 16px",
             marginBottom: 18,
@@ -187,10 +200,10 @@ export default function AiGovernanceHub() {
             color: "#134E4A",
           }}
         >
-          <strong>{mode === "shadow" ? "Shadow mode" : "Enforce mode (opt-in)"}</strong>
+          <strong>{contentSafetyMode === "enforce" ? "Content safety: Enforce" : "Content safety: Warning-only (opt-in)"}</strong>
           {" — "}
           {status?.banner
-            || "Shadow mode — nothing is blocked. Actions proceed; we log warnings for audit."}
+            || "Blocked or unavailable content safety checks stop generated output from being returned."}
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
@@ -401,9 +414,47 @@ export default function AiGovernanceHub() {
             >
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontWeight: 800 }}>Enforcement mode</div>
+                  <div style={{ fontWeight: 800 }}>Content safety mode</div>
                   <div style={{ fontSize: "0.78rem", color: "#64748B" }}>
-                    Platform default is always Shadow. Enforce is per-tenant only.
+                    Enforce by default. Warning-only relaxation requires settings permission.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={() => toggleContentSafetyWarningOnly(contentSafetyMode !== "warning_only")}
+                  style={{
+                    marginLeft: "auto",
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: "1px solid #E5E7EB",
+                    background: contentSafetyMode === "warning_only" ? "#FEF3C7" : "#ECFDF5",
+                    fontWeight: 700,
+                    fontSize: "0.8rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  {contentSafetyMode === "warning_only"
+                    ? "Restore enforce mode"
+                    : "Enable warning-only…"}
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: "white",
+                border: "1px solid #E5E7EB",
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 800 }}>Action enforcement mode</div>
+                  <div style={{ fontSize: "0.78rem", color: "#64748B" }}>
+                    Controls publish/send/launch approval queues. Shadow keeps the core loop fast.
                   </div>
                 </div>
                 <button

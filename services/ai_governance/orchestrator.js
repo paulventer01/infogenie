@@ -1,6 +1,6 @@
 /**
- * AI Governance orchestrator — fail-open, shadow-first.
- * In shadow mode (default) govern() never delays or denies execution.
+ * AI Governance orchestrator — PR10H.1 content safety enforces by default;
+ * action-tier shadow-first behaviour preserved for publish/send/launch paths.
  */
 
 const _db = require('../../db');
@@ -8,9 +8,11 @@ const {
   FAIL_OPEN,
   defaultPolicy,
   _normalizeTiers,
+  _normalizeContentSafetyMode,
   resolveTier,
 } = require('./policy');
 const outputGate = require('./output_gate');
+const { isContentGeneration } = require('./brand_rules');
 const { newId } = require('./schema');
 
 async function loadPolicy(tenantId) {
@@ -26,11 +28,18 @@ async function loadPolicy(tenantId) {
     const tiers = typeof row.action_tiers === 'string'
       ? JSON.parse(row.action_tiers)
       : (row.action_tiers || {});
+    const contentSafetyMode = _normalizeContentSafetyMode(
+      row.content_safety_mode,
+      !!row.content_safety_explicit,
+      row.default_mode,
+    );
     return {
       ...base,
       id: row.id,
       tenant_id: row.tenant_id,
       default_mode: row.default_mode === 'enforce' ? 'enforce' : 'shadow',
+      content_safety_mode: contentSafetyMode,
+      content_safety_explicit: !!row.content_safety_explicit,
       risk_appetite: row.risk_appetite || base.risk_appetite,
       action_tiers: _normalizeTiers(tiers),
       block_on_caution: !!row.block_on_caution,
@@ -102,15 +111,32 @@ async function _persistChecks(tenantId, eventId, checks) {
   }
 }
 
+function _failClosedResponse(opts, auditId, gate, reason) {
+  const userMessage = gate?.userMessage
+    || outputGate.USER_MESSAGES.unavailable;
+  return {
+    allowed: false,
+    proceeded: false,
+    warnings: gate?.warnings?.length ? gate.warnings : [userMessage],
+    executionTier: 'auto',
+    tierKey: 'generate_content',
+    status: 'blocked',
+    auditId,
+    mode: 'enforce',
+    contentSafetyMode: 'enforce',
+    softCue: false,
+    degraded: true,
+    failClosed: true,
+    contextPack: null,
+    outputChecks: gate || { verdict: 'unavailable', warnings: [userMessage], checks: [] },
+    blockReason: reason || 'content_safety_unavailable',
+    userMessage,
+  };
+}
+
 /**
  * @param {object} opts
- * @param {number|null} opts.tenantId
- * @param {number|null} [opts.userId]
- * @param {string} opts.surface
- * @param {string} opts.action
- * @param {object} [opts.payload]
- * @param {object} [opts.outputChecks] — optional precomputed gate result
- * @returns {Promise<{allowed:boolean,proceeded:boolean,warnings:string[],executionTier:string,status:string,auditId:string,mode:string,degraded?:boolean,softCue?:boolean,contextPack:null,outputChecks:object}>}
+ * @param {boolean} [opts.failClosed] — content generation: block on orchestrator/gate errors
  */
 async function govern(opts = {}) {
   const tenantId = opts.tenantId ?? null;
@@ -119,15 +145,19 @@ async function govern(opts = {}) {
   const action = String(opts.action || 'generate');
   const payload = opts.payload || {};
   const auditId = newId('age');
+  const contentAction = isContentGeneration(surface, action);
+  const failClosed = !!opts.failClosed || contentAction;
 
   try {
-    const policy = await loadPolicy(tenantId);
-    const mode = policy.default_mode === 'enforce' ? 'enforce' : 'shadow';
+    const policy = await module.exports.loadPolicy(tenantId);
+    const actionMode = policy.default_mode === 'enforce' ? 'enforce' : 'shadow';
+    const contentMode = policy.content_safety_mode === 'warning_only'
+      ? 'warning_only'
+      : 'enforce';
     const { key: tierKey, tier } = resolveTier(policy, surface, action);
     const gate = opts.outputChecks || outputGate.scanOutput(payload);
     const warnings = [...(gate.warnings || [])];
 
-    // H5: thin context → enrich/warn, never refuse under defaults
     if (policy.require_context && !payload?.contextPack && !payload?.hasContext) {
       warnings.push('Context thin — proceeding with available inputs (ungrounded)');
     }
@@ -137,12 +167,36 @@ async function govern(opts = {}) {
     let proceeded = true;
     let blockReason = null;
     let softCue = false;
+    let contentBlocked = false;
 
-    // H9: suggest under shadow = soft cue; action still proceeds
+    // Gate unavailable → fail closed for content generation
+    if (contentAction && gate.verdict === 'unavailable' && contentMode === 'enforce') {
+      status = 'blocked';
+      allowed = false;
+      proceeded = false;
+      blockReason = 'content_safety_unavailable';
+      contentBlocked = true;
+    }
+
+    // Content safety enforcement (independent of action-tier shadow mode)
+    if (contentAction && gate.verdict === 'block' && contentMode === 'enforce') {
+      status = 'blocked';
+      allowed = false;
+      proceeded = false;
+      blockReason = blockReason || 'content_safety_block';
+      contentBlocked = true;
+    } else if (contentAction && gate.verdict === 'block' && contentMode === 'warning_only') {
+      warnings.push('Content safety issue logged — warning-only mode (output returned with warnings)');
+      status = 'allowed';
+    } else if (contentAction && gate.verdict === 'caution' && contentMode === 'warning_only') {
+      warnings.push('Content caution — warning-only mode');
+    }
+
+    // Action-tier governance (publish/send/launch) — unchanged
     if (tier === 'suggest') {
       softCue = true;
       warnings.push('Worth a glance — launch/budget (or suggest-tier) action logged');
-      if (mode === 'enforce') {
+      if (actionMode === 'enforce' && !contentBlocked) {
         status = 'pending_review';
         allowed = false;
         proceeded = false;
@@ -150,9 +204,8 @@ async function govern(opts = {}) {
       }
     }
 
-    // H7: block tier rare — only stops in enforce
-    if (tier === 'block') {
-      if (mode === 'enforce') {
+    if (tier === 'block' && !contentBlocked) {
+      if (actionMode === 'enforce') {
         status = 'blocked';
         allowed = false;
         proceeded = false;
@@ -163,33 +216,29 @@ async function govern(opts = {}) {
       }
     }
 
-    // Output gate: H3 caution ≠ block; block verdict only stops in enforce
-    if (gate.verdict === 'caution') {
-      warnings.push('Output caution logged');
-      if (mode === 'enforce' && policy.block_on_caution) {
+    if (gate.verdict === 'caution' && !contentBlocked) {
+      if (actionMode === 'enforce' && policy.block_on_caution) {
         status = 'blocked';
         allowed = false;
         proceeded = false;
         blockReason = 'block_on_caution';
       }
     }
-    if (gate.verdict === 'block') {
-      if (mode === 'enforce') {
+
+    // Legacy output gate block for non-content actions under action enforce mode
+    if (!contentAction && gate.verdict === 'block') {
+      if (actionMode === 'enforce') {
         status = 'blocked';
         allowed = false;
         proceeded = false;
         blockReason = blockReason || 'output_gate_block';
       } else {
-        // H1/H8: shadow never stops
         warnings.push('Would-have-blocked (shadow) — proceeding');
-        status = 'allowed';
-        allowed = true;
-        proceeded = true;
       }
     }
 
-    // Shadow hard override — never delay/deny (H1, H8, H9)
-    if (mode === 'shadow') {
+    // Shadow override for action tiers only — never undo content safety blocks
+    if (actionMode === 'shadow' && !contentBlocked) {
       allowed = true;
       proceeded = true;
       if (status === 'pending_review' || status === 'blocked') status = 'allowed';
@@ -213,15 +262,17 @@ async function govern(opts = {}) {
       warnings,
       meta: {
         tierKey,
-        mode,
+        actionMode,
+        contentSafetyMode: contentMode,
         risk_appetite: policy.risk_appetite,
         gateVerdict: gate.verdict,
         softCue,
+        contentAction,
       },
     });
     await _persistChecks(tenantId, auditId, gate.checks || []);
 
-    return {
+    const result = {
       allowed,
       proceeded,
       warnings,
@@ -229,19 +280,45 @@ async function govern(opts = {}) {
       tierKey,
       status,
       auditId,
-      mode,
+      mode: actionMode,
+      contentSafetyMode: contentMode,
       softCue,
       contextPack: payload?.contextPack || null,
       outputChecks: gate,
       blockReason,
+      userMessage: !proceeded ? (gate.userMessage || outputGate.USER_MESSAGES.blocked) : null,
     };
+
+    if (contentBlocked && contentMode === 'warning_only') {
+      result.content_safety_warnings = warnings;
+    }
+
+    return result;
   } catch (e) {
-    // H6: fail open
     console.warn('[ai-governance] govern degraded:', e.message || e);
-    const degradedId = auditId;
+    const gate = { verdict: 'unavailable', warnings: [outputGate.USER_MESSAGES.unavailable], checks: [] };
+
+    if (failClosed) {
+      try {
+        await _persistEvent({
+          id: auditId,
+          tenant_id: tenantId,
+          user_id: userId,
+          surface,
+          action,
+          execution_tier: 'auto',
+          status: 'blocked',
+          block_reason: 'content_safety_unavailable',
+          warnings: [outputGate.USER_MESSAGES.unavailable],
+          meta: { error: String(e.message || e), fail_closed: true },
+        });
+      } catch (_) { /* ignore */ }
+      return _failClosedResponse(opts, auditId, gate, 'content_safety_unavailable');
+    }
+
     try {
       await _persistEvent({
-        id: degradedId,
+        id: auditId,
         tenant_id: tenantId,
         user_id: userId,
         surface,
@@ -254,6 +331,7 @@ async function govern(opts = {}) {
       });
     } catch (_) { /* ignore */ }
 
+    const degradedId = auditId;
     return {
       allowed: true,
       proceeded: true,
@@ -263,6 +341,7 @@ async function govern(opts = {}) {
       status: 'governance_degraded',
       auditId: degradedId,
       mode: 'shadow',
+      contentSafetyMode: 'enforce',
       softCue: false,
       degraded: true,
       contextPack: null,
@@ -272,4 +351,4 @@ async function govern(opts = {}) {
   }
 }
 
-module.exports = { govern, loadPolicy };
+module.exports = { govern, loadPolicy, isContentGeneration };
