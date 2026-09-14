@@ -50,26 +50,40 @@ const GROWTH_CANONICAL_METRICS = {
 };
 
 const DEFAULT_GROWTH_PERIOD_DAYS = 30;
+const MS_PER_DAY = 86400000;
+
+function utcDateString(input) {
+  const d = input instanceof Date ? input : new Date(input);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function parseUtcDate(dateStr) {
+  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return Date.UTC(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+}
 
 function quarterBounds(quarter) {
   const m = String(quarter || '').match(/^(\d{4})-Q([1-4])$/);
   if (!m) return null;
   const year = parseInt(m[1], 10);
   const q = parseInt(m[2], 10);
-  const startMonth = (q - 1) * 3 + 1;
-  const endMonth = startMonth + 2;
-  const start = `${year}-${String(startMonth).padStart(2, '0')}-01`;
-  const endDate = new Date(year, endMonth, 0);
-  const end = endDate.toISOString().slice(0, 10);
+  const startMonth = (q - 1) * 3;
+  const start = utcDateString(new Date(Date.UTC(year, startMonth, 1)));
+  const end = utcDateString(new Date(Date.UTC(year, startMonth + 3, 0)));
   return { start, end, quarter };
 }
 
 function okrMeasurementPeriod(quarter) {
   const bounds = quarterBounds(quarter);
   if (!bounds) return null;
-  const startMs = new Date(`${bounds.start}T00:00:00Z`).getTime();
-  const endMs = new Date(`${bounds.end}T23:59:59Z`).getTime();
-  const days = Math.min(90, Math.max(1, Math.ceil((endMs - startMs) / 86400000) + 1));
+  const startMs = parseUtcDate(bounds.start);
+  const endMs = parseUtcDate(bounds.end);
+  if (startMs == null || endMs == null) return null;
+  const days = Math.floor((endMs - startMs) / MS_PER_DAY) + 1;
   return { kind: 'quarter', quarter: bounds.quarter, days, start: bounds.start, end: bounds.end };
 }
 
@@ -79,15 +93,40 @@ function growthMeasurementPeriod(goal) {
   return { kind: 'rolling_days', days };
 }
 
+/** Derive rolling snapshot boundaries from days + generated_at (matches compute SQL window). */
+function snapshotMeasurementPeriod(snapshot) {
+  if (!snapshot) return null;
+  if (snapshot.period_start && snapshot.period_end) {
+    return {
+      kind: snapshot.period_kind === 'quarter' ? 'quarter' : 'calendar',
+      start: snapshot.period_start,
+      end: snapshot.period_end,
+      days: snapshot.days ?? null,
+    };
+  }
+  const days = snapshot.days;
+  if (!days) return null;
+  const endRef = snapshot.generated_at ? new Date(snapshot.generated_at) : new Date();
+  return {
+    kind: 'rolling',
+    days,
+    start: utcDateString(new Date(endRef.getTime() - days * MS_PER_DAY)),
+    end: utcDateString(endRef),
+  };
+}
+
+function periodsShareBoundaries(left, right) {
+  return Boolean(left && right && left.start === right.start && left.end === right.end);
+}
+
 function snapshotMatchesGoalPeriod(snapshot, goalPeriod) {
-  if (!snapshot || !goalPeriod) return false;
-  if (snapshot.days !== goalPeriod.days) return false;
-  if (goalPeriod.kind === 'rolling_days') return true;
+  const snapPeriod = snapshotMeasurementPeriod(snapshot);
+  if (!snapPeriod || !goalPeriod) return false;
+  if (goalPeriod.kind === 'rolling_days') {
+    return snapPeriod.kind === 'rolling' && snapPeriod.days === goalPeriod.days;
+  }
   if (goalPeriod.kind === 'quarter') {
-    const now = Date.now();
-    const startMs = new Date(`${goalPeriod.start}T00:00:00Z`).getTime();
-    const endMs = new Date(`${goalPeriod.end}T23:59:59Z`).getTime();
-    return now >= startMs && now <= endMs;
+    return periodsShareBoundaries(snapPeriod, goalPeriod);
   }
   return false;
 }
@@ -489,9 +528,11 @@ module.exports = {
   formatGoalActualDisplay,
   formatGoalStatusDisplay,
   snapshotMatchesGoalPeriod,
+  snapshotMeasurementPeriod,
   okrMeasurementPeriod,
   growthMeasurementPeriod,
   quarterBounds,
+  utcDateString,
   CANONICAL_OKR_AUTO,
   GROWTH_CANONICAL_METRICS,
   DEFAULT_GROWTH_PERIOD_DAYS,
