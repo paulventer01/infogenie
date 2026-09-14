@@ -32,8 +32,10 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   });
 
   const { startAgencyBrowser } = require('../helpers/agency-browser');
-  const { baseUrl, actors } = await startAgencyBrowser(t);
+  const { baseUrl, actors, fx } = await startAgencyBrowser(t);
   await require('../../services/ai_governance/schema').ensureAiGovernanceSchema();
+  const realOwner = await fx.seedUser({ tenantId: actors.owner.tid, owner: true });
+  const loginActor = { owner: { email: realOwner.email, password: realOwner.password } };
 
   browser = await require('puppeteer').launch({
     headless: true,
@@ -50,7 +52,7 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
     if (msg.type() === 'error') errors.push(msg.text());
   });
 
-  await login(page, baseUrl, actors);
+  await login(page, baseUrl, loginActor);
   await page.waitForFunction(
     () => window.location.pathname.includes('ai-governance'),
     { timeout: 90_000 },
