@@ -1,0 +1,32 @@
+---
+description: InfoGenie development workflow and quality gates
+alwaysApply: true
+---
+
+- Work autonomously from implementation to a merge-ready PR.
+- Inspect relevant code, project instructions and tests before coding.
+- Establish acceptance criteria covering user behavior, failure states,
+  tenant/client isolation, permissions, missing data, verified zero,
+  stale responses and affected UI/API/portal/export paths.
+- Resolve routine implementation choices independently.
+- Use one coding agent, followed by one focused read-only Security/QA
+  review if available. Otherwise review directly and disclose it.
+- Reuse existing patterns. Avoid unrelated refactors and dependencies.
+- Keep each PR within 1,500 additions plus deletions.
+- Run affected tests during development and required broader gates
+  when implementation is ready.
+- After corrections, rerun affected checks. Ensure required hosted CI
+  passes on the final SHA; required integration/browser tests must
+  execute with zero skips.
+- Collect confirmed blockers in one review pass and fix them together.
+  Record optional improvements separately.
+- Inspect actual CI failure logs. Retry unchanged code only when
+  evidence indicates a transient failure.
+- Never disable checks or weaken assertions to obtain green CI.
+- Continue through implementation, corrections, review and CI without
+  requiring the user to relay instructions between stages.
+- Stop only for genuine access blockers, material scope decisions or
+  final human approval.
+- Return PR URL, final SHA, diff size, verification, blockers and deferrals.
+- Never merge or deploy without explicit user authorization.
+- Preserve existing project rules and flag conflicts.

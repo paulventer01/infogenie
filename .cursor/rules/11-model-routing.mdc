@@ -1,35 +1,30 @@
 ---
-description: InfoGenie specialist model/provider routing, Lead escalation, and stage recording — v1
+description: InfoGenie model/provider preferences, escalation, and stage recording — v1
 alwaysApply: true
 ---
 
 # Agent model routing (v1)
 
-This rule **assigns models**. It does not replace `.cursor/rules/01`–`07` or `AGENTS.md`. Domain ownership stays in `08`. Handoff format stays in `09`. Branch/PR/no-merge stays in `10`. Do not weaken tenant isolation, the permission matrix, `PERMISSION_ENFORCEMENT`, `MULTITENANT_ENFORCEMENT`, honesty tagging, or scope control. Never log or commit API keys, vault payloads, or credential dumps.
+This rule **assigns models**. It does not replace `.cursor/rules/01`–`07` or `AGENTS.md`. Authoritative workflow: `.cursor/rules/development-workflow.mdc`. Branch/PR/no-merge: rule `10`. Do not weaken tenant isolation, the permission matrix, `PERMISSION_ENFORCEMENT`, `MULTITENANT_ENFORCEMENT`, honesty tagging, or scope control. Never log or commit API keys, vault payloads, or credential dumps.
 
-Lead chooses **the specialist** (rule 08) **and** the **best available model** for that specialist’s task.
-
-Cursor catalog IDs below are the v1 pins. They are Cursor-hosted models, not independently configured OpenAI/Anthropic/Google keys. Do not assume Codex or Cursor Auto/Router unless the current spawn catalog lists them.
+Choose the **best available model** for the coding and review stages. Cursor catalog IDs below are v1 pins. They are Cursor-hosted models, not independently configured OpenAI/Anthropic/Google keys. Do not assume Codex or Cursor Auto/Router unless the current spawn catalog lists them.
 
 ## v1 default pins
 
-| specialist | model | absolute |
+| role | model | absolute |
 |---|---|---|
-| infogenie-lead | inherit | inherit-only |
-| frontend | composer-2.5 | no |
-| backend | composer-2.5 | no |
-| database | composer-2.5 | no |
-| integrations | composer-2.5 | no |
-| ai-llm | cursor-grok-4.6-high-fast | yes |
-| security | claude-opus-5-thinking-high | yes |
-| qa | gpt-5.6-sol-high | yes |
-| reviewer | claude-opus-5-thinking-high | yes |
+| coding agent (default) | composer-2.5 | no |
+| ai-llm work | cursor-grok-4.6-high-fast | yes |
+| security review | claude-opus-5-thinking-high | yes |
+| Security/QA review (default) | gpt-5.6-sol-high | yes |
 
-`composer-2.5` is the **normal implementation model** for Frontend, Backend, Database, and Integrations. It **must not be an absolute assignment**.
+`composer-2.5` is the **normal implementation model**. It **must not be an absolute assignment**.
 
-## Lead-controlled complexity/risk escalation
+Optional specialist definitions in `.cursor/agents/` retain their frontmatter pins when invoked for focused review.
 
-Lead **may** escalate an implementation (Frontend, Backend, Database, Integrations) to a stronger available model when the task involves any of:
+## Complexity/risk escalation
+
+The coding agent **may** escalate to a stronger available model when the task involves any of:
 
 - complex architecture or refactoring
 - difficult debugging
@@ -39,7 +34,7 @@ Lead **may** escalate an implementation (Frontend, Backend, Database, Integratio
 - complex third-party API/OAuth behavior
 - unusually large cross-domain implementation
 
-Escalation does **not** change ownership. Complex OAuth still requires a separate **Security** review. Unusually large cross-domain work is still split across specialists.
+Complex OAuth still requires a **Security** review pass. Record the trigger in `ESCALATION REASON`. Do not default `composer-2.5-fast` or Opus Fast.
 
 ### Stronger-model ladder (implementers)
 
@@ -50,28 +45,26 @@ Use the first slug available in the current spawn catalog:
 3. `gpt-5.6-sol-high`
 4. `inherit`
 
-Record the trigger in `ESCALATION REASON`. Do not default `composer-2.5-fast` or Opus Fast.
+## Review-pass independence
 
-## Independence
-
-- **QA** uses a different provider family from the implementer. Default QA is OpenAI `gpt-5.6-sol-high`. If the implementer already used GPT-5.6, QA falls back to `gemini-3.7-flash-high` then `gpt-5.6-luna-high`.
-- **Reviewer** uses another strong independent model. Default Reviewer is Anthropic `claude-opus-5-thinking-high`.
-- **Reviewer switches to `gpt-5.6-sol-xhigh`** when Security already used Opus on the same change (or when the implementer already used Anthropic).
+- **Security/QA review** should use a different provider family from the implementer when a separate reviewer is available. Default review model is OpenAI `gpt-5.6-sol-high`. If the implementer already used GPT-5.6, fall back to `gemini-3.7-flash-high` then `gpt-5.6-luna-high`.
+- For auth/permissions/tenant/credentials/OAuth/encryption changes, prefer Anthropic `claude-opus-5-thinking-high` for the security portion of the review.
+- If no separate reviewer is available, perform an explicit review pass and **disclose that it was not independent** (development-workflow.mdc).
 - Built-in Explore/Bash/Browser keep Cursor’s automatic faster-model selection. Do not pin `auto` / `auto-smart` in `.cursor/agents/*.md`.
 
 ## Stage recording
 
-Every specialist completion, bounce, or stop includes `MODEL`, `MODEL SOURCE`, and `ESCALATION REASON` (rule 09). Lead copies those lines into the PR body. `MODEL SOURCE` is one of: `frontmatter`, `lead-override`, `inherit`, `cursor-fallback`.
+Record `MODEL`, `MODEL SOURCE`, and `ESCALATION REASON` for implementation and review stages in the PR body. `MODEL SOURCE` is one of: `frontmatter`, `lead-override`, `inherit`, `cursor-fallback`.
 
 Never write secrets into `MODEL`, `REASON`, or logs.
 
 ## Fallbacks when a preferred model is unavailable
 
-Plan, admin, or catalog gaps: use the specialist’s same-family sibling, then `inherit`, then `composer-2.5` as the Cursor-pool floor. If Cursor ignores a pin, record `MODEL SOURCE: cursor-fallback`.
+Plan, admin, or catalog gaps: use the same-family sibling, then `inherit`, then `composer-2.5` as the Cursor-pool floor. If Cursor ignores a pin, record `MODEL SOURCE: cursor-fallback`.
 
 ## Forbidden
 
 - Merging PRs or enabling auto-merge
 - Pinning Codex or Cursor Auto/Router in agent frontmatter unless those IDs are verified in the current catalog
 - Defaulting Claude Fable 5 (privacy/retention and cost)
-- Treating Composer 2.5 as un-escalatable for Frontend, Backend, Database, or Integrations
+- Treating Composer 2.5 as un-escalatable for routine implementation

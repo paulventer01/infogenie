@@ -59,13 +59,15 @@ Default test gate for agent work: `npm run test:core`. Full `npm test` can hang 
 6. **Never log or commit secrets.** Keys live in the credential vault or `platform_api_keys`, not in source.
 7. **Do not modify `.agents/`** unless the user explicitly asks.
 
-Scoped Cursor rules live in `.cursor/rules/` (`01` core, `02` scope, `03` Next.js, `04` AI, `05` database, `06` integrations, `07` testing, `08` agent routing, `09` handoff, `10` PR workflow).
+Scoped Cursor rules live in `.cursor/rules/` (`01` core, `02` scope, `03` Next.js, `04` AI, `05` database, `06` integrations, `07` testing, `development-workflow`, `08` agent routing, `09` handoff, `10` PR workflow).
 
-## Multi-agent development
+## Agent development workflow
 
-Cursor specialists live in `.cursor/agents/` (Lead, Frontend, Backend, Database, Integrations, AI/LLM, Security, QA, Reviewer). This is **development routing**, not the product `services/agent_orchestrator` / `services/agent_swarm` features.
+**Authoritative workflow:** `.cursor/rules/development-workflow.mdc`.
 
-Lead decomposes and delegates. Specialists implement only their owned files and bounce anything else to Lead with the correct specialist named (e.g. Frontend given a database task hands off — it does not touch `db.js` / `schema.js`). Cross-domain work is split. **Security is a separate agent from day one** (auth, permissions, tenant isolation, credentials, OAuth security, encryption reviews). Pipeline: **You → Lead → Specialist → QA → Reviewer → PR → You approve → main**.
+Default: one coding agent completes the task (including cross-domain frontend/backend/database work on one feature branch), followed by one focused read-only Security/QA review. Security review remains mandatory for auth, permissions, tenant isolation, credentials, OAuth, and encryption. Pipeline: **You → Coding agent → Security/QA review → PR → You approve → main**.
+
+Cursor specialist definitions in `.cursor/agents/` remain available for optional focused review; they are not mandatory routing hops. This is **development routing**, not the product `services/agent_orchestrator` / `services/agent_swarm` features.
 
 Do not weaken `.cursor/rules/01`–`07`, tenant isolation, the permission matrix, or `PERMISSION_ENFORCEMENT` in order to make routing easier.
 
@@ -93,4 +95,4 @@ Browse `http://localhost:5000`. First signup becomes owner and is auto-logged-in
 
 ## Task shape
 
-When scoping work, fold obvious **in-domain** derivatives into the same specialist slice: persistence (Database), tenant-scoped handlers + new `ROUTE_GROUPS` prefix (Backend), lockstep registry (Frontend), failure/empty states, and a verification test. Cross-domain work is split by the Lead agent rather than implemented by one specialist. Name anything deliberately deferred.
+When scoping work, fold obvious derivatives into the same change: persistence, tenant-scoped handlers + new `ROUTE_GROUPS` prefix, lockstep registry, failure/empty states, and a verification test. Name anything deliberately deferred.
