@@ -38,20 +38,18 @@ async function selectClient(page, id) {
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
   await page.waitForSelector(`${FORM} [name="report_title"]:enabled`, { visible: true });
 }
-async function submitApproval(page, clientId) {
-  const result = await page.evaluate(async ({ api, id }) => {
-    const profile = await fetch(`${api}/clients/${id}/profile`).then((r) => r.json());
-    if (!profile.ok || !profile.profile?.version) throw new Error('profile unavailable');
-    const response = await fetch(`${api}/clients/${id}/approval-requests`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: window.location.origin },
-      body: JSON.stringify({ expected_version: profile.profile.version }),
-    });
-    const body = await response.json();
-    if (!response.ok || !body.ok) throw new Error(body.error || 'submit failed');
-    return body;
-  }, { api: API, id: clientId });
-  assert.equal(result.request.status, 'pending');
+async function submitApproval(apiBase, cookie, clientId) {
+  const { request } = require('../helpers');
+  const profile = await request(apiBase, 'GET', `${API}/clients/${clientId}/profile`, { cookie });
+  assert.equal(profile.status, 200);
+  assert.equal(profile.json.ok, true);
+  const submitted = await request(apiBase, 'POST', `${API}/clients/${clientId}/approval-requests`, {
+    cookie,
+    headers: { Origin: apiBase },
+    body: { expected_version: profile.json.profile.version },
+  });
+  assert.equal(submitted.status, 201, submitted.text);
+  assert.equal(submitted.json.request.status, 'pending');
 }
 
 test('PR10H.3 portal approval browser journey', {
