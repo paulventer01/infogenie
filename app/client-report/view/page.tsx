@@ -9,6 +9,7 @@ import type { Preview } from "@/lib/clientReportingReport";
 import type { DeliveryRow } from "@/lib/clientReportingPortal";
 import ClientReportingDrilldown, { DrilldownControl } from "@/components/features/manage/ClientReportingDrilldown";
 import ClientReportAvailabilityBadges from "@/components/features/shared/ClientReportAvailabilityBadges";
+import ClientPortalApprovalPanel from "@/components/features/shared/ClientPortalApprovalPanel";
 import ClientPortalFeedbackPanel from "@/components/features/shared/ClientPortalFeedbackPanel";
 import { clientReportCellDisplay } from "@/lib/clientReportingAvailability";
 import type { DrilldownTarget } from "@/lib/clientReportingDrilldown";
@@ -21,8 +22,9 @@ export default function ClientReportViewPage() {
   const [drilldown, setDrilldown] = useState<DrilldownTarget | null>(null);
   const live = useRef(true);
 
-  const load = useCallback(async () => {
-    setBusy(true); setError(null); setDrilldown(null);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setBusy(true);
+    setError(null); setDrilldown(null);
     try {
       const report = await fetchPortalReport();
       if (!live.current) return;
@@ -59,7 +61,7 @@ export default function ClientReportViewPage() {
   return <main style={{ maxWidth: 960, margin: "32px auto", padding: 24, fontFamily: "system-ui, sans-serif", color: "#0F172A" }}>
     <header style={{ marginBottom: 24 }}>
       <h1>Client report</h1>
-      <p style={{ color: "#64748B" }}>Portal view of your latest generated report, delivery history, and feedback on this snapshot.</p>
+      <p style={{ color: "#64748B" }}>Portal view of your report snapshot pending approval, delivery history, and feedback.</p>
     </header>
     {busy && <p role="status">Loading report…</p>}
     {error && !busy && <>
@@ -98,6 +100,8 @@ export default function ClientReportViewPage() {
       <ClientReportingDrilldown mode="portal" target={drilldown} onClose={() => setDrilldown(null)} />
       {preview.brand.footerText && <p style={{ marginTop: 24 }}>{preview.brand.footerText}</p>}
     </article>}
+    {preview && !busy && <ClientPortalApprovalPanel binding={preview.approval_binding || null}
+      onDecision={() => void load(true)} />}
     {preview && !busy && <ClientPortalFeedbackPanel preview={preview} />}
     {preview && !busy && <section aria-label="Delivery history" style={{ marginTop: 32 }}>
       <h2>Delivery history</h2>

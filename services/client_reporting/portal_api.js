@@ -7,6 +7,7 @@ const _audit = require('../admin/audit');
 const portal = require('./portal');
 const drilldown = require('./drilldown');
 const feedback = require('./feedback');
+const approvals = require('./approvals');
 const { portalCsrfGuard } = require('./portal_csrf');
 const router = express.Router();
 
@@ -86,13 +87,89 @@ router.get('/metric-drilldown/:metricKey', requirePortalSession, readLimiter, sa
 
 router.get('/report', requirePortalSession, readLimiter, safe(async (req, res) => {
   const { tenantId, clientId, sessionId } = req.portalContext;
-  const snapshot = await portal.buildPortalReport(_db.getPool(), tenantId, clientId);
+  const pending = await approvals.getPendingRequest(_db.getPool(), tenantId, clientId);
+  const binding = approvals.approvalBinding(pending);
+  const snapshot = pending?.snapshot_payload
+    ? pending.snapshot_payload
+    : await portal.buildPortalReport(_db.getPool(), tenantId, clientId);
   await _audit.recordAudit({
     action: 'client_reporting.portal_view', tenantId,
     detail: `Client ${clientId} portal report viewed`,
-    context: { client_id: clientId, session_id: sessionId, profile_version: snapshot.profile_version },
+    context: { client_id: clientId, session_id: sessionId, profile_version: snapshot.profile_version,
+      approval_request_id: binding?.request_id || null, snapshot_id: binding?.snapshot_id || null },
   });
-  return res.json(snapshot);
+  return res.json({ ...snapshot, approval_binding: binding });
+}));
+
+router.get('/approval-requests/pending', requirePortalSession, readLimiter, safe(async (req, res) => {
+  const { tenantId, clientId, sessionId } = req.portalContext;
+  const pending = await approvals.getPendingRequest(_db.getPool(), tenantId, clientId);
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_approval_view', tenantId,
+    detail: `Client ${clientId} portal approval viewed`,
+    context: { client_id: clientId, session_id: sessionId, request_id: pending?.id || null },
+  });
+  return res.json({ ok: true, client_id: clientId, pending });
+}));
+
+router.get('/approval-requests/:requestId', requirePortalSession, readLimiter, safe(async (req, res) => {
+  const requestId = Number(req.params.requestId);
+  if (!Number.isInteger(requestId) || requestId < 1) throw fail(400, 'invalid_approval');
+  const { tenantId, clientId, sessionId } = req.portalContext;
+  const request = await approvals.getRequestById(_db.getPool(), tenantId, clientId, requestId, false, true);
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_approval_view', tenantId,
+    detail: `Client ${clientId} portal approval ${requestId} viewed`,
+    context: { client_id: clientId, session_id: sessionId, request_id: requestId },
+  });
+  return res.json({ ok: true, client_id: clientId, request });
+}));
+
+router.post('/approval-requests/:requestId/approve', requirePortalSession, writeLimiter, safe(async (req, res) => {
+  const body = req.body;
+  const raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) ||
+      body.confirm !== true || !approvals.validSnapshotId(body.snapshot_id) ||
+      !approvals.validContentHash(body.content_hash)) {
+    throw fail(400, 'invalid_approval');
+  }
+  const requestId = Number(req.params.requestId);
+  if (!Number.isInteger(requestId) || requestId < 1) throw fail(400, 'invalid_approval');
+  const { tenantId, clientId, sessionId } = req.portalContext;
+  const request = await approvals.approveRequest(_db.getPool(), tenantId, clientId, requestId, {
+    snapshot_id: body.snapshot_id, content_hash: body.content_hash,
+  });
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_approval_approve', tenantId,
+    detail: `Client ${clientId} approved report submission via portal link`,
+    context: { client_id: clientId, session_id: sessionId, request_id: requestId,
+      decision_actor_type: 'portal_client' },
+  });
+  return res.json({ ok: true, client_id: clientId, request });
+}));
+
+router.post('/approval-requests/:requestId/request-changes', requirePortalSession, writeLimiter, safe(async (req, res) => {
+  const body = req.body;
+  const raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) ||
+      Object.keys(body).length !== 3 || !Object.hasOwn(body, 'comment') || !Object.hasOwn(body, 'snapshot_id') ||
+      !Object.hasOwn(body, 'content_hash') || !approvals.validSnapshotId(body.snapshot_id) ||
+      !approvals.validContentHash(body.content_hash)) {
+    throw fail(400, 'invalid_approval');
+  }
+  const requestId = Number(req.params.requestId);
+  if (!Number.isInteger(requestId) || requestId < 1) throw fail(400, 'invalid_approval');
+  const { tenantId, clientId, sessionId } = req.portalContext;
+  const request = await approvals.requestChanges(_db.getPool(), tenantId, clientId, requestId, body.comment, {
+    snapshot_id: body.snapshot_id, content_hash: body.content_hash,
+  });
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_approval_changes', tenantId,
+    detail: `Client ${clientId} requested report changes via portal link`,
+    context: { client_id: clientId, session_id: sessionId, request_id: requestId,
+      decision_actor_type: 'portal_client' },
+  });
+  return res.json({ ok: true, client_id: clientId, request });
 }));
 
 router.get('/feedback/threads', requirePortalSession, readLimiter, safe(async (req, res) => {

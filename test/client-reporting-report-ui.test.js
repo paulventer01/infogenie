@@ -8,7 +8,9 @@ const client = (id) => ({ id, name: "Client", slug: null, website: null, status:
 const profile = (s) => ({ client_id: s.clientId, version: s.version, report_source: "search-intel", default_format: s.format, report_title: "Saved report", branding_mode: "workspace", branding_overrides: {},
   selected_metrics: ["runs", "successful_runs", "brand_mentions", "mapped_queries", "recent_search_runs"],
   reporting_period: "last_30_days", reporting_timezone: "UTC", created_at: "2026-01-01", updated_at: "2026-01-01" });
-const preview = (s) => ({ ok: true, client: client(s.clientId), profile_version: s.version, format: s.format, can_generate: true, brand: {}, report: { title: "Saved report", generated_at: "2026-01-01", sections: [{ kind: "table", title: "Mapped records", headers: ["Name"], rows: [["Client record"]] }] } });
+const preview = (s) => ({ ok: true, client: client(s.clientId), profile_version: s.version, format: s.format, can_generate: true,
+  content_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", brand: {},
+  report: { title: "Saved report", generated_at: "2026-01-01", sections: [{ kind: "table", title: "Mapped records", headers: ["Name"], rows: [["Client record"]] }] } });
 const mime = { pdf: "application/pdf", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 const record = (id, client_id = null) => ({ id, label: "Record " + id, client_id, mapping_id: client_id === null ? null : TOKEN });
@@ -26,6 +28,7 @@ async function harness(t, handler = () => undefined) {
       if (body === undefined) {
         if (url.endsWith("/profile")) body = { ok: true, configured: true, client: client(state.clientId), profile: profile(state) };
         else if (url.endsWith("/report-preview")) body = preview(state);
+        else if (url.endsWith("/approval-requests")) body = { ok: true, client: client(state.clientId), pending: null, requests: [] };
         else if (url.endsWith("/report")) body = { binary: new Blob([state.format === "pdf" ? "%PDF-test" : "PK\x03\x04test"], { type: mime[state.format] }) };
         else throw new Error("Unexpected request " + url);
       }
@@ -72,7 +75,7 @@ async function harness(t, handler = () => undefined) {
 }
 for (const format of Object.keys(mime)) test("explicit saved-profile preview then valid download: " + format, async (t) => {
   const h = await harness(t); h.state.format = format; await h.render();
-  assert.equal(h.calls.length, 0); assert.ok(h.button("Generate & download " + format.toUpperCase()).disabled);
+  assert.equal(h.writes().length, 0); assert.ok(h.button("Generate & download " + format.toUpperCase()).disabled);
   await h.click("Preview report"); assert.match(h.text(), /Client record/); assert.equal(h.writes().length, 0);
   await h.click("Generate & download " + format.toUpperCase(), undefined, true);
   assert.equal(h.writes().length, 1); assert.deepEqual(h.writes()[0].body, { expected_version: 1 });
