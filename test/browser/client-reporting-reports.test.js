@@ -309,7 +309,7 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
       const table = totalsHeading?.parentElement?.querySelector('table');
       const rows = table ? [...table.querySelectorAll('tbody tr')] : [];
       const runsRow = rows.find((row) => row.cells[0]?.textContent === 'Runs');
-      return runsRow?.cells[1]?.textContent ?? null;
+      return runsRow?.cells[1]?.querySelector('div')?.textContent ?? null;
     });
     assert.equal(runsDisplay, '0');
     assert.equal(await owner.$eval(SECTION, (el) => el.innerText.includes('Unavailable')), false);
