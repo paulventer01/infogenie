@@ -1,7 +1,7 @@
 'use strict';
 
 const { sqlBounds } = require('./period');
-const { safeQuery, buildMetricMeta, availableMeta, unavailableMeta } = require('./availability');
+const { safeQuery, buildMetricMeta } = require('./availability');
 
 // Identifiers below are fixed server configuration, never request interpolation.
 const SOURCES = Object.freeze({
@@ -82,11 +82,12 @@ async function data(db, name, spec, tenantId, clientId, cursor, limit, dateRange
     };
   }
   const metric_meta = buildMetricMeta(name, summary, queryStatus);
-  if (!rootsResult.ok && countResult.ok && summary.mapped_records > 0) {
-    metric_meta.mapped_records = availableMeta(summary.mapped_records);
+  if (!rootsResult.ok || !countResult.ok) {
+    throw Object.assign(new Error('source_query_failed'), { status: 500 });
   }
-  if (!countResult.ok && rootsResult.ok && rootsResult.rows.length) {
-    metric_meta.mapped_records = unavailableMeta(countResult.reason);
+  const totalsKey = name === 'search-intel' ? 'search_totals' : 'campaign_totals';
+  if (!queryStatus[totalsKey]?.ok) {
+    throw Object.assign(new Error('source_query_failed'), { status: 500 });
   }
   const scope = dateRange?.startDate
     ? `mapped_records_in_period:${dateRange.startDate}:${dateRange.endDate}`
