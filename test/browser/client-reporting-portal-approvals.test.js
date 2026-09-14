@@ -138,7 +138,7 @@ test('PR10H.3 portal approval browser journey', {
   ]);
   await text(portal, 'Change request submitted', 'main');
 
-  await owner.reload({ waitUntil: 'networkidle2' });
+  await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
   await owner.waitForSelector(APPROVALS, { visible: true });
   await text(owner, 'Changes requested', APPROVALS);
@@ -147,8 +147,9 @@ test('PR10H.3 portal approval browser journey', {
   await button(owner, 'Preview report');
   await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
   await submitApproval(owner, clientId);
-  await owner.reload({ waitUntil: 'networkidle2' });
+  await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
+  await owner.waitForSelector(APPROVALS, { visible: true });
   await text(owner, 'Pending client approval', APPROVALS);
 
   await portal.reload({ waitUntil: 'networkidle2' });
@@ -157,8 +158,9 @@ test('PR10H.3 portal approval browser journey', {
   await button(portal, 'Confirm approval', '[aria-label="Report approval"]');
   await text(portal, 'Report approved', 'main');
 
-  await owner.reload({ waitUntil: 'networkidle2' });
+  await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
+  await owner.waitForSelector(APPROVALS, { visible: true });
   await text(owner, 'Approved', APPROVALS);
 
   const fs = require('node:fs/promises');
