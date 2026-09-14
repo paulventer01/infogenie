@@ -19,7 +19,7 @@ export default function ClientReportingReport({ clientId, version, format, timez
   const stop = useCallback(() => { live.current = false; ++sequence.current; }, []);
   useEffect(() => { live.current = true; return stop; }, [stop]);
   const currentStamp = (): DateStamp => ({ custom: useCustomDates, start: startDate, end: endDate });
-  const stampMatches = (left: DateStamp | null, right: DateStamp) => left
+  const stampMatches = (left: DateStamp | null, right: DateStamp): boolean => !!left
     && left.custom === right.custom && (!right.custom || (left.start === right.start && left.end === right.end));
   const customDatesReady = !useCustomDates || (startDate.length > 0 && endDate.length > 0);
   const previewCurrent = !!preview && stampMatches(previewStamp, currentStamp());
