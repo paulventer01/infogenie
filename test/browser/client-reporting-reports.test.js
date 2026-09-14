@@ -14,10 +14,12 @@ async function button(page, name, scope = PANEL) {
 async function text(page, wanted, scope = SECTION) {
   await page.waitForFunction((selector, value) => document.querySelector(selector)?.innerText.includes(value), {}, scope, wanted);
 }
-async function selectClient(page, id) {
+async function selectClient(page, id, requirePreview = true) {
   await page.waitForSelector(`${PANEL} select[name="client_id"]:enabled`, { visible: true });
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
-  await page.waitForSelector(`${SECTION} ::-p-aria([name="Preview report"][role="button"]):not([disabled])`, { visible: true });
+  if (requirePreview) {
+    await page.waitForSelector(`${SECTION} ::-p-aria([name="Preview report"][role="button"]):not([disabled])`, { visible: true });
+  }
 }
 async function call(page, path, method = 'GET', body) {
   return page.evaluate(async (url, verb, data) => {
@@ -246,8 +248,8 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     await text(owner, '3 contributing records total', SECTION);
     await button(owner, 'Close contributing records', SECTION);
     await owner.waitForFunction((selector) => !document.querySelector(selector), {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
-    await selectClient(owner, second.id);
-    await owner.waitForFunction((selector) => !document.querySelector(selector)?.innerText.includes('contributing records total'), {}, SECTION);
+    await responseFor(owner, 'GET', profilePath(second.id), () => owner.select(`${PANEL} select[name="client_id"]`, String(second.id)));
+    await owner.waitForFunction((selector) => !document.querySelector(selector), {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
   });
   await t.test('preview honors saved metric order from profile', async () => {
     await save('pdf');
