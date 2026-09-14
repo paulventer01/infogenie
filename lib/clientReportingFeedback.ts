@@ -52,12 +52,12 @@ function contextQuery(context: ReportContext): string {
 
 export function reportContextFromPreview(preview: {
   profile_version: number;
-  reporting_period: string;
+  reporting_period?: string;
   reporting_dates?: { start: string; end: string; timezone: string } | null;
 }): ReportContext {
   const context: ReportContext = {
     profile_version: preview.profile_version,
-    reporting_period: preview.reporting_period,
+    reporting_period: preview.reporting_period || "all_time",
     timezone: preview.reporting_dates?.timezone || "UTC",
   };
   if (preview.reporting_dates) {
