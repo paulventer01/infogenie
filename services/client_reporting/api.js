@@ -13,6 +13,7 @@ const { buildReportEmailBody } = require('./availability');
 const _snapshot = require('./snapshot');
 const schedule = require('./schedule');
 const portal = require('./portal');
+const feedback = require('./feedback');
 const _audit = require('../admin/audit');
 const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
@@ -561,6 +562,51 @@ router.post('/clients/:clientId/portal/revoke', writeLimiter, safe(async (req, r
     context: { client_id: id },
   });
   return res.json({ ok: true, client, portal: await portal.portalStatus(_db.getPool(), tenantId, id) });
+}));
+
+router.get('/clients/:clientId/portal/feedback/threads', readLimiter, safe(async (req, res) => {
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const client = await activeClient(_db.getPool(), tenantId, id);
+  const hasContext = ['profile_version', 'reporting_period', 'timezone'].every((key) => Object.hasOwn(req.query, key));
+  const context = hasContext ? feedback.parseReportContext(req.query, { query: true }) : null;
+  const threads = await feedback.listThreadsForClient(_db.getPool(), tenantId, id, context);
+  return res.json({ ok: true, client, threads });
+}));
+
+router.post('/clients/:clientId/portal/feedback/threads/:threadId/replies', writeLimiter, safe(async (req, res) => {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'body')) {
+    throw fail(400, 'invalid_feedback');
+  }
+  const threadId = positiveId(req.params.threadId);
+  if (!threadId) throw fail(400, 'invalid_feedback');
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const client = await activeClient(_db.getPool(), tenantId, id);
+  const thread = await feedback.addReply(_db.getPool(), tenantId, id, threadId, 'agency', positiveId(req.user.id), body.body);
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_feedback_reply', actorUserId: req.user.id, actorEmail: req.user.email,
+    tenantId, detail: `${client.name}: agency portal feedback reply`,
+    context: { client_id: id, thread_id: threadId, author_type: 'agency' },
+  });
+  return res.json({ ok: true, client, thread });
+}));
+
+router.post('/clients/:clientId/portal/feedback/threads/:threadId/resolve', writeLimiter, safe(async (req, res) => {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 0) {
+    throw fail(400, 'invalid_feedback');
+  }
+  const threadId = positiveId(req.params.threadId);
+  if (!threadId) throw fail(400, 'invalid_feedback');
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const client = await activeClient(_db.getPool(), tenantId, id);
+  const thread = await feedback.resolveThread(_db.getPool(), tenantId, id, threadId, positiveId(req.user.id));
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_feedback_resolve', actorUserId: req.user.id, actorEmail: req.user.email,
+    tenantId, detail: `${client.name}: portal change request resolved`,
+    context: { client_id: id, thread_id: threadId },
+  });
+  return res.json({ ok: true, client, thread });
 }));
 
 module.exports = router;

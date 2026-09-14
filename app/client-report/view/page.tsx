@@ -9,6 +9,7 @@ import type { Preview } from "@/lib/clientReportingReport";
 import type { DeliveryRow } from "@/lib/clientReportingPortal";
 import ClientReportingDrilldown, { DrilldownControl } from "@/components/features/manage/ClientReportingDrilldown";
 import ClientReportAvailabilityBadges from "@/components/features/shared/ClientReportAvailabilityBadges";
+import ClientPortalFeedbackPanel from "@/components/features/shared/ClientPortalFeedbackPanel";
 import { clientReportCellDisplay } from "@/lib/clientReportingAvailability";
 import type { DrilldownTarget } from "@/lib/clientReportingDrilldown";
 
@@ -58,7 +59,7 @@ export default function ClientReportViewPage() {
   return <main style={{ maxWidth: 960, margin: "32px auto", padding: 24, fontFamily: "system-ui, sans-serif", color: "#0F172A" }}>
     <header style={{ marginBottom: 24 }}>
       <h1>Client report</h1>
-      <p style={{ color: "#64748B" }}>Read-only portal view of your latest generated report and delivery history.</p>
+      <p style={{ color: "#64748B" }}>Portal view of your latest generated report, delivery history, and feedback on this snapshot.</p>
     </header>
     {busy && <p role="status">Loading report…</p>}
     {error && !busy && <>
@@ -97,6 +98,7 @@ export default function ClientReportViewPage() {
       <ClientReportingDrilldown mode="portal" target={drilldown} onClose={() => setDrilldown(null)} />
       {preview.brand.footerText && <p style={{ marginTop: 24 }}>{preview.brand.footerText}</p>}
     </article>}
+    {preview && !busy && <ClientPortalFeedbackPanel preview={preview} />}
     {preview && !busy && <section aria-label="Delivery history" style={{ marginTop: 32 }}>
       <h2>Delivery history</h2>
       {!deliveries.length ? <p>No scheduled deliveries recorded yet.</p> : <div style={{ overflowX: "auto" }}>

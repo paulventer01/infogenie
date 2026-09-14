@@ -6,7 +6,11 @@ const { createRateLimiter } = require('../security/rate_limit');
 const _audit = require('../admin/audit');
 const portal = require('./portal');
 const drilldown = require('./drilldown');
+const feedback = require('./feedback');
+const { portalCsrfGuard } = require('./portal_csrf');
 const router = express.Router();
+
+router.use(portalCsrfGuard);
 
 function fail(status, code) { return Object.assign(new Error(code), { status }); }
 function safe(handler) {
@@ -24,6 +28,14 @@ const readLimiter = createRateLimiter({
   name: 'client-reporting-portal-read', windowMs: 60_000, max: 120, failClosed: true,
   keyFn: (req) => req.portalContext ? `portal|${req.portalContext.tenantId}|${req.portalContext.clientId}` : null,
 });
+const writeLimiter = createRateLimiter({
+  name: 'client-reporting-portal-write', windowMs: 60_000, max: 30, failClosed: true,
+  keyFn: (req) => req.portalContext ? `portal-write|${req.portalContext.tenantId}|${req.portalContext.clientId}` : null,
+});
+
+function object(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
 
 async function requirePortalSession(req, res, next) {
   if (!_db.hasDb()) return res.status(503).json({ ok: false, error: 'database_unavailable' });
@@ -81,6 +93,56 @@ router.get('/report', requirePortalSession, readLimiter, safe(async (req, res) =
     context: { client_id: clientId, session_id: sessionId, profile_version: snapshot.profile_version },
   });
   return res.json(snapshot);
+}));
+
+router.get('/feedback/threads', requirePortalSession, readLimiter, safe(async (req, res) => {
+  const { tenantId, clientId, sessionId } = req.portalContext;
+  const context = feedback.parseReportContext(req.query, { query: true });
+  const threads = await feedback.listThreads(_db.getPool(), tenantId, clientId, context);
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_feedback_view', tenantId,
+    detail: `Client ${clientId} portal feedback viewed`,
+    context: { client_id: clientId, session_id: sessionId, profile_version: context.profileVersion, count: threads.length },
+  });
+  return res.json({ ok: true, client_id: clientId, threads });
+}));
+
+router.post('/feedback/threads', requirePortalSession, writeLimiter, safe(async (req, res) => {
+  const body = req.body;
+  const raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body)) throw fail(400, 'invalid_feedback');
+  const allowed = new Set(['kind', 'body', 'profile_version', 'reporting_period', 'timezone', 'start_date', 'end_date']);
+  if (Object.keys(body).some((key) => !allowed.has(key))) throw fail(400, 'invalid_feedback');
+  const context = feedback.parseReportContext(body);
+  const { tenantId, clientId, sessionId } = req.portalContext;
+  const thread = await feedback.createThread(_db.getPool(), tenantId, clientId, {
+    kind: body.kind, body: body.body, context,
+  });
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_feedback_create', tenantId,
+    detail: `Client ${clientId} portal ${body.kind} created`,
+    context: { client_id: clientId, session_id: sessionId, thread_id: thread.id, kind: body.kind,
+      profile_version: context.profileVersion },
+  });
+  return res.status(201).json({ ok: true, client_id: clientId, thread });
+}));
+
+router.post('/feedback/threads/:threadId/replies', requirePortalSession, writeLimiter, safe(async (req, res) => {
+  const body = req.body;
+  const raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'body')) {
+    throw fail(400, 'invalid_feedback');
+  }
+  const threadId = Number(req.params.threadId);
+  if (!Number.isInteger(threadId) || threadId < 1) throw fail(400, 'invalid_feedback');
+  const { tenantId, clientId, sessionId } = req.portalContext;
+  const thread = await feedback.addReply(_db.getPool(), tenantId, clientId, threadId, 'client', null, body.body);
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_feedback_reply', tenantId,
+    detail: `Client ${clientId} portal feedback reply`,
+    context: { client_id: clientId, session_id: sessionId, thread_id: threadId, author_type: 'client' },
+  });
+  return res.json({ ok: true, client_id: clientId, thread });
 }));
 
 router.get('/delivery-history', requirePortalSession, readLimiter, safe(async (req, res) => {
