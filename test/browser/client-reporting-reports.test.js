@@ -285,7 +285,8 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     await owner.reload({ waitUntil: 'networkidle2' });
     await selectClient(owner, first.id);
     const current = await call(owner, profilePath(first.id));
-    version = current.profile.version;
+    assert.equal(current.status, 200);
+    version = current.body.profile.version;
     const profileResult = await call(owner, profilePath(first.id), 'PUT', {
       ...profile('pdf', 'search-intel', version),
       selected_metrics: ['runs'],
