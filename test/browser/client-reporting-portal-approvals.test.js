@@ -44,7 +44,7 @@ async function submitApproval(page, clientId) {
     if (!profile.ok || !profile.profile?.version) throw new Error('profile unavailable');
     const response = await fetch(`${api}/clients/${id}/approval-requests`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: window.location.origin },
       body: JSON.stringify({ expected_version: profile.profile.version }),
     });
     const body = await response.json();
@@ -121,8 +121,9 @@ test('PR10H.3 portal approval browser journey', {
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true, timeout: 5000 }).catch(() => null);
 
   await submitApproval(owner, clientId);
-  await owner.reload({ waitUntil: 'networkidle2' });
+  await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
+  await owner.waitForSelector(APPROVALS, { visible: true });
   await text(owner, 'Pending client approval', APPROVALS);
 
   await portal.reload({ waitUntil: 'networkidle2' });
