@@ -10,7 +10,8 @@ export type ReportSection = {
   row_meta?: ClientReportMetricMeta[] | null;
 };
 export type Preview = { ok: true; client: Client; profile_version: number; format: Draft["default_format"]; can_generate: boolean;
-  reporting_period?: string; reporting_dates?: { start: string; end: string; timezone: string } | null;
+  reporting_period?: string; reporting_timezone?: string;
+  reporting_dates?: { start: string; end: string; timezone: string } | null;
   selected_metrics?: string[];
   brand: Branding; report: { title: string; generated_at: string; sections: ReportSection[] } };
 const text = (value: unknown, max = 2000): value is string => typeof value === "string" && value.length <= max;

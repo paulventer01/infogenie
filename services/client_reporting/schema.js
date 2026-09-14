@@ -150,6 +150,48 @@ async function ensureClientReportingSchema() {
     );
     CREATE INDEX IF NOT EXISTS client_reporting_portal_sessions_client_idx
       ON client_reporting_portal_sessions (tenant_id, client_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS client_reporting_portal_feedback_threads (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('comment', 'change_request')),
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+      profile_version INT NOT NULL CHECK (profile_version > 0),
+      reporting_period TEXT NOT NULL CHECK (reporting_period IN ('all_time', 'last_7_days', 'last_30_days', 'previous_calendar_month', 'custom')),
+      reporting_timezone TEXT NOT NULL CHECK (length(reporting_timezone) > 0 AND length(reporting_timezone) <= 64),
+      period_start DATE,
+      period_end DATE,
+      resolved_at TIMESTAMPTZ,
+      resolved_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
+      CHECK ((reporting_period = 'all_time' AND period_start IS NULL AND period_end IS NULL)
+        OR (reporting_period <> 'all_time' AND period_start IS NOT NULL AND period_end IS NOT NULL))
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_portal_feedback_threads_client_idx
+      ON client_reporting_portal_feedback_threads (tenant_id, client_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS client_reporting_portal_feedback_threads_context_idx
+      ON client_reporting_portal_feedback_threads (tenant_id, client_id, profile_version, reporting_period);
+    CREATE TABLE IF NOT EXISTS client_reporting_portal_feedback_messages (
+      id BIGSERIAL PRIMARY KEY,
+      thread_id BIGINT NOT NULL REFERENCES client_reporting_portal_feedback_threads(id) ON DELETE CASCADE,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      author_type TEXT NOT NULL CHECK (author_type IN ('client', 'agency')),
+      author_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      body TEXT NOT NULL CHECK (body = btrim(body) AND length(body) >= 1 AND length(body) <= 4000),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
+      CHECK ((author_type = 'client' AND author_user_id IS NULL) OR author_type = 'agency')
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_portal_feedback_messages_thread_idx
+      ON client_reporting_portal_feedback_messages (thread_id, created_at ASC, id ASC);
+    ALTER TABLE client_reporting_portal_feedback_messages
+      DROP CONSTRAINT IF EXISTS client_reporting_portal_feedback_messages_check;
+    ALTER TABLE client_reporting_portal_feedback_messages
+      ADD CONSTRAINT client_reporting_portal_feedback_messages_check
+      CHECK ((author_type = 'client' AND author_user_id IS NULL) OR author_type = 'agency');
   `);
 }
 

@@ -125,6 +125,7 @@ function buildReport(client, profile, data, workspaceBrand, selectedMetrics, dat
   return { ok: true, client, profile_version: profile.version, format: profile.default_format,
     can_generate: summary.mapped_records > 0,
     reporting_period: dateRange?.periodKey || profile.reporting_period || 'all_time',
+    reporting_timezone: profile.reporting_timezone || 'UTC',
     reporting_dates: dateRange?.startDate ? { start: dateRange.startDate, end: dateRange.endDate, timezone: dateRange.timezone } : null,
     selected_metrics: selectedMetrics,
     report: { title: cell(profile.report_title), generated_at: new Date().toISOString(), sections },

@@ -6,6 +6,7 @@ import ClientReportingReport from "@/components/features/manage/ClientReportingR
 import ClientReportingRecipient from "@/components/features/manage/ClientReportingRecipient";
 import ClientReportingSchedule from "@/components/features/manage/ClientReportingSchedule";
 import ClientReportingPortal from "@/components/features/manage/ClientReportingPortal";
+import ClientReportingPortalFeedback from "@/components/features/manage/ClientReportingPortalFeedback";
 import ClientReportingMappings from "@/components/features/manage/ClientReportingMappings";
 import { API, BRAND_FIELDS, PERIOD_HELP, accessLost, draftError, newDraft, profileDraft, profilePayload, responseError,
   saveMatches, validClient, validPage, validProfile, verifyAccess,
@@ -300,6 +301,9 @@ export default function ClientReportingProfiles() {
             clientId={clientId} defaultFormat={draft.default_format} checkAccess={checkAccess} clearContext={clearContext} />}
         {clientId && context.current && !pendingClient && draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
           && <ClientReportingPortal key={`${context.current.userId}:${context.current.tenantId}:${clientId}:portal`}
+            clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
+        {clientId && context.current && !pendingClient && draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
+          && <ClientReportingPortalFeedback key={`${context.current.userId}:${context.current.tenantId}:${clientId}:portal-feedback`}
             clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
         {clientId && context.current && !pendingClient && <ClientReportingMappings
           key={`${context.current.userId}:${context.current.tenantId}:${clientId}`}
