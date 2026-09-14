@@ -22,8 +22,9 @@ export default function ClientReportViewPage() {
   const [drilldown, setDrilldown] = useState<DrilldownTarget | null>(null);
   const live = useRef(true);
 
-  const load = useCallback(async () => {
-    setBusy(true); setError(null); setDrilldown(null);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setBusy(true);
+    setError(null); setDrilldown(null);
     try {
       const report = await fetchPortalReport();
       if (!live.current) return;
@@ -100,7 +101,7 @@ export default function ClientReportViewPage() {
       {preview.brand.footerText && <p style={{ marginTop: 24 }}>{preview.brand.footerText}</p>}
     </article>}
     {preview && !busy && <ClientPortalApprovalPanel binding={preview.approval_binding || null}
-      onDecision={() => void load()} />}
+      onDecision={() => void load(true)} />}
     {preview && !busy && <ClientPortalFeedbackPanel preview={preview} />}
     {preview && !busy && <section aria-label="Delivery history" style={{ marginTop: 32 }}>
       <h2>Delivery history</h2>
