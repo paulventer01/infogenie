@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { API, accessLost, responseError } from "@/lib/clientReporting";
 import {
-  fetchAdminFeedback, replyAdminFeedback, resolveAdminFeedback, type FeedbackThread,
+  feedbackErrorMessage, fetchAdminFeedback, replyAdminFeedback, resolveAdminFeedback, type FeedbackThread,
 } from "@/lib/clientReportingFeedback";
 
 type Props = { clientId: number; checkAccess: () => Promise<boolean>; clearContext: (message: string) => void };
@@ -19,7 +19,35 @@ function ThreadRow({ thread, onReply, onResolve }: {
 }) {
   const [reply, setReply] = useState("");
   const [acting, setActing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const label = thread.kind === "change_request" ? "Change request" : "Comment";
+
+  async function submitReply() {
+    if (!reply.trim()) return;
+    setActing(true);
+    setError(null);
+    try {
+      await onReply(thread.id, reply);
+      setReply("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : feedbackErrorMessage("internal_error"));
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function submitResolve() {
+    setActing(true);
+    setError(null);
+    try {
+      await onResolve(thread.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : feedbackErrorMessage("internal_error"));
+    } finally {
+      setActing(false);
+    }
+  }
+
   return <article style={{ marginTop: 16, padding: 16, border: "1px solid #CBD5E1", borderRadius: 8 }}>
     <header style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
       <strong>{label} #{thread.id}</strong>
@@ -37,15 +65,14 @@ function ThreadRow({ thread, onReply, onResolve }: {
         </p>
       </div>)}
     </div>
+    {error && <p role="alert" style={{ color: "#991B1B", marginTop: 12 }}>{error}</p>}
     {thread.kind === "change_request" && thread.status === "open" && <button type="button" style={{ ...button, background: "#1D4ED8" }}
-      disabled={acting} onClick={() => { setActing(true); void onResolve(thread.id).finally(() => setActing(false)); }}>
+      disabled={acting} onClick={() => void submitResolve()}>
       Mark resolved
     </button>}
     <form style={{ marginTop: 12 }} onSubmit={(event) => {
       event.preventDefault();
-      if (!reply.trim()) return;
-      setActing(true);
-      void onReply(thread.id, reply).finally(() => { setReply(""); setActing(false); });
+      void submitReply();
     }}>
       <label style={{ display: "grid", gap: 6 }}>
         Agency reply
@@ -76,7 +103,7 @@ export default function ClientReportingPortalFeedback({ clientId, checkAccess, c
       if (!current()) return;
       const failure = responseError(result);
       if (failure && accessLost(failure)) clearContext(failure);
-      if (failure) throw new Error(failure);
+      if (failure) throw new Error(feedbackErrorMessage(failure));
       setThreads(Array.isArray(result.threads) ? result.threads : []);
     } catch (e) {
       if (current()) setError(e instanceof Error ? e.message : "Portal feedback could not be loaded.");
@@ -95,7 +122,7 @@ export default function ClientReportingPortalFeedback({ clientId, checkAccess, c
     const result = await replyAdminFeedback(clientId, threadId, body);
     const failure = responseError(result);
     if (failure && accessLost(failure)) clearContext(failure);
-    if (failure) throw new Error(failure);
+    if (failure) throw new Error(feedbackErrorMessage(failure));
     await load();
   }
 
@@ -103,7 +130,7 @@ export default function ClientReportingPortalFeedback({ clientId, checkAccess, c
     const result = await resolveAdminFeedback(clientId, threadId);
     const failure = responseError(result);
     if (failure && accessLost(failure)) clearContext(failure);
-    if (failure) throw new Error(failure);
+    if (failure) throw new Error(feedbackErrorMessage(failure));
     await load();
   }
 

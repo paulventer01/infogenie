@@ -141,6 +141,13 @@ test('Client reporting portal feedback: tenant isolation, CSRF, revocation and r
   assert.equal(portalReplyDenied.status, 401);
   const resolved = await call(a, 'POST', adminResolve(ca, threadId), {});
   assert.equal(resolved.json.thread.status, 'resolved');
+  const resolvedReply = await request(app.baseUrl, 'POST', `${portalApi}/feedback/threads/${threadId}/replies`, {
+    cookie: portalCookieValue, headers: { Origin: app.baseUrl }, body: { body: 'too late' },
+  });
+  assert.equal(resolvedReply.status, 409);
+  assert.equal(resolvedReply.json.error, 'thread_resolved');
+  const doubleResolve = await call(a, 'POST', adminResolve(ca, threadId), {}, 409);
+  assert.equal(doubleResolve.json.error, 'thread_resolved');
   const stale = await request(app.baseUrl, 'POST', `${portalApi}/feedback/threads`, {
     cookie: portalCookieValue,
     headers: { Origin: app.baseUrl },
@@ -153,4 +160,54 @@ test('Client reporting portal feedback: tenant isolation, CSRF, revocation and r
   const revoked = await request(app.baseUrl, 'GET', listPath, { cookie: portalCookieValue });
   assert.equal(revoked.status, 403);
   assert.equal(revoked.json.error, 'portal_revoked');
+  const revokedReply = await request(app.baseUrl, 'POST', `${portalApi}/feedback/threads/${threadId}/replies`, {
+    cookie: portalCookieValue, headers: { Origin: app.baseUrl }, body: { body: 'after revoke' },
+  });
+  assert.equal(revokedReply.status, 403);
+  assert.equal(revokedReply.json.error, 'portal_revoked');
+
+  await t.test('all_time timezone: create, list, reply succeed; wrong timezone is stale', async () => {
+    const tzTenant = await fx.seedTenant('AllTime TZ');
+    const tzUser = await fx.seedUser({ tenantId: tzTenant.id, roleKey: 'tenant_owner' });
+    const tzSession = await login(app.baseUrl, tzUser.email, tzUser.password);
+    const tzActor = { cookie: tzSession.cookie, tid: tzTenant.id };
+    const tzClient = (await db.getPool().query('INSERT INTO clients (tenant_id,name) VALUES ($1,$2) RETURNING id', [tzTenant.id, 'TZ'])).rows[0].id;
+    await call(tzActor, 'PUT', profilePath(tzClient), {
+      report_source: 'search-intel', default_format: 'pdf', report_title: 'All time', branding_mode: 'workspace', branding_overrides: {},
+      selected_metrics: ['runs'], reporting_period: 'all_time', reporting_timezone: 'Africa/Johannesburg', expected_version: 0,
+    });
+    const preview = await call(tzActor, 'GET', `${prefix}/${tzClient}/report-preview`);
+    assert.equal(preview.json.reporting_period, 'all_time');
+    assert.equal(preview.json.reporting_timezone, 'Africa/Johannesburg');
+    assert.equal(preview.json.reporting_dates, null);
+    const tzCtx = {
+      profile_version: preview.json.profile_version,
+      reporting_period: 'all_time',
+      timezone: 'Africa/Johannesburg',
+    };
+    const tzInvite = await call(tzActor, 'POST', invitePath(tzClient), {}, 201);
+    const tzRedeem = await request(app.baseUrl, 'POST', `${portalApi}/redeem/${tzInvite.json.invite_path.split('/').pop()}`, { body: {} });
+    const tzPortalCookie = portalCookie(tzRedeem.cookies);
+    const tzListPath = `${portalApi}/feedback/threads?${contextQuery(tzCtx.profile_version, tzCtx.reporting_period, tzCtx.timezone)}`;
+    const tzCreated = await request(app.baseUrl, 'POST', `${portalApi}/feedback/threads`, {
+      cookie: tzPortalCookie, headers: { Origin: app.baseUrl },
+      body: { kind: 'comment', body: 'All-time note', ...tzCtx },
+    });
+    assert.equal(tzCreated.status, 201);
+    const tzThreadId = tzCreated.json.thread.id;
+    const tzListed = await request(app.baseUrl, 'GET', tzListPath, { cookie: tzPortalCookie });
+    assert.equal(tzListed.status, 200);
+    assert.equal(tzListed.json.threads.length, 1);
+    const tzReplied = await request(app.baseUrl, 'POST', `${portalApi}/feedback/threads/${tzThreadId}/replies`, {
+      cookie: tzPortalCookie, headers: { Origin: app.baseUrl }, body: { body: 'Client follow-up' },
+    });
+    assert.equal(tzReplied.status, 200);
+    assert.equal(tzReplied.json.thread.messages.length, 2);
+    const tzStale = await request(app.baseUrl, 'POST', `${portalApi}/feedback/threads`, {
+      cookie: tzPortalCookie, headers: { Origin: app.baseUrl },
+      body: { kind: 'comment', body: 'wrong tz', profile_version: tzCtx.profile_version, reporting_period: 'all_time', timezone: 'UTC' },
+    });
+    assert.equal(tzStale.status, 409);
+    assert.equal(tzStale.json.error, 'report_context_stale');
+  });
 });

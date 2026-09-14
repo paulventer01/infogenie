@@ -53,18 +53,40 @@ function contextQuery(context: ReportContext): string {
 export function reportContextFromPreview(preview: {
   profile_version: number;
   reporting_period?: string;
+  reporting_timezone?: string;
   reporting_dates?: { start: string; end: string; timezone: string } | null;
 }): ReportContext {
   const context: ReportContext = {
     profile_version: preview.profile_version,
     reporting_period: preview.reporting_period || "all_time",
-    timezone: preview.reporting_dates?.timezone || "UTC",
+    timezone: preview.reporting_timezone || preview.reporting_dates?.timezone || "UTC",
   };
   if (preview.reporting_dates) {
     context.start_date = preview.reporting_dates.start;
     context.end_date = preview.reporting_dates.end;
   }
   return context;
+}
+
+export function feedbackErrorMessage(code: string): string {
+  switch (code) {
+    case "report_context_stale":
+      return "This report changed while you were writing. Reload the page and try again.";
+    case "thread_resolved":
+      return "This change request is already resolved. Reload to see the latest replies.";
+    case "portal_revoked":
+      return "Portal access has been revoked. Ask your agency for a new invitation.";
+    case "portal_session_expired":
+      return "Your portal session expired. Use your invitation link to sign in again.";
+    case "portal_auth_required":
+      return "Sign in via your invitation link to continue.";
+    case "csrf_rejected":
+      return "This action was blocked for security. Reload the page and try again.";
+    case "thread_not_found":
+      return "This feedback thread could not be found. Reload and try again.";
+    default:
+      return "Your message could not be sent. Check your connection and try again.";
+  }
 }
 
 export function contextPayload(context: ReportContext): Record<string, string | number> {

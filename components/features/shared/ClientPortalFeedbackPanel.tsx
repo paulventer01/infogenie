@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  createPortalFeedback, fetchPortalFeedback, replyPortalFeedback,
+  createPortalFeedback, feedbackErrorMessage, fetchPortalFeedback, replyPortalFeedback,
   reportContextFromPreview, type FeedbackThread, type ReportContext,
 } from "@/lib/clientReportingFeedback";
 import { responseError } from "@/lib/clientReporting";
@@ -13,10 +13,29 @@ type Props = { preview: Preview };
 const card = { marginTop: 32, padding: 20, border: "1px solid #E2E8F0", borderRadius: 12, background: "#F8FAFC" };
 const button = { background: "#0F766E", color: "#FFFFFF", border: 0, borderRadius: 6, padding: "10px 14px", marginRight: 8, marginTop: 8 };
 
-function ThreadCard({ thread, onReply }: { thread: FeedbackThread; onReply: (threadId: number, body: string) => Promise<void> }) {
+function ThreadCard({ thread, onReply }: {
+  thread: FeedbackThread;
+  onReply: (threadId: number, body: string) => Promise<void>;
+}) {
   const [reply, setReply] = useState("");
   const [acting, setActing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const label = thread.kind === "change_request" ? "Change request" : "Comment";
+
+  async function submitReply() {
+    if (!reply.trim()) return;
+    setActing(true);
+    setError(null);
+    try {
+      await onReply(thread.id, reply);
+      setReply("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : feedbackErrorMessage("internal_error"));
+    } finally {
+      setActing(false);
+    }
+  }
+
   return <article style={{ marginTop: 16, padding: 16, border: "1px solid #CBD5E1", borderRadius: 8, background: "#FFFFFF" }}>
     <header style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
       <strong>{label}</strong>
@@ -36,15 +55,14 @@ function ThreadCard({ thread, onReply }: { thread: FeedbackThread; onReply: (thr
     </div>
     {thread.status === "open" && <form style={{ marginTop: 12 }} onSubmit={(event) => {
       event.preventDefault();
-      if (!reply.trim()) return;
-      setActing(true);
-      void onReply(thread.id, reply).finally(() => { setReply(""); setActing(false); });
+      void submitReply();
     }}>
       <label style={{ display: "grid", gap: 6 }}>
         Reply
         <textarea required maxLength={4000} value={reply} onChange={(event) => setReply(event.target.value)}
           rows={3} style={{ border: "1px solid #94A3B8", borderRadius: 6, padding: 9, width: "100%", boxSizing: "border-box" }} />
       </label>
+      {error && <p role="alert" style={{ color: "#991B1B", marginTop: 8 }}>{error}</p>}
       <button type="submit" style={button} disabled={acting}>{acting ? "Sending…" : "Send reply"}</button>
     </form>}
   </article>;
@@ -67,8 +85,7 @@ export default function ClientPortalFeedbackPanel({ preview }: Props) {
       if (!live.current) return;
       const failure = responseError(result);
       if (failure) {
-        setError(failure === "report_context_stale" ? "This report changed while you were writing. Reload and try again."
-          : "Comments could not be loaded.");
+        setError(feedbackErrorMessage(failure));
         setThreads([]);
         return;
       }
@@ -90,8 +107,7 @@ export default function ClientPortalFeedbackPanel({ preview }: Props) {
       const result = await createPortalFeedback(kind, body, context);
       const failure = responseError(result);
       if (failure) {
-        setError(failure === "report_context_stale" ? "This report changed while you were writing. Reload and try again."
-          : "Your message could not be sent.");
+        setError(feedbackErrorMessage(failure));
         return;
       }
       setBody("");
@@ -104,7 +120,7 @@ export default function ClientPortalFeedbackPanel({ preview }: Props) {
   async function submitReply(threadId: number, text: string) {
     const result = await replyPortalFeedback(threadId, text);
     const failure = responseError(result);
-    if (failure) throw new Error(failure);
+    if (failure) throw new Error(feedbackErrorMessage(failure));
     await load(context);
   }
 
