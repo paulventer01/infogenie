@@ -15,10 +15,12 @@ async function button(page, name, scope = PANEL) {
 async function text(page, wanted, scope = SECTION) {
   await page.waitForFunction((selector, value) => document.querySelector(selector)?.innerText.includes(value), {}, scope, wanted);
 }
-async function selectClient(page, id) {
+async function selectClient(page, id, requirePreview = true) {
   await page.waitForSelector(`${PANEL} select[name="client_id"]:enabled`, { visible: true });
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
-  await page.waitForSelector(`${SECTION} ::-p-aria([name="Preview report"][role="button"]):not([disabled])`, { visible: true });
+  if (requirePreview) {
+    await page.waitForSelector(`${SECTION} ::-p-aria([name="Preview report"][role="button"]):not([disabled])`, { visible: true });
+  }
 }
 async function responseFor(page, method, path, action, status = 200) {
   const [response] = await Promise.all([
