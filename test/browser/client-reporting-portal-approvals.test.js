@@ -58,7 +58,8 @@ test('PR10H.3 portal approval browser journey', {
 }, async (t) => {
   assert.ok(dedicatedUrl);
   const { startAgencyBrowser } = require('../helpers/agency-browser');
-  const { baseUrl, db, actors } = await startAgencyBrowser(t);
+  const { baseUrl, apiBase, db, actors } = await startAgencyBrowser(t);
+  const ownerSession = await require('../helpers').login(baseUrl, actors.owner.email, actors.owner.password);
   await require('../../services/search_intel/schema').ensureSearchIntelSchema();
   await require('../../services/optimizer/schema').ensureOptimizerSchema();
   const schema = require('../../services/client_reporting/schema');
@@ -118,7 +119,7 @@ test('PR10H.3 portal approval browser journey', {
   await portal.waitForFunction(() => location.pathname === '/client-report/view');
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true, timeout: 5000 }).catch(() => null);
 
-  await submitApproval(owner, clientId);
+  await submitApproval(apiBase, ownerSession.cookie, clientId);
   await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
   await owner.waitForSelector(APPROVALS, { visible: true });
@@ -145,7 +146,7 @@ test('PR10H.3 portal approval browser journey', {
 
   await button(owner, 'Preview report');
   await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
-  await submitApproval(owner, clientId);
+  await submitApproval(apiBase, ownerSession.cookie, clientId);
   await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
   await owner.waitForSelector(APPROVALS, { visible: true });
