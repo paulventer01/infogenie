@@ -32,8 +32,8 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   });
 
   const { startAgencyBrowser } = require('../helpers/agency-browser');
-  await require('../../services/ai_governance/schema').ensureAiGovernanceSchema();
   const { baseUrl, actors } = await startAgencyBrowser(t);
+  await require('../../services/ai_governance/schema').ensureAiGovernanceSchema();
 
   browser = await require('puppeteer').launch({
     headless: true,
