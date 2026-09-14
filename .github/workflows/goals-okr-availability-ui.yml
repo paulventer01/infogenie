@@ -95,7 +95,10 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
         run: |
           set -o pipefail
-          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/browser/goals-okr-availability.test.js test/browser/canonical-metrics-goals-table.test.js | tee /tmp/goals-okr-browser.tap
+          : > /tmp/goals-okr-browser.tap
+          for f in test/browser/goals-okr-availability.test.js test/browser/canonical-metrics-goals-table.test.js; do
+            node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit "$f" | tee -a /tmp/goals-okr-browser.tap
+          done
           grep -Eq '^# tests [1-9][0-9]*$' /tmp/goals-okr-browser.tap
           grep -Eq '^# fail 0$' /tmp/goals-okr-browser.tap
           grep -Eq '^# skipped 0$' /tmp/goals-okr-browser.tap

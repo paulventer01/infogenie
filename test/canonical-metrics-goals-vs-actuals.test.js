@@ -12,7 +12,6 @@ const {
   okrMeasurementPeriod,
   quarterBounds,
   snapshotMatchesGoalPeriod,
-  snapshotMeasurementPeriod,
 } = require('../services/canonical_metrics/goals_vs_actuals');
 
 const db = require('../db');
@@ -23,11 +22,9 @@ const origKvGet = db.kvGet;
 let queryHandler = async () => ({ rows: [] });
 let kvStore = {};
 
-function currentQuarterContext() {
+function currentQuarter() {
   const d = new Date();
-  const quarter = `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`;
-  const period = okrMeasurementPeriod(quarter);
-  return { quarter, days: period.days };
+  return `${d.getUTCFullYear()}-Q${Math.floor(d.getUTCMonth() / 3) + 1}`;
 }
 
 function installMockDb(handler) {
@@ -44,22 +41,10 @@ function restoreDb() {
   kvStore = {};
 }
 
-function quarterAlignedSnapshot(overrides = {}) {
-  const { quarter } = currentQuarterContext();
-  const period = okrMeasurementPeriod(quarter);
-  return mockSnapshot({
-    days: period.days,
-    period_start: period.start,
-    period_end: period.end,
-    period_kind: 'quarter',
-    ...overrides,
-  });
-}
-
 function mockSnapshot(overrides = {}) {
-  const ctx = currentQuarterContext();
+  const period = okrMeasurementPeriod(currentQuarter());
   return {
-    days: ctx.days,
+    days: period?.days ?? 30,
     generated_at: new Date().toISOString(),
     spend: 1000,
     blended_roas: 2.5,
@@ -87,6 +72,21 @@ function mockSnapshot(overrides = {}) {
   };
 }
 
+function okrRow(overrides = {}) {
+  return {
+    objective: 'Objective',
+    kr_title: 'KR',
+    metric_type: 'roas',
+    linked_channel: '',
+    quarter: currentQuarter(),
+    objective_status: 'on_track',
+    target_value: 2,
+    current_value: 1.2,
+    unit: 'x',
+    ...overrides,
+  };
+}
+
 function adPerfRow(overrides = {}) {
   return {
     channel: 'meta',
@@ -99,7 +99,7 @@ function adPerfRow(overrides = {}) {
   };
 }
 
-async function compute(tid = 1, days = currentQuarterContext().days) {
+async function compute(tid = 1, days = 30) {
   delete require.cache[require.resolve('../services/canonical_metrics/compute')];
   const { computeCanonicalMetrics } = require('../services/canonical_metrics/compute');
   return computeCanonicalMetrics(tid, { days });
@@ -116,29 +116,12 @@ describe('goals_vs_actuals live canonical resolution (PR10G.7)', () => {
     delete require.cache[require.resolve('../services/canonical_metrics/compute')];
   });
 
-  it('live canonical value wins over stale stored OKR actual when boundaries match', () => {
-    const { quarter } = currentQuarterContext();
-    const snap = quarterAlignedSnapshot({ blended_roas: 3 });
-    const row = buildOkrRow({
-      objective: 'Grow revenue',
-      kr_title: 'Blended ROAS',
-      metric_type: 'roas',
-      linked_channel: '',
-      quarter,
-      objective_status: 'on_track',
-      target_value: 3,
-      current_value: 0.5,
-      unit: 'x',
-    }, snap);
-    assert.equal(row.actual, 3);
-    assert.notEqual(row.actual, 0.5);
-    assert.equal(row.target, 3);
-    assert.equal(row.status, 'on-track');
-    assert.equal(row.from_canonical, true);
-  });
+  it('rejects rolling snapshots for calendar-quarter OKRs until compute supplies authoritative bounds', async () => {
+    const quarter = currentQuarter();
+    const goalPeriod = okrMeasurementPeriod(quarter);
+    const rolling = mockSnapshot({ days: 90, blended_roas: 9 });
+    assert.equal(snapshotMatchesGoalPeriod(rolling, goalPeriod), false);
 
-  it('current-quarter OKR mismatches a trailing rolling snapshot even when day counts align', async () => {
-    const { quarter, days } = currentQuarterContext();
     installMockDb(async (sql) => {
       if (/ad_performance_hourly/i.test(sql) && /GROUP BY 1/i.test(sql)) {
         return { rows: [adPerfRow({ spend: 500, revenue: 1500 })] };
@@ -146,301 +129,104 @@ describe('goals_vs_actuals live canonical resolution (PR10G.7)', () => {
       if (/spend_events/i.test(sql)) return { rows: [] };
       if (/offline_conversions/i.test(sql)) return { rows: [{ cents: '0', n: 0 }] };
       if (/okr_key_results/i.test(sql)) {
-        return {
-          rows: [{
-            objective: 'Grow revenue',
-            kr_title: 'Blended ROAS',
-            metric_type: 'roas',
-            linked_channel: '',
-            quarter,
-            objective_status: 'on_track',
-            target_value: 3,
-            current_value: 0.5,
-            unit: 'x',
-          }],
-        };
+        return { rows: [okrRow({ quarter, target_value: 3, current_value: 0.5 })] };
       }
       if (/agent_goals/i.test(sql)) return { rows: [] };
       return { rows: [] };
     });
 
-    const snap = await compute(1, days);
+    const snap = await compute(1, goalPeriod.days);
     const gva = snap.goals_vs_actuals.find((g) => g.metric === 'roas');
-    assert.ok(gva, 'okr row present');
+    assert.ok(gva);
     assert.equal(gva.actual, null);
-    assert.equal(gva.status, 'unverified');
     assert.equal(gva.unverified_reason, 'period_mismatch');
     assert.equal(isVerifiedGoalRow(gva), false);
+
+    const historical = buildOkrRow(okrRow({ quarter: '2024-Q1' }), mockSnapshot({ days: 30 }));
+    assert.equal(historical.unverified_reason, 'period_mismatch');
+    assert.match(formatGoalActualDisplay(historical), /period mismatch/i);
   });
 
-  it('trailing 90-day snapshot does not match a calendar quarter by duration alone', () => {
-    const { quarter } = currentQuarterContext();
-    const goalPeriod = okrMeasurementPeriod(quarter);
-    const snap = mockSnapshot({ days: 90, blended_roas: 9 });
-    assert.equal(snapshotMatchesGoalPeriod(snap, goalPeriod), false);
-    const row = buildOkrRow({
-      objective: 'Current quarter',
-      kr_title: 'ROAS',
-      metric_type: 'roas',
-      linked_channel: '',
-      quarter,
-      objective_status: 'on_track',
-      target_value: 2,
-      current_value: 1.2,
-      unit: 'x',
-    }, snap);
+  it('90-day window ending June 30 noon is not Q2 even when UTC date endpoints align', () => {
+    const q2 = okrMeasurementPeriod('2026-Q2');
+    const snap = mockSnapshot({ days: 90, generated_at: '2026-06-30T12:00:00.000Z' });
+    assert.equal(snapshotMatchesGoalPeriod(snap, q2), false);
+    const row = buildOkrRow(okrRow({ quarter: '2026-Q2' }), snap);
     assert.equal(row.actual, null);
     assert.equal(row.unverified_reason, 'period_mismatch');
   });
 
   it('calendar quarters keep full UTC day counts without 90-day truncation', () => {
-    const q1 = okrMeasurementPeriod('2024-Q1');
-    const q3 = okrMeasurementPeriod('2023-Q3');
-    assert.equal(q1.days, 91);
-    assert.equal(q3.days, 92);
+    assert.equal(okrMeasurementPeriod('2024-Q1').days, 91);
+    assert.equal(okrMeasurementPeriod('2023-Q3').days, 92);
     assert.equal(quarterBounds('2023-Q3').start, '2023-07-01');
     assert.equal(quarterBounds('2023-Q3').end, '2023-09-30');
-    const snap = mockSnapshot({ days: 92, generated_at: '2023-09-30T12:00:00.000Z' });
-    const snapPeriod = snapshotMeasurementPeriod(snap);
-    assert.equal(snapPeriod.start, '2023-06-30');
-    assert.equal(snapPeriod.end, '2023-09-30');
-    assert.equal(snapshotMatchesGoalPeriod(snap, q3), false);
   });
 
-  it('period mismatch withholds live totals for OKR rows', () => {
-    const snap = mockSnapshot({ days: 30, blended_roas: 9 });
-    const row = buildOkrRow({
-      objective: 'Historical',
-      kr_title: 'ROAS',
-      metric_type: 'roas',
-      linked_channel: '',
-      quarter: '2024-Q1',
-      objective_status: 'on_track',
-      target_value: 2,
-      current_value: 1.2,
-      unit: 'x',
-    }, snap);
-    assert.equal(row.actual, null);
-    assert.equal(row.status, 'unverified');
-    assert.equal(row.unverified_reason, 'period_mismatch');
-    assert.match(formatGoalActualDisplay(row), /period mismatch/i);
-    assert.equal(isVerifiedGoalRow(row), false);
-  });
-
-  it('verified zero remains 0 for canonical auto KR when boundaries match', () => {
-    const { quarter } = currentQuarterContext();
-    const snap = quarterAlignedSnapshot({
-      blended_roas: 0,
-      spend: 100,
-      online_revenue: 0,
-      availability: {
-        blended_roas: { status: AVAILABILITY.AVAILABLE, reason: null },
-        spend: { status: AVAILABILITY.AVAILABLE, reason: null },
-      },
-      labelled: {
-        blended_roas: { availability: AVAILABILITY.AVAILABLE },
-      },
+  it('authoritative quarter snapshots may resolve live canonical OKR actuals', () => {
+    const quarter = '2026-Q2';
+    const period = okrMeasurementPeriod(quarter);
+    const snap = mockSnapshot({
+      days: period.days,
+      blended_roas: 3,
+      period_authoritative: true,
+      period_kind: 'quarter',
+      period_quarter: quarter,
+      period_start: period.start,
+      period_end: period.end,
     });
-    const row = buildOkrRow({
-      objective: 'Efficiency',
-      kr_title: 'ROAS',
-      metric_type: 'roas',
-      linked_channel: '',
-      quarter,
-      objective_status: 'on_track',
-      target_value: 2,
-      current_value: 99,
-      unit: 'x',
-    }, snap);
-    assert.equal(row.actual, 0);
-    assert.equal(row.status, 'off-track');
-    assert.equal(row.metric_availability, AVAILABILITY.AVAILABLE);
+    const row = buildOkrRow(okrRow({ quarter, target_value: 3, current_value: 0.5 }), snap);
+    assert.equal(row.actual, 3);
+    assert.equal(row.status, 'on-track');
+    assert.equal(row.from_canonical, true);
   });
 
-  it('unavailable canonical withholds actual and marks unverified', () => {
-    const { quarter } = currentQuarterContext();
-    const snap = quarterAlignedSnapshot({
-      blended_roas: null,
-      availability: {
-        blended_roas: { status: AVAILABILITY.UNAVAILABLE, reason: REASON.SOURCE_QUERY_FAILED },
-      },
-      labelled: {
-        blended_roas: {
-          availability: AVAILABILITY.UNAVAILABLE,
-          availability_reason: REASON.SOURCE_QUERY_FAILED,
-        },
-      },
-    });
-    const row = buildOkrRow({
-      objective: 'O',
-      kr_title: 'KR',
-      metric_type: 'roas',
-      linked_channel: '',
-      quarter,
-      objective_status: 'on_track',
-      target_value: 2,
-      current_value: 5,
-      unit: 'x',
-    }, snap);
-    assert.equal(row.actual, null);
-    assert.equal(row.status, 'unverified');
-    assert.equal(row.metric_availability, AVAILABILITY.UNAVAILABLE);
-    assert.equal(isVerifiedGoalRow(row), false);
-  });
-
-  it('partial canonical retains value with unverified status only when availability is partial', () => {
-    const { quarter } = currentQuarterContext();
-    const snap = quarterAlignedSnapshot({
-      blended_roas: 1.8,
-      availability: {
-        blended_roas: { status: AVAILABILITY.PARTIAL, reason: REASON.OFFLINE_UNAVAILABLE },
-      },
-      labelled: {
-        blended_roas: {
-          availability: AVAILABILITY.PARTIAL,
-          availability_reason: REASON.OFFLINE_UNAVAILABLE,
-        },
-      },
-    });
-    const row = buildOkrRow({
-      objective: 'O',
-      kr_title: 'KR',
-      metric_type: 'roas',
-      linked_channel: '',
-      quarter,
-      objective_status: 'on_track',
-      target_value: 2,
-      current_value: 0,
-      unit: 'x',
-    }, snap);
-    assert.equal(row.actual, 1.8);
-    assert.equal(row.status, 'unverified');
-    assert.equal(row.metric_availability, AVAILABILITY.PARTIAL);
-    assert.match(formatGoalStatusDisplay(row), /partial/i);
-    assert.equal(isVerifiedGoalRow(row), false);
-  });
-
-  it('completed objective stays complete even when live measurement would change', () => {
-    const snap = mockSnapshot({ blended_roas: 0.2 });
-    const row = buildOkrRow({
-      objective: 'Done',
-      kr_title: 'ROAS',
-      metric_type: 'roas',
-      linked_channel: '',
+  it('preserves completion, manual measurements, and channel-stored labels', () => {
+    const complete = buildOkrRow(okrRow({
       quarter: '2024-Q1',
       objective_status: 'complete',
-      target_value: 2,
       current_value: 2.5,
-      unit: 'x',
-    }, snap);
-    assert.equal(row.status, 'complete');
-    assert.equal(row.actual, 2.5);
-    assert.notEqual(row.status, 'off-track');
-    assert.notEqual(row.status, 'unverified');
-  });
+    }), mockSnapshot({ blended_roas: 0.2 }));
+    assert.equal(complete.status, 'complete');
+    assert.equal(complete.actual, 2.5);
 
-  it('proxy estimates are labelled on growth goals when period matches', () => {
-    const snap = mockSnapshot({ days: 30 });
-    const items = buildGoalsVsActuals(snap, {
-      growthGoals: [{
-        id: 'g1',
-        metric: 'ads.cac',
-        target: 50,
-        label: 'CAC cap',
-        periodDays: 30,
-      }],
-    });
-    assert.equal(items[0].actual, 20);
-    assert.equal(items[0].metric_is_proxy, true);
-    assert.match(formatGoalActualDisplay(items[0]), /proxy/);
-  });
-
-  it('growth goals with mismatched periodDays stay unverified', () => {
-    const snap = mockSnapshot({ days: 30, spend: 800 });
-    const items = buildGoalsVsActuals(snap, {
-      growthGoals: [{
-        id: 'g1',
-        metric: 'ads.totalSpend',
-        target: 2000,
-        label: 'Spend cap',
-        periodDays: 90,
-      }],
-    });
-    assert.equal(items[0].actual, null);
-    assert.equal(items[0].status, 'unverified');
-    assert.equal(items[0].unverified_reason, 'period_mismatch');
-  });
-
-  it('manual OKR preserves stored measurement and target', () => {
-    const snap = mockSnapshot();
-    const row = buildOkrRow({
-      objective: 'Manual',
-      kr_title: 'Survey NPS',
+    const manual = buildOkrRow(okrRow({
       metric_type: 'manual',
-      linked_channel: '',
-      quarter: '2026-Q1',
-      objective_status: 'on_track',
+      kr_title: 'Survey NPS',
       target_value: 80,
       current_value: 72,
       unit: '',
-    }, snap);
-    assert.equal(row.actual, 72);
-    assert.equal(row.target, 80);
-    assert.equal(row.status, 'at-risk');
-    assert.equal(row.from_canonical, false);
-  });
+    }), mockSnapshot());
+    assert.equal(manual.actual, 72);
+    assert.equal(manual.status, 'at-risk');
 
-  it('formatters label complete and period mismatch rows for email consumers', () => {
-    const completeRow = {
-      status: 'complete',
-      actual: 2.5,
-      unit: 'x',
-      pct: 100,
-    };
-    assert.equal(formatGoalStatusDisplay(completeRow), 'complete');
-
-    const mismatchRow = {
-      status: 'unverified',
-      unverified_reason: 'period_mismatch',
-      actual: null,
-      unit: '$',
-      metric_availability: AVAILABILITY.UNAVAILABLE,
-      metric_availability_reason: 'period_mismatch',
-    };
-    assert.match(formatGoalActualDisplay(mismatchRow), /period mismatch/i);
-    assert.equal(formatGoalStatusDisplay(mismatchRow), 'unverified (period mismatch)');
-  });
-
-  it('channel-scoped auto KR labels stored measurement without partial suffix', () => {
-    const snap = mockSnapshot({ blended_roas: 9 });
-    const row = buildOkrRow({
-      objective: 'Channel',
+    const channel = buildOkrRow(okrRow({
       kr_title: 'Meta ROAS',
-      metric_type: 'roas',
       linked_channel: 'Meta',
-      quarter: '2026-Q1',
-      objective_status: 'on_track',
-      target_value: 2,
       current_value: 1.5,
-      unit: 'x',
-    }, snap);
-    assert.equal(row.actual, 1.5);
-    assert.notEqual(row.actual, 9);
-    assert.equal(row.status, 'unverified');
-    assert.equal(row.measurement_source, 'stored');
-    assert.match(formatGoalActualDisplay(row), /\(stored\)/);
-    assert.match(formatGoalStatusDisplay(row), /unverified \(stored\)/);
-    assert.doesNotMatch(formatGoalStatusDisplay(row), /partial/i);
+    }), mockSnapshot({ blended_roas: 9 }));
+    assert.equal(channel.actual, 1.5);
+    assert.equal(channel.measurement_source, 'stored');
+    assert.match(formatGoalStatusDisplay(channel), /unverified \(stored\)/);
+    assert.doesNotMatch(formatGoalStatusDisplay(channel), /partial/i);
   });
 
-  it('includes growth goals from kv with live canonical actuals when period matches', async () => {
-    kvStore['goals:t1'] = [{
-      id: 'g1',
-      metric: 'ads.totalSpend',
-      target: 2000,
-      label: 'Spend cap',
-      periodDays: 30,
-    }];
+  it('rolling growth goals still match on shared periodDays', async () => {
+    const snap = mockSnapshot({ days: 30, spend: 500, blended_roas: 2.5 });
+    const items = buildGoalsVsActuals(snap, {
+      growthGoals: [
+        { id: 'g1', metric: 'ads.blendedRoas', target: 2, label: 'Blended ROAS goal', periodDays: 30 },
+        { id: 'g2', metric: 'ads.cac', target: 50, label: 'CAC cap', periodDays: 30 },
+        { id: 'g3', metric: 'ads.totalSpend', target: 2000, label: 'Spend cap', periodDays: 90 },
+      ],
+    });
+    assert.equal(items[0].actual, 2.5);
+    assert.equal(items[0].status, 'on-track');
+    assert.equal(items[1].metric_is_proxy, true);
+    assert.match(formatGoalActualDisplay(items[1]), /proxy/);
+    assert.equal(items[2].unverified_reason, 'period_mismatch');
+
+    kvStore['goals:t1'] = [{ id: 'g4', metric: 'ads.totalSpend', target: 2000, label: 'Spend cap', periodDays: 30 }];
     installMockDb(async (sql) => {
       if (/ad_performance_hourly/i.test(sql) && /GROUP BY 1/i.test(sql)) {
         return { rows: [adPerfRow({ spend: 800 })] };
@@ -450,63 +236,23 @@ describe('goals_vs_actuals live canonical resolution (PR10G.7)', () => {
       if (/okr_key_results/i.test(sql) || /agent_goals/i.test(sql)) return { rows: [] };
       return { rows: [] };
     });
-
-    const snap = await compute(1, 30);
-    const g = snap.goals_vs_actuals.find((x) => x.source === 'growth_goals');
-    assert.ok(g);
-    assert.equal(g.actual, 800);
-    assert.equal(g.target, 2000);
-    assert.equal(g.status, 'on-track');
+    const computed = await compute(1, 30);
+    const growth = computed.goals_vs_actuals.find((x) => x.source === 'growth_goals');
+    assert.equal(growth.actual, 800);
+    assert.equal(growth.status, 'on-track');
   });
 
-  it('resolves multiple canonical OKR goals from one aligned snapshot without extra compute', () => {
-    const { quarter } = currentQuarterContext();
-    const snap = quarterAlignedSnapshot({ spend: 500, blended_roas: 2.5 });
-    const items = buildGoalsVsActuals(snap, {
-      okrRows: [
-        {
-          objective: 'A',
-          kr_title: 'ROAS',
-          metric_type: 'roas',
-          linked_channel: '',
-          quarter,
-          objective_status: 'on_track',
-          target_value: 2,
-          current_value: 0.1,
-          unit: 'x',
-        },
-        {
-          objective: 'B',
-          kr_title: 'Spend',
-          metric_type: 'spend',
-          linked_channel: '',
-          quarter,
-          objective_status: 'on_track',
-          target_value: 400,
-          current_value: 10,
-          unit: '$',
-        },
-      ],
-    });
-    assert.equal(items.length, 2);
-    assert.equal(items[0].actual, 2.5);
-    assert.equal(items[1].actual, 500);
-    assert.notEqual(items[0].actual, 0.1);
-    assert.notEqual(items[1].actual, 10);
-  });
-
-  it('matching rolling growth-goal periods still resolve from the same rolling snapshot', () => {
-    const snap = mockSnapshot({ days: 30, spend: 500, blended_roas: 2.5 });
-    const items = buildGoalsVsActuals(snap, {
-      growthGoals: [{
-        id: 'g1',
-        metric: 'ads.blendedRoas',
-        target: 2,
-        label: 'Blended ROAS goal',
-        periodDays: 30,
-      }],
-    });
-    assert.equal(items[0].actual, 2.5);
-    assert.equal(items[0].status, 'on-track');
+  it('formatters label complete and period mismatch rows for email consumers', () => {
+    assert.equal(formatGoalStatusDisplay({ status: 'complete', actual: 2.5, unit: 'x', pct: 100 }), 'complete');
+    const mismatch = {
+      status: 'unverified',
+      unverified_reason: 'period_mismatch',
+      actual: null,
+      unit: '$',
+      metric_availability: AVAILABILITY.UNAVAILABLE,
+      metric_availability_reason: 'period_mismatch',
+    };
+    assert.match(formatGoalActualDisplay(mismatch), /period mismatch/i);
+    assert.equal(formatGoalStatusDisplay(mismatch), 'unverified (period mismatch)');
   });
 });

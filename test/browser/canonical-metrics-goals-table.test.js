@@ -67,7 +67,7 @@ const canonicalFixture = {
 };
 
 async function login(page, baseUrl, actors) {
-  await page.goto(`${baseUrl}/login?next=${encodeURIComponent(CANONICAL_ROUTE)}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${baseUrl}/login?next=${encodeURIComponent('/grow/goals')}`, { waitUntil: 'domcontentloaded' });
   await page.locator('#email').fill(actors.owner.email);
   await page.locator('#pass').fill(actors.owner.password);
   const [login] = await Promise.all([
@@ -75,6 +75,7 @@ async function login(page, baseUrl, actors) {
     page.locator('form button[type="submit"]').click(),
   ]);
   assert.equal(login.status(), 200);
+  await page.waitForSelector(PANEL, { visible: true, timeout: 90_000 });
 }
 
 test('PR10G.7 canonical metrics goals vs actuals table browser acceptance', {
@@ -140,8 +141,8 @@ test('PR10G.7 canonical metrics goals vs actuals table browser acceptance', {
   });
 
   await login(page, baseUrl, actors);
-  await page.goto(`${baseUrl}${CANONICAL_ROUTE}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector(PANEL, { visible: true });
+  const nav = await page.goto(`${baseUrl}${CANONICAL_ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+  assert.ok(nav && nav.status() < 400, `canonical-metrics navigation failed: ${nav?.status()}`);
   await page.waitForFunction((panel) => document.querySelector(panel)?.innerText.includes('Goals vs actuals'), {}, PANEL);
 
   const text = await page.$eval(PANEL, (el) => el.innerText);

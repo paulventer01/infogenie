@@ -52,37 +52,30 @@ const GROWTH_CANONICAL_METRICS = {
 const DEFAULT_GROWTH_PERIOD_DAYS = 30;
 const MS_PER_DAY = 86400000;
 
-function utcDateString(input) {
-  const d = input instanceof Date ? input : new Date(input);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function parseUtcDate(dateStr) {
-  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return null;
-  return Date.UTC(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
-}
-
 function quarterBounds(quarter) {
   const m = String(quarter || '').match(/^(\d{4})-Q([1-4])$/);
   if (!m) return null;
   const year = parseInt(m[1], 10);
   const q = parseInt(m[2], 10);
   const startMonth = (q - 1) * 3;
-  const start = utcDateString(new Date(Date.UTC(year, startMonth, 1)));
-  const end = utcDateString(new Date(Date.UTC(year, startMonth + 3, 0)));
+  const start = new Date(Date.UTC(year, startMonth, 1)).toISOString().slice(0, 10);
+  const end = new Date(Date.UTC(year, startMonth + 3, 0)).toISOString().slice(0, 10);
   return { start, end, quarter };
 }
 
 function okrMeasurementPeriod(quarter) {
   const bounds = quarterBounds(quarter);
   if (!bounds) return null;
-  const startMs = parseUtcDate(bounds.start);
-  const endMs = parseUtcDate(bounds.end);
-  if (startMs == null || endMs == null) return null;
+  const startMs = Date.UTC(
+    parseInt(bounds.start.slice(0, 4), 10),
+    parseInt(bounds.start.slice(5, 7), 10) - 1,
+    parseInt(bounds.start.slice(8, 10), 10),
+  );
+  const endMs = Date.UTC(
+    parseInt(bounds.end.slice(0, 4), 10),
+    parseInt(bounds.end.slice(5, 7), 10) - 1,
+    parseInt(bounds.end.slice(8, 10), 10),
+  );
   const days = Math.floor((endMs - startMs) / MS_PER_DAY) + 1;
   return { kind: 'quarter', quarter: bounds.quarter, days, start: bounds.start, end: bounds.end };
 }
@@ -93,40 +86,26 @@ function growthMeasurementPeriod(goal) {
   return { kind: 'rolling_days', days };
 }
 
-/** Derive rolling snapshot boundaries from days + generated_at (matches compute SQL window). */
-function snapshotMeasurementPeriod(snapshot) {
-  if (!snapshot) return null;
-  if (snapshot.period_start && snapshot.period_end) {
-    return {
-      kind: snapshot.period_kind === 'quarter' ? 'quarter' : 'calendar',
-      start: snapshot.period_start,
-      end: snapshot.period_end,
-      days: snapshot.days ?? null,
-    };
-  }
-  const days = snapshot.days;
-  if (!days) return null;
-  const endRef = snapshot.generated_at ? new Date(snapshot.generated_at) : new Date();
-  return {
-    kind: 'rolling',
-    days,
-    start: utcDateString(new Date(endRef.getTime() - days * MS_PER_DAY)),
-    end: utcDateString(endRef),
-  };
-}
-
-function periodsShareBoundaries(left, right) {
-  return Boolean(left && right && left.start === right.start && left.end === right.end);
+/** Rolling snapshots cannot prove calendar-quarter coverage until compute stamps authoritative bounds. */
+function hasAuthoritativeQuarterSnapshot(snapshot, goalPeriod) {
+  return Boolean(
+    snapshot
+    && goalPeriod
+    && snapshot.period_authoritative === true
+    && snapshot.period_kind === 'quarter'
+    && snapshot.period_quarter === goalPeriod.quarter
+    && snapshot.period_start === goalPeriod.start
+    && snapshot.period_end === goalPeriod.end,
+  );
 }
 
 function snapshotMatchesGoalPeriod(snapshot, goalPeriod) {
-  const snapPeriod = snapshotMeasurementPeriod(snapshot);
-  if (!snapPeriod || !goalPeriod) return false;
+  if (!snapshot || !goalPeriod) return false;
   if (goalPeriod.kind === 'rolling_days') {
-    return snapPeriod.kind === 'rolling' && snapPeriod.days === goalPeriod.days;
+    return Number(snapshot.days) === goalPeriod.days;
   }
   if (goalPeriod.kind === 'quarter') {
-    return periodsShareBoundaries(snapPeriod, goalPeriod);
+    return hasAuthoritativeQuarterSnapshot(snapshot, goalPeriod);
   }
   return false;
 }
@@ -528,11 +507,10 @@ module.exports = {
   formatGoalActualDisplay,
   formatGoalStatusDisplay,
   snapshotMatchesGoalPeriod,
-  snapshotMeasurementPeriod,
+  hasAuthoritativeQuarterSnapshot,
   okrMeasurementPeriod,
   growthMeasurementPeriod,
   quarterBounds,
-  utcDateString,
   CANONICAL_OKR_AUTO,
   GROWTH_CANONICAL_METRICS,
   DEFAULT_GROWTH_PERIOD_DAYS,
