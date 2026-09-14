@@ -1,9 +1,11 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  fetchAdminDrilldown, fetchPortalDrilldown, formatDrilldownCell, validDrilldown,
-  type DrilldownColumn, type DrilldownRecord, type DrilldownResponse, type DrilldownRowMeta, type DrilldownTarget,
+  drilldownContextFromPreview, drilldownTargetKey, fetchAdminDrilldown, fetchPortalDrilldown, formatDrilldownCell,
+  validDrilldown, type DrilldownColumn, type DrilldownRecord, type DrilldownResponse, type DrilldownRowMeta,
+  type DrilldownTarget,
 } from "@/lib/clientReportingDrilldown";
+import type { Preview } from "@/lib/clientReportingReport";
 import { responseError } from "@/lib/clientReporting";
 
 type Props = {
@@ -12,6 +14,42 @@ type Props = {
   target: DrilldownTarget | null;
   onClose: () => void;
 };
+
+function clearDrilldownState(setters: {
+  setRecords: (value: DrilldownRecord[]) => void;
+  setColumns: (value: DrilldownColumn[]) => void;
+  setTotalCount: (value: number | null) => void;
+  setMetricLabel: (value: string) => void;
+  setPeriodText: (value: string) => void;
+  setTimezone: (value: string) => void;
+  setCurrency: (value: string | null) => void;
+  setLiveNotice: (value: string) => void;
+  setNextCursor: (value: number | null) => void;
+  setHasMore: (value: boolean) => void;
+  setError: (value: string | null) => void;
+}) {
+  setters.setRecords([]);
+  setters.setColumns([]);
+  setters.setTotalCount(null);
+  setters.setMetricLabel("");
+  setters.setPeriodText("");
+  setters.setTimezone("");
+  setters.setCurrency(null);
+  setters.setLiveNotice("");
+  setters.setNextCursor(null);
+  setters.setHasMore(false);
+  setters.setError(null);
+}
+
+function drilldownErrorMessage(failure: string | null): string {
+  if (failure === "metric_not_drillable") return "This metric does not support contributing-record drilldown.";
+  if (failure === "invalid_currency") return "Select a currency group before viewing contributing records.";
+  if (failure === "report_context_stale") return "The saved profile or reporting period changed. Refresh the report preview, then open drilldown again.";
+  if (failure === "portal_auth_required" || failure === "portal_session_expired" || failure === "portal_revoked") {
+    return "Portal access ended. Sign in again to view contributing records.";
+  }
+  return failure || "Contributing records could not be loaded.";
+}
 
 export default function ClientReportingDrilldown({ mode, clientId, target, onClose }: Props) {
   const [records, setRecords] = useState<DrilldownRecord[]>([]);
@@ -28,6 +66,10 @@ export default function ClientReportingDrilldown({ mode, clientId, target, onClo
   const [error, setError] = useState<string | null>(null);
   const live = useRef(true);
   const sequence = useRef(0);
+  const stateSetters = {
+    setRecords, setColumns, setTotalCount, setMetricLabel, setPeriodText, setTimezone,
+    setCurrency, setLiveNotice, setNextCursor, setHasMore, setError,
+  };
 
   const applyResult = useCallback((result: DrilldownResponse, append: boolean) => {
     const period = result.period!;
@@ -58,25 +100,15 @@ export default function ClientReportingDrilldown({ mode, clientId, target, onClo
       if (!current()) return;
       const failure = responseError(result);
       if (failure || !validDrilldown(result)) {
-        setError(failure === "metric_not_drillable" ? "This metric does not support contributing-record drilldown."
-          : failure === "invalid_currency" ? "Select a currency group before viewing contributing records."
-            : failure || "Contributing records could not be loaded.");
-        if (!append) {
-          setRecords([]);
-          setColumns([]);
-          setTotalCount(null);
-        }
+        clearDrilldownState(stateSetters);
+        setError(drilldownErrorMessage(failure));
         return;
       }
       applyResult(result, append);
     } catch (e) {
       if (current()) {
+        clearDrilldownState(stateSetters);
         setError(e instanceof Error ? e.message : "Contributing records could not be loaded.");
-        if (!append) {
-          setRecords([]);
-          setColumns([]);
-          setTotalCount(null);
-        }
       }
     } finally {
       if (current()) setBusy(false);
@@ -90,23 +122,14 @@ export default function ClientReportingDrilldown({ mode, clientId, target, onClo
 
   useEffect(() => {
     if (!target) {
-      setRecords([]);
-      setColumns([]);
-      setTotalCount(null);
-      setMetricLabel("");
-      setPeriodText("");
-      setTimezone("");
-      setCurrency(null);
-      setLiveNotice("");
-      setNextCursor(null);
-      setHasMore(false);
-      setError(null);
+      clearDrilldownState(stateSetters);
       return undefined;
     }
+    clearDrilldownState(stateSetters);
     const operation = ++sequence.current;
     void loadPage(0, false, operation);
     return () => { ++sequence.current; };
-  }, [target, loadPage]);
+  }, [target ? drilldownTargetKey(target) : null, loadPage]);
 
   if (!target) return null;
 
@@ -145,19 +168,19 @@ export default function ClientReportingDrilldown({ mode, clientId, target, onClo
   </section>;
 }
 
-export function DrilldownControl({ meta, rowIndex, dates, onOpen }: {
+export function DrilldownControl({ meta, rowIndex, preview, onOpen }: {
   meta: DrilldownRowMeta | null | undefined;
   rowIndex: number;
-  dates?: { start?: string; end?: string };
+  preview: Preview;
   onOpen: (target: DrilldownTarget) => void;
 }) {
   if (!meta?.drillable) return null;
+  const context = drilldownContextFromPreview(preview);
   return <button type="button" aria-label={`View contributing records for row ${rowIndex + 1}`}
     onClick={() => onOpen({
       metricKey: meta.metric_key,
       currency: meta.currency,
-      startDate: dates?.start,
-      endDate: dates?.end,
+      ...context,
     })} style={{ marginTop: 4, fontSize: 13 }}>
     View contributing records
   </button>;

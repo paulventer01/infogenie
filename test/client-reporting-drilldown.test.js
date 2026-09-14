@@ -16,6 +16,10 @@ const PREFIX = '/api/client-reporting';
 const PERMISSION = 'tenant.settings.manage';
 const client = { id: 11, name: 'Client A', slug: 'client-a', website: null, status: 'active' };
 
+function allTimeContext(version = 1) {
+  return `profile_version=${version}&reporting_period=all_time&timezone=UTC`;
+}
+
 function load(relative, overrides = {}) {
   const filename = path.join(ROOT, relative), module = { exports: {} }, native = createRequire(filename);
   new Function('require', 'module', 'exports', fs.readFileSync(filename, 'utf8'))(
@@ -80,8 +84,27 @@ test('buildReport attaches drilldown metadata to scalar total rows only', () => 
   assert.deepEqual(currency.drilldown_rows, [{ metric_key: 'spend', currency: 'USD', drillable: true }]);
 });
 
+test('parseDrilldownQuery requires pinned report context and accepts dated portal params', () => {
+  const allTime = drilldown.parseDrilldownQuery({
+    profile_version: '2', reporting_period: 'all_time', timezone: 'UTC', cursor: '0', limit: '25',
+  });
+  assert.equal(allTime.profileVersion, 2);
+  assert.equal(allTime.dateRange.periodKey, 'all_time');
+  assert.equal(allTime.dateRange.startDate, null);
+  const dated = drilldown.parseDrilldownQuery({
+    profile_version: '2', reporting_period: 'custom', timezone: 'America/New_York',
+    start_date: '2026-03-01', end_date: '2026-03-10',
+  });
+  assert.equal(dated.dateRange.startDate, '2026-03-01');
+  assert.equal(dated.dateRange.endDate, '2026-03-10');
+  assert.throws(() => drilldown.parseDrilldownQuery({ profile_version: '1', reporting_period: 'all_time', timezone: 'UTC',
+    start_date: '2026-03-01', end_date: '2026-03-10' }), (error) => error.message === 'invalid_drilldown');
+  assert.throws(() => drilldown.parseDrilldownQuery({ reporting_period: 'all_time', timezone: 'UTC' }),
+    (error) => error.message === 'invalid_drilldown');
+});
+
 test('drilldown route rejects invalid pagination, unknown metrics and list metrics', async (t) => {
-  const profile = { report_source: 'search-intel', selected_metrics: ['runs', 'mapped_queries'],
+  const profile = { version: 1, report_source: 'search-intel', selected_metrics: ['runs', 'mapped_queries'],
     reporting_period: 'all_time', reporting_timezone: 'UTC' };
   const { request } = await fixture(t, {
     query: async (sql) => {
@@ -90,13 +113,16 @@ test('drilldown route rejects invalid pagination, unknown metrics and list metri
       return { rows: [] };
     },
   });
-  assert.equal((await request('GET', '/clients/11/metric-drilldown/runs?limit=101')).status, 400);
-  assert.equal((await request('GET', '/clients/11/metric-drilldown/not_real')).body.error, 'invalid_metric');
-  assert.equal((await request('GET', '/clients/11/metric-drilldown/mapped_queries')).body.error, 'metric_not_drillable');
+  const ctx = allTimeContext();
+  assert.equal((await request('GET', `/clients/11/metric-drilldown/runs?limit=101&${ctx}`)).status, 400);
+  assert.equal((await request('GET', `/clients/11/metric-drilldown/not_real?${ctx}`)).body.error, 'invalid_metric');
+  assert.equal((await request('GET', `/clients/11/metric-drilldown/mapped_queries?${ctx}`)).body.error, 'metric_not_drillable');
+  assert.equal((await request('GET', '/clients/11/metric-drilldown/runs')).body.error, 'invalid_drilldown');
 });
 
-test('drilldown route requires campaign currency and selected metric', async (t) => {
-  const profile = { report_source: 'campaigns', selected_metrics: ['spend'], reporting_period: 'all_time', reporting_timezone: 'UTC' };
+test('drilldown route requires campaign currency, selected metric and rejects stale profile context', async (t) => {
+  const profile = { version: 2, report_source: 'campaigns', selected_metrics: ['spend'],
+    reporting_period: 'all_time', reporting_timezone: 'UTC' };
   const { request } = await fixture(t, {
     query: async (sql) => {
       if (sql.includes('FROM clients')) return { rows: [client] };
@@ -104,12 +130,17 @@ test('drilldown route requires campaign currency and selected metric', async (t)
       return { rows: [] };
     },
   });
-  assert.equal((await request('GET', '/clients/11/metric-drilldown/spend')).body.error, 'invalid_currency');
-  assert.equal((await request('GET', '/clients/11/metric-drilldown/clicks?currency=USD')).body.error, 'metric_not_selected');
+  const ctx = allTimeContext(1);
+  assert.equal((await request('GET', `/clients/11/metric-drilldown/spend?${ctx}`)).body.error, 'report_context_stale');
+  const current = allTimeContext(2);
+  assert.equal((await request('GET', `/clients/11/metric-drilldown/spend?${current}`)).body.error, 'invalid_currency');
+  assert.equal((await request('GET', `/clients/11/metric-drilldown/clicks?currency=USD&${current}`)).body.error, 'metric_not_selected');
 });
 
 test('fetchDrilldown returns stable ordering metadata and live notice', async () => {
-  const profile = { report_source: 'search-intel', selected_metrics: ['runs'], reporting_period: 'all_time', reporting_timezone: 'UTC' };
+  const profile = { version: 1, report_source: 'search-intel', selected_metrics: ['runs'],
+    reporting_period: 'all_time', reporting_timezone: 'UTC' };
+  const dateRange = drilldown.resolvePinnedDateRange('all_time', 'UTC', null);
   const calls = [];
   const db = { query: async (sql, params) => {
     calls.push({ sql, params });
@@ -121,27 +152,39 @@ test('fetchDrilldown returns stable ordering metadata and live notice', async ()
     if (sql.includes('FROM client_reporting_profiles')) return { rows: [profile] };
     return { rows: [] };
   } };
-  const result = await drilldown.fetchDrilldown(db, 101, 11, 'runs', { cursor: 0, limit: 1 });
+  const result = await drilldown.fetchDrilldown(db, 101, 11, 'runs', {
+    cursor: 0, limit: 1, profileVersion: 1, dateRange,
+  });
   assert.equal(result.ok, true);
   assert.equal(result.total_count, 2);
   assert.equal(result.page_count, 1);
   assert.equal(result.records[0].id, 10);
   assert.match(result.live_notice, /live mapped data/i);
   assert.match(calls.find((entry) => entry.sql.includes('ORDER BY c.id ASC')).sql, /ORDER BY c\.id ASC/);
+  assert.doesNotMatch(calls.find((entry) => entry.sql.includes('ORDER BY c.id ASC')).sql, /AS runs/);
 });
 
-test('fetchDrilldown enforces selected metric and custom date range', async () => {
-  const profile = { report_source: 'search-intel', selected_metrics: ['runs'], reporting_period: 'last_7_days',
-    reporting_timezone: 'UTC' };
-  const customRange = period.validateCustomRange('2026-03-01', '2026-03-10', 'UTC', new Date('2026-03-15T12:00:00.000Z'));
+test('fetchDrilldown enforces selected metric and pinned date range without live recalculation', async () => {
+  const profile = { version: 3, report_source: 'search-intel', selected_metrics: ['runs'],
+    reporting_period: 'last_7_days', reporting_timezone: 'UTC' };
+  const pinnedDates = { startDate: '2026-03-01', endDate: '2026-03-10' };
+  const dateRange = drilldown.resolvePinnedDateRange('custom', 'UTC', pinnedDates);
   const db = { query: async (sql) => {
     if (sql.includes('count(*)::int AS total')) return { rows: [{ total: 0 }] };
     if (sql.includes('FROM client_reporting_profiles')) return { rows: [profile] };
     return { rows: [] };
   } };
-  const result = await drilldown.fetchDrilldown(db, 101, 11, 'runs', { cursor: 0, limit: 50, customRange });
+  const result = await drilldown.fetchDrilldown(db, 101, 11, 'runs', {
+    cursor: 0, limit: 50, profileVersion: 3, dateRange,
+  });
   assert.equal(result.period.start_date, '2026-03-01');
   assert.equal(result.period.end_date, '2026-03-10');
-  await assert.rejects(() => drilldown.fetchDrilldown(db, 101, 11, 'brand_mentions', { cursor: 0, limit: 50 }),
-    (error) => error.message === 'metric_not_selected');
+  const rolled = period.resolveRelative('last_7_days', 'UTC', new Date('2026-06-01T12:00:00.000Z'));
+  assert.notEqual(rolled.startDate, '2026-03-01');
+  await assert.rejects(() => drilldown.fetchDrilldown(db, 101, 11, 'brand_mentions', {
+    cursor: 0, limit: 50, profileVersion: 3, dateRange,
+  }), (error) => error.message === 'metric_not_selected');
+  await assert.rejects(() => drilldown.fetchDrilldown(db, 101, 11, 'runs', {
+    cursor: 0, limit: 50, profileVersion: 2, dateRange,
+  }), (error) => error.message === 'report_context_stale');
 });

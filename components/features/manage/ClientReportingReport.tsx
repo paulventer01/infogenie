@@ -192,9 +192,8 @@ export default function ClientReportingReport({ clientId, version, format, timez
             <tbody>{section.rows.map((row, j) => <tr key={j}>
               {row.map((cell, k) => <td key={k} style={{ padding: 8, borderTop: "1px solid #E2E8F0", verticalAlign: "top" }}>
                 <div>{cell === null ? "—" : cell}</div>
-                {k === row.length - 1 && <DrilldownControl meta={section.drilldown_rows?.[j]} rowIndex={j}
-                  dates={useCustomDates && startDate && endDate ? { start: startDate, end: endDate } : undefined}
-                  onOpen={setDrilldown} />}
+                {k === row.length - 1 && preview && <DrilldownControl meta={section.drilldown_rows?.[j]} rowIndex={j}
+                  preview={preview} onOpen={setDrilldown} />}
               </td>)}
             </tr>)}</tbody></table>
         </div>}

@@ -251,36 +251,15 @@ async function reportSnapshot(req, expectedVersion, customRange) {
     return built;
   } finally { connection.release(); }
 }
-function drilldownRangeFromQuery(query) {
-  const hasStart = Object.hasOwn(query, 'start_date');
-  const hasEnd = Object.hasOwn(query, 'end_date');
-  if (hasStart !== hasEnd) throw fail(400, 'invalid_drilldown');
-  if (!hasStart) return null;
-  if (typeof query.start_date !== 'string' || typeof query.end_date !== 'string') throw fail(400, 'invalid_drilldown');
-  return { startDate: query.start_date, endDate: query.end_date };
-}
-
-function drilldownPagination(req) {
-  const allowed = ['cursor', 'limit', 'currency', 'start_date', 'end_date'];
-  if (Object.keys(req.query).some((key) => !allowed.includes(key))) throw fail(400, 'invalid_drilldown');
-  const cursor = req.query.cursor === undefined ? 0 : Number(req.query.cursor);
-  const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
-  if (!Number.isInteger(cursor) || cursor < 0 || cursor > 2147483647) throw fail(400, 'invalid_pagination');
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw fail(400, 'invalid_pagination');
-  const currency = req.query.currency === undefined ? null : req.query.currency;
-  if (currency !== null && typeof currency !== 'string') throw fail(400, 'invalid_currency');
-  return { cursor, limit, currency, customRange: drilldownRangeFromQuery(req.query) };
-}
-
 router.get('/clients/:clientId/metric-drilldown/:metricKey', readLimiter, safe(async (req, res) => {
-  const { cursor, limit, currency, customRange } = drilldownPagination(req);
+  const { cursor, limit, currency, profileVersion, dateRange } = drilldown.parseDrilldownQuery(req.query);
   const tenantId = req.clientReportingTenantId, id = clientId(req);
   const connection = await _db.getPool().connect();
   try {
     await connection.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     await activeClient(connection, tenantId, id);
     const result = await drilldown.fetchDrilldown(connection, tenantId, id, req.params.metricKey,
-      { cursor, limit, currency, customRange });
+      { cursor, limit, currency, profileVersion, dateRange });
     await connection.query('COMMIT');
     return res.json(result);
   } catch (error) {

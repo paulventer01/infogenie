@@ -1,11 +1,22 @@
 'use strict';
 
-const { sqlBounds } = require('./period');
+const { sqlBounds, RELATIVE_PERIODS, validateCustomRange, periodLabel } = require('./period');
 const metrics = require('./metrics');
-const { resolveDateRange } = require('./snapshot');
 const sources = require('./sources');
 
 const { SEARCH_SCALAR, CAMPAIGN_SCALAR, LIST_METRICS, isDrillable, unsupportedReason } = metrics;
+
+const DRILLDOWN_QUERY_KEYS = new Set([
+  'cursor', 'limit', 'currency', 'start_date', 'end_date', 'profile_version', 'reporting_period', 'timezone',
+]);
+const CAMPAIGN_VALUE_SELECT = {
+  spend: 'c.spend AS spend',
+  impressions: 'c.impressions AS impressions',
+  clicks: 'c.clicks AS clicks',
+  conversions: 'c.conversions AS conversions',
+  revenue: 'c.revenue AS revenue',
+  performance_rows: 'c.spend,c.impressions,c.clicks,c.conversions,c.revenue',
+};
 
 function fail(status, code) { return Object.assign(new Error(code), { status }); }
 
@@ -20,16 +31,8 @@ function searchFilter(metricKey) {
   return '';
 }
 
-function metricValueColumn(metricKey) {
-  const map = {
-    performance_rows: null,
-    spend: 'c.spend',
-    impressions: 'c.impressions',
-    clicks: 'c.clicks',
-    conversions: 'c.conversions',
-    revenue: 'c.revenue',
-  };
-  return map[metricKey] ?? null;
+function campaignValueSelect(metricKey) {
+  return CAMPAIGN_VALUE_SELECT[metricKey] ?? null;
 }
 
 function searchColumns() {
@@ -53,7 +56,6 @@ function campaignColumns(metricKey) {
     { key: 'currency', label: 'Currency' },
     { key: 'bucket_hour', label: 'Recorded at' },
   ];
-  const value = metricValueColumn(metricKey);
   if (metricKey === 'performance_rows') {
     return [...base,
       { key: 'spend', label: 'Spend' },
@@ -68,19 +70,77 @@ function campaignColumns(metricKey) {
 }
 
 async function loadProfile(db, tenantId, clientId) {
-  const { rows } = await db.query(`SELECT report_source, selected_metrics, reporting_period, reporting_timezone
+  const { rows } = await db.query(`SELECT report_source, selected_metrics, reporting_period, reporting_timezone, version
     FROM client_reporting_profiles WHERE tenant_id=$1 AND client_id=$2`, [tenantId, clientId]);
   if (!rows[0]) throw fail(409, 'profile_required');
   return rows[0];
 }
 
-function resolveMetricContext(profile, metricKey, customRange) {
+function parseProfileVersion(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const version = Number(value);
+  if (!Number.isInteger(version) || version < 1) throw fail(400, 'invalid_drilldown');
+  return version;
+}
+
+function parseReportingPeriod(value) {
+  if (typeof value !== 'string' || !value) throw fail(400, 'invalid_drilldown');
+  if (value === 'custom' || RELATIVE_PERIODS.has(value)) return value;
+  throw fail(400, 'invalid_drilldown');
+}
+
+function parseTimezone(value) {
+  if (typeof value !== 'string' || !value || value.length > 64) throw fail(400, 'invalid_drilldown');
+  return value;
+}
+
+function pinnedDatesFromQuery(query) {
+  const hasStart = Object.hasOwn(query, 'start_date');
+  const hasEnd = Object.hasOwn(query, 'end_date');
+  if (hasStart !== hasEnd) throw fail(400, 'invalid_drilldown');
+  if (!hasStart) return null;
+  if (typeof query.start_date !== 'string' || typeof query.end_date !== 'string') throw fail(400, 'invalid_drilldown');
+  return { startDate: query.start_date, endDate: query.end_date };
+}
+
+function resolvePinnedDateRange(reportingPeriod, timezone, pinnedDates) {
+  if (reportingPeriod === 'all_time') {
+    if (pinnedDates) throw fail(400, 'invalid_drilldown');
+    return {
+      periodKey: 'all_time', timezone, startDate: null, endDate: null, exclusiveEnd: null,
+      startUtc: null, endUtc: null, label: periodLabel('all_time', null, null, timezone),
+    };
+  }
+  if (!pinnedDates) throw fail(400, 'invalid_drilldown');
+  return validateCustomRange(pinnedDates.startDate, pinnedDates.endDate, timezone);
+}
+
+function parseDrilldownQuery(query) {
+  if (!query || typeof query !== 'object' || Object.keys(query).some((key) => !DRILLDOWN_QUERY_KEYS.has(key))) {
+    throw fail(400, 'invalid_drilldown');
+  }
+  const cursor = query.cursor === undefined ? 0 : Number(query.cursor);
+  const limit = query.limit === undefined ? 50 : Number(query.limit);
+  if (!Number.isInteger(cursor) || cursor < 0 || cursor > 2147483647) throw fail(400, 'invalid_pagination');
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw fail(400, 'invalid_pagination');
+  const currency = query.currency === undefined ? null : query.currency;
+  if (currency !== null && typeof currency !== 'string') throw fail(400, 'invalid_currency');
+  const profileVersion = parseProfileVersion(query.profile_version);
+  if (profileVersion === null) throw fail(400, 'invalid_drilldown');
+  const reportingPeriod = parseReportingPeriod(query.reporting_period);
+  const timezone = parseTimezone(query.timezone);
+  const pinnedDates = pinnedDatesFromQuery(query);
+  const dateRange = resolvePinnedDateRange(reportingPeriod, timezone, pinnedDates);
+  return { cursor, limit, currency, profileVersion, reportingPeriod, timezone, dateRange };
+}
+
+function resolveMetricContext(profile, metricKey, dateRange, expectedVersion) {
+  if (expectedVersion !== undefined && profile.version !== expectedVersion) throw fail(409, 'report_context_stale');
   const source = profile.report_source;
   const reason = unsupportedReason(source, metricKey);
   if (reason) throw fail(400, reason === 'invalid_metric' ? 'invalid_metric' : 'metric_not_drillable');
   const selected = metrics.resolveSelection(source, profile.selected_metrics);
   if (!selected.includes(metricKey)) throw fail(400, 'metric_not_selected');
-  const dateRange = resolveDateRange(profile, customRange);
   return { source, dateRange, selected };
 }
 
@@ -121,9 +181,8 @@ async function fetchCampaignRecords(db, spec, tenantId, clientId, metricKey, cur
     JOIN ${spec.mappings} m ON m.${spec.key}=r.id AND m.tenant_id=$1 AND m.client_id=$2
     WHERE c.tenant_id=$1 AND r.currency=$3${rangeFilter}`;
   const count = await db.query(`SELECT count(*)::int AS total ${childJoin}`, rangeParams);
-  const valueSql = metricKey === 'performance_rows'
-    ? 'c.spend,c.impressions,c.clicks,c.conversions,c.revenue'
-    : `${metricValueColumn(metricKey)} AS ${metricKey}`;
+  const valueSql = campaignValueSelect(metricKey);
+  if (!valueSql) throw fail(400, 'invalid_metric');
   const rows = await db.query(`SELECT c.id,c.campaign_id,r.name AS campaign_name,r.currency,c.bucket_hour,${valueSql}
     ${childJoin} AND c.id>$${rangeParams.length + 1} ORDER BY c.id ASC LIMIT $${rangeParams.length + 2}`,
   [...rangeParams, cursor, limit + 1]);
@@ -149,19 +208,22 @@ async function fetchCampaignRecords(db, spec, tenantId, clientId, metricKey, cur
     columns: campaignColumns(metricKey) };
 }
 
-async function fetchDrilldown(db, tenantId, clientId, metricKey, { cursor = 0, limit = 50, currency = null, customRange = null } = {}) {
+async function fetchDrilldown(db, tenantId, clientId, metricKey, {
+  cursor = 0, limit = 50, currency = null, profileVersion, dateRange,
+} = {}) {
   if (!Number.isInteger(cursor) || cursor < 0 || cursor > 2147483647) throw fail(400, 'invalid_pagination');
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw fail(400, 'invalid_pagination');
+  if (!dateRange || typeof dateRange !== 'object') throw fail(400, 'invalid_drilldown');
   const profile = await loadProfile(db, tenantId, clientId);
-  const { source, dateRange } = resolveMetricContext(profile, metricKey, customRange);
+  const { source, dateRange: resolvedRange } = resolveMetricContext(profile, metricKey, dateRange, profileVersion);
   const spec = sources.source(source);
   let payload;
   if (source === 'search-intel') {
     if (currency) throw fail(400, 'invalid_currency');
-    payload = await fetchSearchRecords(db, spec, tenantId, clientId, metricKey, dateRange, cursor, limit);
+    payload = await fetchSearchRecords(db, spec, tenantId, clientId, metricKey, resolvedRange, cursor, limit);
   } else {
     payload = await fetchCampaignRecords(db, spec, tenantId, clientId, metricKey, validateCurrency(currency),
-      dateRange, cursor, limit);
+      resolvedRange, cursor, limit);
   }
   return {
     ok: true,
@@ -170,11 +232,11 @@ async function fetchDrilldown(db, tenantId, clientId, metricKey, { cursor = 0, l
     source,
     currency: source === 'campaigns' ? validateCurrency(currency) : null,
     period: {
-      key: dateRange.periodKey || profile.reporting_period || 'all_time',
-      label: dateRange.label || 'All-time recorded data',
-      start_date: dateRange.startDate,
-      end_date: dateRange.endDate,
-      timezone: dateRange.timezone || profile.reporting_timezone || 'UTC',
+      key: resolvedRange.periodKey || profile.reporting_period || 'all_time',
+      label: resolvedRange.label || 'All-time recorded data',
+      start_date: resolvedRange.startDate,
+      end_date: resolvedRange.endDate,
+      timezone: resolvedRange.timezone || profile.reporting_timezone || 'UTC',
     },
     live_notice: 'Contributing records are read from live mapped data and may differ from the preview snapshot.',
     total_count: payload.total_count,
@@ -188,5 +250,6 @@ async function fetchDrilldown(db, tenantId, clientId, metricKey, { cursor = 0, l
 
 module.exports = {
   SEARCH_SCALAR, CAMPAIGN_SCALAR, LIST_METRICS, isDrillable, unsupportedReason,
-  fetchDrilldown, resolveMetricContext, loadProfile,
+  fetchDrilldown, resolveMetricContext, loadProfile, parseDrilldownQuery,
+  resolvePinnedDateRange, pinnedDatesFromQuery,
 };

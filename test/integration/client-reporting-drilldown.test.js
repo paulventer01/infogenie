@@ -15,6 +15,20 @@ function portalCookie(setCookieArray) {
   return null;
 }
 
+function drilldownQuery(preview, extra = {}) {
+  const params = new URLSearchParams({
+    profile_version: String(preview.profile_version),
+    reporting_period: preview.reporting_period || 'all_time',
+    timezone: preview.reporting_dates?.timezone || 'UTC',
+    ...Object.fromEntries(Object.entries(extra).map(([key, value]) => [key, String(value)])),
+  });
+  if (preview.reporting_dates?.start && preview.reporting_dates?.end) {
+    params.set('start_date', preview.reporting_dates.start);
+    params.set('end_date', preview.reporting_dates.end);
+  }
+  return params.toString();
+}
+
 test('Client reporting drilldown: totals reconcile, isolation, pagination and portal auth', {
   skip: !dedicatedUrl && !required ? 'no PR10F1_TEST_DATABASE_URL' : false,
   timeout: 120_000,
@@ -108,31 +122,49 @@ test('Client reporting drilldown: totals reconcile, isolation, pagination and po
   await seedRuns(tb.id, qForeign, 4, true, null);
   const preview = await call(a, 'GET', `${prefix}/clients/${ca}/report-preview`);
   assert.equal(preview.report.sections.find((section) => section.title === 'Search totals').rows.find((row) => row[0] === 'Runs')[1], 4);
-  const page1 = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/runs?limit=2`);
+  const ctx = drilldownQuery(preview);
+  const page1 = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/runs?limit=2&${ctx}`);
   assert.equal(page1.total_count, 4);
   assert.equal(page1.records.length, 2);
   assert.ok(page1.has_more);
   const ids1 = page1.records.map((row) => row.id);
-  const page2 = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/runs?limit=2&cursor=${page1.next_cursor}`);
+  const page2 = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/runs?limit=2&cursor=${page1.next_cursor}&${ctx}`);
   assert.equal(page2.records.length, 2);
   const ids2 = page2.records.map((row) => row.id);
   assert.deepEqual([...new Set([...ids1, ...ids2])].sort((x, y) => x - y), [...ids1, ...ids2].sort((x, y) => x - y));
   assert.equal([...new Set([...ids1, ...ids2])].length, 4);
-  const mentions = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/brand_mentions?limit=50`);
+  const mentions = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/brand_mentions?limit=50&${ctx}`);
   assert.equal(mentions.total_count, 3);
-  assert.equal((await call(a, 'GET', `${prefix}/clients/${cb}/metric-drilldown/runs`, undefined, 404)).error, 'client_not_found');
-  assert.equal((await call(b, 'GET', `${prefix}/clients/${ca}/metric-drilldown/runs`, undefined, 404)).error, 'client_not_found');
+  assert.equal((await call(a, 'GET', `${prefix}/clients/${cb}/metric-drilldown/runs?${ctx}`, undefined, 404)).error, 'client_not_found');
+  assert.equal((await call(b, 'GET', `${prefix}/clients/${ca}/metric-drilldown/runs?${ctx}`, undefined, 404)).error, 'client_not_found');
+  const stale = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/runs?profile_version=99&reporting_period=all_time&timezone=UTC`, undefined, 409);
+  assert.equal(stale.error, 'report_context_stale');
   const invite = await call(a, 'POST', `${prefix}/clients/${ca}/portal/invitations`, {}, 201);
   const token = invite.invite_path.split('/').pop();
   const redeem = await request(app.baseUrl, 'POST', `${portalApi}/redeem/${token}`, { body: {} });
   const portal = portalCookie(redeem.cookies);
-  const portalRuns = await request(app.baseUrl, 'GET', `${portalApi}/metric-drilldown/runs?limit=50`, { cookie: portal });
+  const portalRuns = await request(app.baseUrl, 'GET', `${portalApi}/metric-drilldown/runs?limit=50&${ctx}`, { cookie: portal });
   assert.equal(portalRuns.status, 200);
   assert.equal(portalRuns.json.total_count, 4);
-  const unauth = await request(app.baseUrl, 'GET', `${portalApi}/metric-drilldown/runs`);
+  const unauth = await request(app.baseUrl, 'GET', `${portalApi}/metric-drilldown/runs?${ctx}`);
   assert.equal(unauth.status, 401);
+  await call(a, 'PUT', `${prefix}/clients/${ca}/profile`, { ...profileBody, reporting_period: 'last_7_days', expected_version: 1 });
+  const datedPreview = await call(a, 'GET', `${prefix}/clients/${ca}/report-preview`);
+  assert.ok(datedPreview.reporting_dates?.start);
+  const datedCtx = drilldownQuery(datedPreview);
+  const portalDated = await request(app.baseUrl, 'GET', `${portalApi}/metric-drilldown/runs?limit=50&${datedCtx}`, { cookie: portal });
+  assert.equal(portalDated.status, 200, portalDated.text);
+  assert.equal(portalDated.json.period.start_date, datedPreview.reporting_dates.start);
+  assert.equal(portalDated.json.period.end_date, datedPreview.reporting_dates.end);
+  const portalPage1 = await request(app.baseUrl, 'GET', `${portalApi}/metric-drilldown/runs?limit=2&${datedCtx}`, { cookie: portal });
+  assert.equal(portalPage1.status, 200);
+  await call(a, 'POST', `${prefix}/clients/${ca}/portal/revoke`, {});
+  const revokedPage2 = await request(app.baseUrl, 'GET',
+    `${portalApi}/metric-drilldown/runs?limit=2&cursor=${portalPage1.json.next_cursor}&${datedCtx}`, { cookie: portal });
+  assert.equal(revokedPage2.status, 403);
+  assert.equal(revokedPage2.json.error, 'portal_revoked');
   await call(a, 'PUT', `${prefix}/clients/${ca}/profile`, { ...profileBody, report_source: 'campaigns',
-    selected_metrics: ['spend', 'impressions'], expected_version: 1 });
+    selected_metrics: ['spend', 'impressions'], expected_version: 2 });
   const camp = (await pool.query("INSERT INTO ad_campaigns (tenant_id,name,platform_camp_id,platform,currency) VALUES ($1,'C','x','google','USD') RETURNING id",
     [ta.id])).rows[0].id;
   await pool.query('INSERT INTO client_reporting_campaign_mappings (tenant_id,campaign_id,client_id,mapping_id,created_by_user_id) VALUES ($1,$2,$3,$4,$5)',
@@ -140,9 +172,11 @@ test('Client reporting drilldown: totals reconcile, isolation, pagination and po
   await pool.query(`INSERT INTO ad_performance_hourly (tenant_id,campaign_id,bucket_hour,spend,impressions,clicks,conversions,revenue,raw)
     VALUES ($1,$2,now()-interval '2 hours',10,100,5,1,20,'{}'),($1,$2,now()-interval '1 hour',5,50,2,0,0,'{}')`,
   [ta.id, camp]);
-  const spend = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/spend?currency=USD`);
+  const campaignPreview = await call(a, 'GET', `${prefix}/clients/${ca}/report-preview`);
+  const campaignCtx = drilldownQuery(campaignPreview, { currency: 'USD' });
+  const spend = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/spend?${campaignCtx}`);
   assert.equal(spend.total_count, 2);
   assert.equal(spend.records.reduce((sum, row) => sum + Number(row.spend), 0), 15);
-  const eur = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/spend?currency=EUR`);
+  const eur = await call(a, 'GET', `${prefix}/clients/${ca}/metric-drilldown/spend?${drilldownQuery(campaignPreview, { currency: 'EUR' })}`);
   assert.equal(eur.total_count, 0);
 });

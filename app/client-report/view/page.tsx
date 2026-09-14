@@ -78,8 +78,7 @@ export default function ClientReportViewPage() {
               {row.map((cell, k) => <td key={k} style={{ padding: 8, borderTop: "1px solid #E2E8F0", verticalAlign: "top" }}>
                 <div>{cell === null ? "—" : cell}</div>
                 {k === row.length - 1 && <DrilldownControl meta={section.drilldown_rows?.[j]} rowIndex={j}
-                  dates={preview.reporting_dates ? { start: preview.reporting_dates.start, end: preview.reporting_dates.end } : undefined}
-                  onOpen={setDrilldown} />}
+                  preview={preview} onOpen={setDrilldown} />}
               </td>)}
             </tr>)}</tbody>
           </table>

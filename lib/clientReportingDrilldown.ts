@@ -1,5 +1,6 @@
 import { apiGet, type ApiResult } from "@/lib/api";
 import { ADMIN_API, PORTAL_API } from "@/lib/clientReportingPortal";
+import type { Preview } from "@/lib/clientReportingReport";
 
 export type DrilldownColumn = { key: string; label: string };
 export type DrilldownRecord = Record<string, string | number | boolean | null>;
@@ -29,6 +30,9 @@ export type DrilldownResponse = ApiResult & {
 export type DrilldownTarget = {
   metricKey: string;
   currency: string | null;
+  profileVersion: number;
+  reportingPeriod: string;
+  timezone: string;
   startDate?: string;
   endDate?: string;
 };
@@ -64,8 +68,32 @@ export function validDrilldown(value: unknown): value is DrilldownResponse {
     && typeof row.live_notice === "string" && !!row.period && typeof row.period.timezone === "string";
 }
 
+export function drilldownContextFromPreview(preview: Preview): Pick<DrilldownTarget, "profileVersion" | "reportingPeriod" | "timezone" | "startDate" | "endDate"> {
+  const reportingPeriod = preview.reporting_period || "all_time";
+  const timezone = preview.reporting_dates?.timezone || "UTC";
+  const startDate = preview.reporting_dates?.start;
+  const endDate = preview.reporting_dates?.end;
+  return {
+    profileVersion: preview.profile_version,
+    reportingPeriod,
+    timezone,
+    ...(startDate && endDate ? { startDate, endDate } : {}),
+  };
+}
+
+export function drilldownTargetKey(target: DrilldownTarget): string {
+  return [target.metricKey, target.currency ?? "", target.profileVersion, target.reportingPeriod, target.timezone,
+    target.startDate ?? "", target.endDate ?? ""].join("|");
+}
+
 function queryString(target: DrilldownTarget, cursor = 0, limit = 50): string {
-  const params = new URLSearchParams({ cursor: String(cursor), limit: String(limit) });
+  const params = new URLSearchParams({
+    cursor: String(cursor),
+    limit: String(limit),
+    profile_version: String(target.profileVersion),
+    reporting_period: target.reportingPeriod,
+    timezone: target.timezone,
+  });
   if (target.currency) params.set("currency", target.currency);
   if (target.startDate && target.endDate) {
     params.set("start_date", target.startDate);

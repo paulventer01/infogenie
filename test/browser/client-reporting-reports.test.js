@@ -240,7 +240,17 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     await selectClient(owner, first.id);
     const previewData = await preview();
     assert.deepEqual(previewData.selected_metrics, ['runs']);
-    const direct = await call(owner, `${API}/clients/${first.id}/metric-drilldown/runs?limit=50`);
+    const ctx = new URLSearchParams({
+      limit: '50',
+      profile_version: String(previewData.profile_version),
+      reporting_period: previewData.reporting_period || 'all_time',
+      timezone: previewData.reporting_dates?.timezone || 'UTC',
+    });
+    if (previewData.reporting_dates?.start && previewData.reporting_dates?.end) {
+      ctx.set('start_date', previewData.reporting_dates.start);
+      ctx.set('end_date', previewData.reporting_dates.end);
+    }
+    const direct = await call(owner, `${API}/clients/${first.id}/metric-drilldown/runs?${ctx.toString()}`);
     assert.equal(direct.status, 200, JSON.stringify(direct.body));
     assert.equal(direct.body.total_count, 3);
     await responseFor(owner, 'GET', `${API}/clients/${first.id}/metric-drilldown/runs`,
@@ -250,6 +260,23 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     await owner.waitForFunction((selector) => !document.querySelector(selector), {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
     await responseFor(owner, 'GET', profilePath(second.id), () => owner.select(`${PANEL} select[name="client_id"]`, String(second.id)));
     await owner.waitForFunction((selector) => !document.querySelector(selector), {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
+    const switchProfile = await call(owner, profilePath(first.id), 'PUT', {
+      ...profile('pdf', 'search-intel', version),
+      selected_metrics: ['runs', 'successful_runs'], reporting_period: 'all_time', expected_version: version,
+    });
+    assert.equal(switchProfile.status, 200);
+    version = switchProfile.body.profile.version;
+    await owner.reload({ waitUntil: 'networkidle2' });
+    await selectClient(owner, first.id);
+    await preview();
+    await responseFor(owner, 'GET', `${API}/clients/${first.id}/metric-drilldown/runs`, () => button(owner, 'View contributing records for row 1', SECTION));
+    await text(owner, '3 contributing records total', SECTION);
+    await responseFor(owner, 'GET', `${API}/clients/${first.id}/metric-drilldown/successful_runs`,
+      () => button(owner, 'View contributing records for row 2', SECTION));
+    await owner.waitForFunction((selector) => {
+      const panel = document.querySelector(selector);
+      return panel && panel.innerText.includes('2 contributing records total') && !panel.innerText.includes('3 contributing records total');
+    }, {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
   });
   await t.test('preview honors saved metric order from profile', async () => {
     await save('pdf');
