@@ -49,27 +49,39 @@ function buildReport(client, profile, data, workspaceBrand, selectedMetrics, dat
     ['Layout', 'PDF and slides shorten long cells; spreadsheet keeps bounded text'],
     ['Generation', 'Fresh snapshot at generation; may differ from preview'],
   ]);
-  if (data.source === 'search-intel') {
-    const metricRows = selectedMetrics.filter((key) => SEARCH_SCALAR.has(key))
-      .map((key) => [labelFor(data.source, key), summary[key]]);
-    if (metricRows.length) table('Search totals', ['Metric', 'Recorded value'], metricRows);
-    for (const key of selectedMetrics) {
-      if (key === 'mapped_queries') {
-        table('Mapped queries', ['ID', 'Query', 'Brand', 'Locale'], records.map((r) => [r.id, r.query, r.brand, r.locale]));
-      } else if (key === 'recent_search_runs') {
-        table('Recent search runs', ['ID', 'Query ID', 'Provider', 'Mentioned', 'Position', 'Failed', 'Recorded at'],
-          recent.llm_runs.slice(0, 50).map((r) => [r.id, r.query_id, r.provider, r.brand_mentioned, r.brand_position, r.failed, r.ran_at]));
+  const flushSearchScalars = (keys) => {
+    if (!keys.length) return;
+    table('Search totals', ['Metric', 'Recorded value'], keys.map((key) => [labelFor(data.source, key), summary[key]]));
+  };
+  const flushCampaignScalars = (keys) => {
+    if (!keys.length) return;
+    table('Currency totals', ['Currency', 'Metric', 'Recorded value'], summary.by_currency.slice(0, 100).flatMap((r) =>
+      keys.map((key) => [r.currency, labelFor(data.source, key), r[key]])));
+    table('Currency coverage', ['Item', 'Coverage'], [['Currency groups', `First ${Math.min(100, summary.by_currency.length)} of ${summary.by_currency.length}`],
+      ['Money', 'Currencies reported separately; no conversion or combined money total']]);
+  };
+  let pendingScalars = [];
+  const flushScalars = () => {
+    if (data.source === 'search-intel') flushSearchScalars(pendingScalars);
+    else flushCampaignScalars(pendingScalars);
+    pendingScalars = [];
+  };
+  for (const key of selectedMetrics) {
+    if (data.source === 'search-intel') {
+      if (SEARCH_SCALAR.has(key)) pendingScalars.push(key);
+      else {
+        flushScalars();
+        if (key === 'mapped_queries') {
+          table('Mapped queries', ['ID', 'Query', 'Brand', 'Locale'], records.map((r) => [r.id, r.query, r.brand, r.locale]));
+        } else if (key === 'recent_search_runs') {
+          table('Recent search runs', ['ID', 'Query ID', 'Provider', 'Mentioned', 'Position', 'Failed', 'Recorded at'],
+            recent.llm_runs.slice(0, 50).map((r) => [r.id, r.query_id, r.provider, r.brand_mentioned, r.brand_position, r.failed, r.ran_at]));
+        }
       }
-    }
-  } else {
-    const metricKeys = selectedMetrics.filter((key) => CAMPAIGN_SCALAR.has(key));
-    if (metricKeys.length) {
-      table('Currency totals', ['Currency', 'Metric', 'Recorded value'], summary.by_currency.slice(0, 100).flatMap((r) =>
-        metricKeys.map((key) => [r.currency, labelFor(data.source, key), r[key]])));
-      table('Currency coverage', ['Item', 'Coverage'], [['Currency groups', `First ${Math.min(100, summary.by_currency.length)} of ${summary.by_currency.length}`],
-        ['Money', 'Currencies reported separately; no conversion or combined money total']]);
-    }
-    for (const key of selectedMetrics) {
+    } else if (CAMPAIGN_SCALAR.has(key)) {
+      pendingScalars.push(key);
+    } else {
+      flushScalars();
       if (key === 'mapped_campaigns') {
         table('Mapped campaigns', ['ID', 'Name', 'Platform', 'Currency', 'Status'], records.map((r) => [r.id, r.name, r.platform, r.currency, r.status]));
       } else if (key === 'recent_performance') {
@@ -81,6 +93,7 @@ function buildReport(client, profile, data, workspaceBrand, selectedMetrics, dat
       }
     }
   }
+  flushScalars();
   return { ok: true, client, profile_version: profile.version, format: profile.default_format,
     can_generate: summary.mapped_records > 0,
     reporting_period: dateRange?.periodKey || profile.reporting_period || 'all_time',

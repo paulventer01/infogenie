@@ -91,6 +91,30 @@ test('sqlBounds convert profile timezone midnights to UTC instants including DST
   assert.equal(jhbBounds.end, '2024-06-15T22:00:00.000Z');
 });
 
+test('buildReport interleaves detail sections with scalar totals in selected_metrics order', () => {
+  const campaigns = { source: 'campaigns', records: [], summary: { mapped_records: 1,
+    by_currency: [{ currency: 'USD', spend: 1, impressions: 2, clicks: 3, conversions: 0, revenue: 0, performance_rows: 1 }] },
+    recent: { performance: [], optimizer_actions: [{ campaign_id: 1, action_type: 'pause', applied: true, created_at: '2026-03-01' }] },
+    summary_scope: 'all_mapped_records' };
+  const mixed = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, campaigns, null,
+    ['recent_actions', 'spend'], null);
+  const titles = mixed.report.sections.map((section) => section.title);
+  const actionsIndex = titles.indexOf('Recent actions');
+  const totalsIndex = titles.indexOf('Currency totals');
+  assert.ok(actionsIndex >= 0 && totalsIndex >= 0);
+  assert.ok(actionsIndex < totalsIndex, titles.join(' | '));
+  const search = { source: 'search-intel', records: [{ id: 1, query: 'q', brand: 'b', locale: 'en' }],
+    summary: { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 },
+    recent: { llm_runs: [] }, summary_scope: 'all_mapped_records' };
+  const searchMixed = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, search, null,
+    ['mapped_queries', 'runs'], null);
+  const searchTitles = searchMixed.report.sections.map((section) => section.title);
+  const queriesIndex = searchTitles.indexOf('Mapped queries');
+  const searchTotalsIndex = searchTitles.indexOf('Search totals');
+  assert.ok(queriesIndex >= 0 && searchTotalsIndex >= 0);
+  assert.ok(queriesIndex < searchTotalsIndex, searchTitles.join(' | '));
+});
+
 test('buildReport preserves selected metric order in search totals and campaign currency rows', () => {
   const data = { source: 'search-intel', records: [], summary: { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 },
     recent: { llm_runs: [] }, summary_scope: 'all_mapped_records' };

@@ -26,7 +26,13 @@ export default function ClientReportingReport({ clientId, version, format, timez
   function invalidatePreview() {
     setPreview(null); setPreviewStamp(null); setConfirm(null); setNotice(null);
   }
-  useEffect(() => { invalidatePreview(); }, [useCustomDates, startDate, endDate]);
+  function cancelOperations() {
+    ++sequence.current;
+    running.current = false;
+    setBusy(false);
+    invalidatePreview();
+  }
+  useEffect(() => { cancelOperations(); }, [useCustomDates, startDate, endDate]);
   function dateQuery() {
     if (!useCustomDates) return "";
     if (!startDate || !endDate) throw new Error("Enter both custom start and end dates before previewing.");
@@ -50,10 +56,20 @@ export default function ClientReportingReport({ clientId, version, format, timez
     if (!await checkAccess() || !current()) throw new Error("Access could not be verified. Preview again before generating.");
     return true;
   }
+  function stampStillCurrent(stamp: DateStamp) {
+    return stampMatches(stamp, currentStamp());
+  }
+  function releaseOperation(operation: number) {
+    if (operation === sequence.current) {
+      running.current = false;
+      setBusy(false);
+    }
+  }
   async function perform(download: boolean) {
     if (running.current || !live.current) return;
     if (download && (!previewCurrent || !preview?.can_generate)) return;
-    const operation = ++sequence.current, current = () => live.current && operation === sequence.current;
+    const operation = ++sequence.current, stampAtStart = currentStamp();
+    const current = () => live.current && operation === sequence.current && stampStillCurrent(stampAtStart);
     running.current = true; setBusy(true); setError(null); setNotice(null);
     if (!download) invalidatePreview();
     try {
@@ -75,7 +91,7 @@ export default function ClientReportingReport({ clientId, version, format, timez
         if (failure && accessLost(failure)) clearContext(failure);
         if (failure || !validPreview(result, clientId, version, format)) throw new Error(failure || "The preview could not be verified. Try previewing again.");
         if (!await verify(current) || !current()) return;
-        setPreview(result); setPreviewStamp(currentStamp());
+        setPreview(result); setPreviewStamp(stampAtStart);
       }
     } catch (e) {
       if (current()) {
@@ -83,11 +99,12 @@ export default function ClientReportingReport({ clientId, version, format, timez
         if (accessLost(message)) clearContext(message);
         invalidatePreview(); setError(message);
       }
-    } finally { if (current()) { running.current = false; setBusy(false); } }
+    } finally { releaseOperation(operation); }
   }
   async function prepareEmail() {
     if (running.current || !live.current || !previewCurrent || !preview?.can_generate) return;
-    const operation = ++sequence.current, current = () => live.current && operation === sequence.current;
+    const operation = ++sequence.current, stampAtStart = currentStamp();
+    const current = () => live.current && operation === sequence.current && stampStillCurrent(stampAtStart);
     running.current = true; setBusy(true); setError(null); setNotice(null); setConfirm(null);
     try {
       if (!await verify(current) || !current()) return;
@@ -108,11 +125,12 @@ export default function ClientReportingReport({ clientId, version, format, timez
         if (accessLost(message)) clearContext(message);
         setError(message);
       }
-    } finally { if (current()) { running.current = false; setBusy(false); } }
+    } finally { releaseOperation(operation); }
   }
   async function sendEmail() {
     if (running.current || !live.current || !confirm || !previewCurrent) return;
-    const operation = ++sequence.current, current = () => live.current && operation === sequence.current;
+    const operation = ++sequence.current, stampAtStart = currentStamp();
+    const current = () => live.current && operation === sequence.current && stampStillCurrent(stampAtStart);
     running.current = true; setBusy(true); setError(null); setNotice(null);
     try {
       if (!await verify(current) || !current()) return;
@@ -133,17 +151,17 @@ export default function ClientReportingReport({ clientId, version, format, timez
         if (accessLost(message)) clearContext(message);
         setError(message); setConfirm(null);
       }
-    } finally { if (current()) { running.current = false; setBusy(false); } }
+    } finally { releaseOperation(operation); }
   }
   return <section aria-label="Client report preview" style={{ marginTop: 20, padding: 20, border: "1px solid #E2E8F0", borderRadius: 12, background: "#FFFFFF", minWidth: 0 }}>
     <h2>Preview and generate a client report</h2>
     <p>Uses this client&apos;s saved profile and mapped records. Generate downloads a fresh snapshot, so values may differ from the preview. Email sends to the configured delivery recipient.</p>
     <div style={{ margin: "12px 0", padding: 12, background: "#F8FAFC", borderRadius: 8 }}>
-      <label><input type="checkbox" checked={useCustomDates} onChange={(event) => setUseCustomDates(event.target.checked)} /> Use custom dates for this manual run</label>
+      <label><input type="checkbox" checked={useCustomDates} disabled={busy} onChange={(event) => setUseCustomDates(event.target.checked)} /> Use custom dates for this manual run</label>
       <p style={{ fontSize: 14, color: "#64748B", margin: "8px 0" }}>{PERIOD_HELP} Profile timezone: {timezone}.</p>
       {useCustomDates && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-        <label>Start date<input type="date" name="start_date" required value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
-        <label>End date<input type="date" name="end_date" required value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+        <label>Start date<input type="date" name="start_date" required disabled={busy} value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
+        <label>End date<input type="date" name="end_date" required disabled={busy} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
       </div>}
       {useCustomDates && !customDatesReady && <p role="alert">Enter both custom start and end dates. The saved relative period is not used while custom dates are enabled.</p>}
     </div>

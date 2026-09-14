@@ -122,6 +122,54 @@ test("binary permission denial clears protected context", async (t) => {
   const h = await harness(t, (c) => c.url.endsWith("/report") ? { ok: false, httpStatus: 403 } : undefined);
   await h.click("Preview report"); await h.click("Generate & download PDF"); assert.equal(h.cleared.length, 1); assert.equal(h.downloads.length, 0);
 });
+test("late preview discarded after custom date change and busy released", async (t) => {
+  const pending = deferred();
+  const h = await harness(t, (c) => c.url.includes("/report-preview") ? pending.promise : undefined);
+  const change = (selector, value) => act(async () => {
+    const el = h.query(selector); assert.ok(el);
+    const setter = Object.getOwnPropertyDescriptor(global.window.HTMLInputElement.prototype, "value").set;
+    setter.call(el, value);
+    el.dispatchEvent(new global.window.Event("change", { bubbles: true }));
+  });
+  await act(async () => { h.query('input[type="checkbox"]').click(); });
+  await change('input[name="start_date"]', "2026-03-01");
+  await change('input[name="end_date"]', "2026-03-10");
+  await h.click("Preview report");
+  assert.match(h.text(), /Verifying access/);
+  await change('input[name="end_date"]', "2026-03-15");
+  assert.equal(h.query("article"), null);
+  assert.ok(!h.text().includes("Verifying access"));
+  await h.resolve(pending, { ...preview(h.state), reporting_dates: { start: "2026-03-01", end: "2026-03-10", timezone: "UTC" } });
+  assert.equal(h.query("article"), null);
+  assert.ok(h.button("Generate & download PDF").disabled);
+});
+test("late email recipient discarded after custom date change", async (t) => {
+  const pending = deferred();
+  const h = await harness(t, (c, s) => {
+    if (c.url.includes("/report-recipient")) return pending.promise;
+    if (c.url.includes("/report-preview")) return preview(s);
+  });
+  const change = (selector, value) => act(async () => {
+    const el = h.query(selector); assert.ok(el);
+    const setter = Object.getOwnPropertyDescriptor(global.window.HTMLInputElement.prototype, "value").set;
+    setter.call(el, value);
+    el.dispatchEvent(new global.window.Event("change", { bubbles: true }));
+  });
+  await act(async () => { h.query('input[type="checkbox"]').click(); });
+  await change('input[name="start_date"]', "2026-03-01");
+  await change('input[name="end_date"]', "2026-03-10");
+  await h.click("Preview report");
+  assert.match(h.text(), /Client record/);
+  await h.click("Email report");
+  assert.match(h.text(), /Verifying access/);
+  await change('input[name="end_date"]', "2026-03-15");
+  assert.equal(h.query('[role="dialog"]'), null);
+  assert.ok(!h.text().includes("Verifying access"));
+  await h.resolve(pending, { ok: true, client: client(h.state.clientId), profile_version: h.state.version, format: h.state.format,
+    recipient: { email: "ops@example.test", name: "Ops", active: true } });
+  assert.equal(h.query('[role="dialog"]'), null);
+  assert.ok(h.button("Email report").disabled);
+});
 test("custom dates require both values and invalidate preview before generation", async (t) => {
   const h = await harness(t, (c, s) => {
     if (!c.url.includes("/report-preview")) return;
