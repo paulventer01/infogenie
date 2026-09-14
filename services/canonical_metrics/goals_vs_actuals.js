@@ -168,19 +168,6 @@ function buildOkrRow(row, snapshot) {
     stored_actual: storedActual,
   };
 
-  if (goalPeriod?.kind === 'quarter' && snapshot?.period_cutoff === 'not_started') {
-    return _unverifiedRow({
-      ...base,
-      actual: null,
-      pct: null,
-      measurement_source: isCanonicalAutoOkrKr(row.metric_type, linkedChannel) ? 'canonical' : 'stored',
-      from_canonical: isCanonicalAutoOkrKr(row.metric_type, linkedChannel),
-      metric_availability: AVAILABILITY.UNAVAILABLE,
-      metric_availability_reason: 'not_started',
-      metric_is_proxy: false,
-    }, 'not_started');
-  }
-
   if (objectiveStatus === 'complete') {
     const pct = _roundPct(storedActual, target);
     return {
@@ -226,6 +213,20 @@ function buildOkrRow(row, snapshot) {
   }
 
   const recognized = isCanonicalAutoOkrKr(row.metric_type, linkedChannel);
+
+  if (goalPeriod?.kind === 'quarter' && snapshot?.period_cutoff === 'not_started' && recognized) {
+    return _unverifiedRow({
+      ...base,
+      actual: null,
+      pct: null,
+      measurement_source: 'canonical',
+      from_canonical: true,
+      metric_availability: AVAILABILITY.UNAVAILABLE,
+      metric_availability_reason: 'not_started',
+      metric_is_proxy: false,
+    }, 'not_started');
+  }
+
   if (!recognized || !periodMatches) {
     return _unverifiedRow({
       ...base,

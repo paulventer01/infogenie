@@ -211,6 +211,53 @@ describe('goals_vs_actuals live canonical resolution (PR10G.7 / PR10G.8)', () =>
     assert.equal(row.from_canonical, true);
   });
 
+  it('future quarter not_started applies only to tenant-wide canonical auto KRs', () => {
+    const futureSnap = mockSnapshot({
+      period_authoritative: true,
+      period_kind: 'quarter',
+      period_quarter: '2030-Q1',
+      period_start: '2030-01-01',
+      period_end: '2030-03-31',
+      period_cutoff: 'not_started',
+      period_cutoff_label: '2030-Q1 (not started)',
+      blended_roas: 9,
+    });
+
+    const complete = buildOkrRow(okrRow({
+      quarter: '2030-Q1',
+      objective_status: 'complete',
+      current_value: 2.5,
+    }), futureSnap);
+    assert.equal(complete.status, 'complete');
+    assert.equal(complete.actual, 2.5);
+
+    const manual = buildOkrRow(okrRow({
+      quarter: '2030-Q1',
+      metric_type: 'manual',
+      current_value: 72,
+      target_value: 80,
+    }), futureSnap);
+    assert.equal(manual.actual, 72);
+    assert.equal(manual.measurement_source, 'manual');
+
+    const channel = buildOkrRow(okrRow({
+      quarter: '2030-Q1',
+      linked_channel: 'Meta',
+      current_value: 1.5,
+    }), futureSnap);
+    assert.equal(channel.actual, 1.5);
+    assert.equal(channel.unverified_reason, 'unsupported_scope');
+
+    const auto = buildOkrRow(okrRow({
+      quarter: '2030-Q1',
+      metric_type: 'roas',
+      target_value: 2,
+    }), futureSnap);
+    assert.equal(auto.actual, null);
+    assert.equal(auto.unverified_reason, 'not_started');
+    assert.match(formatGoalActualDisplay(auto), /not started/i);
+  });
+
   it('preserves completion, manual measurements, and channel-stored labels', () => {
     const complete = buildOkrRow(okrRow({
       quarter: '2024-Q1',

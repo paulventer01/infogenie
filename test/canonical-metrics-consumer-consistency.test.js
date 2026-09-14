@@ -445,6 +445,115 @@ describe('OKR canonical ROAS consumer', () => {
     assert.match(kr.metric_availability_reason, /offline/i);
   });
 
+  it('reuses one quarter snapshot per tenant+quarter within a refresh request', async () => {
+    let computeCalls = 0;
+    require(computePath).computeCanonicalMetrics = async (tid, opts) => {
+      computeCalls += 1;
+      assert.equal(tid, 1);
+      assert.equal(opts.quarter, '2026-Q1');
+      return mockSnap({
+        blended_roas: 1.8,
+        spend: 500,
+        reported_roas: 1.8,
+        availability: {
+          blended_roas: { status: AVAILABILITY.AVAILABLE, reason: null },
+          spend: { status: AVAILABILITY.AVAILABLE, reason: null },
+          reported_roas: { status: AVAILABILITY.AVAILABLE, reason: null },
+        },
+        labelled: {
+          blended_roas: { availability: AVAILABILITY.AVAILABLE },
+          spend: { availability: AVAILABILITY.AVAILABLE },
+        },
+      });
+    };
+
+    const okr = require(okrPath);
+    const layer = okr.stack.find((l) => l.route?.path === '/objectives/:id/refresh' && l.route.methods.post);
+    const _tenantCtx = require('../services/tenants/context');
+    const origResolve = _tenantCtx.resolveTenantId;
+    _tenantCtx.resolveTenantId = async () => 1;
+
+    const db = require('../db');
+    const origPool = db.getPool;
+    db.getPool = () => ({
+      query: async (sql) => {
+        if (/okr_objectives/i.test(sql)) {
+          return { rowCount: 1, rows: [{ id: 'o1', quarter: '2026-Q1' }] };
+        }
+        if (/okr_key_results/i.test(sql) && /SELECT/i.test(sql)) {
+          return {
+            rows: [
+              {
+                id: 'kr1',
+                metric_type: 'blended_roas',
+                linked_channel: '',
+                target_value: 2,
+                current_value: 0,
+              },
+              {
+                id: 'kr2',
+                metric_type: 'spend',
+                linked_channel: '',
+                target_value: 400,
+                current_value: 0,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    });
+
+    const res = {
+      headersSent: false,
+      body: null,
+      status() { return this; },
+      json(payload) { this.body = payload; return payload; },
+    };
+    await layer.route.stack[0].handle({ params: { id: 'o1' } }, res);
+
+    db.getPool = origPool;
+    _tenantCtx.resolveTenantId = origResolve;
+
+    assert.equal(computeCalls, 1);
+    assert.equal(res.body.key_results[0].current_value, 1.8);
+    assert.equal(res.body.key_results[1].current_value, 500);
+  });
+
+  it('keeps quarter snapshot cache separate per tenant and quarter', async () => {
+    const calls = [];
+    require(computePath).computeCanonicalMetrics = async (tid, opts) => {
+      calls.push({ tid, quarter: opts.quarter });
+      return mockSnap({
+        blended_roas: tid,
+        reported_roas: tid,
+        availability: {
+          blended_roas: { status: AVAILABILITY.AVAILABLE, reason: null },
+          reported_roas: { status: AVAILABILITY.AVAILABLE, reason: null },
+        },
+        labelled: {
+          blended_roas: { availability: AVAILABILITY.AVAILABLE },
+        },
+      });
+    };
+
+    const okr = require(okrPath);
+    const cache = new Map();
+    const a = await okr._getQuarterSnapshot(1, '2026-Q1', cache);
+    const b = await okr._getQuarterSnapshot(1, '2026-Q1', cache);
+    const c = await okr._getQuarterSnapshot(2, '2026-Q1', cache);
+    const d = await okr._getQuarterSnapshot(1, '2026-Q2', cache);
+    assert.equal(a.blended_roas, 1);
+    assert.equal(b.blended_roas, 1);
+    assert.equal(c.blended_roas, 2);
+    assert.equal(d.blended_roas, 1);
+    assert.deepEqual(calls, [
+      { tid: 1, quarter: '2026-Q1' },
+      { tid: 2, quarter: '2026-Q1' },
+      { tid: 1, quarter: '2026-Q2' },
+    ]);
+  });
+
   it('returns unavailable on canonical exceptions without legacy ROAS recompute', async () => {
     require(computePath).computeCanonicalMetrics = async () => {
       throw new Error('relation ad_performance_hourly does not exist');
