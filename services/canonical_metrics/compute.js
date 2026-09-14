@@ -18,6 +18,11 @@ const {
   resolveSpendAvailability,
   sourceFailedReason,
 } = require('./availability');
+const {
+  parseQuarter,
+  resolveComputeWindow,
+  stampQuarterPeriodMetadata,
+} = require('./period');
 
 function _round(n, d = 2) {
   if (n == null || !Number.isFinite(Number(n))) return null;
@@ -388,7 +393,7 @@ function _buildKpisAndLabelled(out) {
   };
 }
 
-function _unavailableSnapshot(out, reason) {
+function _unavailableSnapshot(out, reason, { keepPeriod = false } = {}) {
   const keys = ['spend', 'reported_roas', 'true_roas', 'cpa', 'cac', 'blended_cac', 'ltv', 'mer'];
   out.availability = {};
   for (const k of keys) {
@@ -418,20 +423,42 @@ function _unavailableSnapshot(out, reason) {
   out.conversions = null;
   out.impressions = null;
   out.clicks = null;
+  if (!keepPeriod) {
+    delete out.period_authoritative;
+    delete out.period_kind;
+    delete out.period_quarter;
+    delete out.period_start;
+    delete out.period_end;
+    delete out.period_end_exclusive;
+    delete out.period_cutoff;
+    delete out.period_cutoff_label;
+  }
   delete out._raw;
   delete out._ltvMeta;
   return out;
 }
 
 /**
- * Compute canonical metrics for a tenant over `days` lookback.
+ * Compute canonical metrics for a tenant.
+ * Rolling mode: `opts.days` lookback (default 30, max 90).
+ * Calendar-quarter mode: `opts.quarter` as YYYY-Q1..Q4 with UTC bounds.
  * Pure DB aggregation — no live ad-network calls required.
  *
  * @param {number} tid
- * @param {{ days?: number }} [opts]
+ * @param {{ days?: number, quarter?: string, asOf?: Date|string, _skipGoals?: boolean, _skipPacing?: boolean }} [opts]
  */
 async function computeCanonicalMetrics(tid, opts = {}) {
-  const days = Math.min(90, Math.max(1, parseInt(opts.days, 10) || 30));
+  const window = resolveComputeWindow(opts);
+  if (!window) {
+    const bad = {
+      ok: false,
+      error: 'invalid_period',
+      generated_at: new Date().toISOString(),
+    };
+    return bad;
+  }
+  const isQuarter = window.kind === 'quarter';
+  const days = window.days;
   const provenance = [];
   const sources = {
     ad_performance_hourly: { ok: false },
@@ -442,6 +469,7 @@ async function computeCanonicalMetrics(tid, opts = {}) {
   const out = {
     ok: true,
     days,
+    period_mode: isQuarter ? 'quarter' : 'rolling',
     tenant_id: tid,
     spend: null,
     spend_cents: null,
@@ -490,8 +518,22 @@ async function computeCanonicalMetrics(tid, opts = {}) {
     return _unavailableSnapshot(out, REASON.DATABASE_UNAVAILABLE);
   }
 
+  if (isQuarter) {
+    stampQuarterPeriodMetadata(out, window);
+    if (window.cutoff === 'not_started') {
+      provenance.push(_provenance('canonical_metrics', 'period', `${window.quarter} not started`));
+      return _unavailableSnapshot(out, 'not_started', { keepPeriod: true });
+    }
+  }
+
   const pool = _db.getPool();
   const interval = `${days} days`;
+  const adTimeClause = isQuarter
+    ? 'AND p.bucket_hour >= $2::timestamptz AND p.bucket_hour < $3::timestamptz'
+    : 'AND p.bucket_hour >= now() - ($2)::interval';
+  const adParams = isQuarter
+    ? [tid, window.startUtc, window.queryEndExclusiveUtc]
+    : [tid, interval];
 
   // 1) Optimizer-ingested ad performance (spend + online revenue)
   try {
@@ -505,9 +547,9 @@ async function computeCanonicalMetrics(tid, opts = {}) {
          FROM ad_performance_hourly p
          JOIN ad_campaigns c ON c.id = p.campaign_id
         WHERE c.tenant_id = $1
-          AND p.bucket_hour >= now() - ($2)::interval
+          ${adTimeClause}
         GROUP BY 1`,
-      [tid, interval],
+      adParams,
     );
     sources.ad_performance_hourly.ok = true;
     for (const row of r.rows) {
@@ -541,15 +583,24 @@ async function computeCanonicalMetrics(tid, opts = {}) {
 
   // 2) Manual / imported spend_events (Budget Board)
   try {
-    const r = await pool.query(
-      `SELECT lower(channel) AS channel,
-              COALESCE(SUM(amount_cents),0)::bigint AS cents
-         FROM spend_events
-        WHERE tenant_id = $1
-          AND occurred_at >= CURRENT_DATE - ($2::int)
-        GROUP BY 1`,
-      [tid, days],
-    );
+    const spendSql = isQuarter
+      ? `SELECT lower(channel) AS channel,
+                COALESCE(SUM(amount_cents),0)::bigint AS cents
+           FROM spend_events
+          WHERE tenant_id = $1
+            AND occurred_at >= $2::timestamptz
+            AND occurred_at < $3::timestamptz
+          GROUP BY 1`
+      : `SELECT lower(channel) AS channel,
+                COALESCE(SUM(amount_cents),0)::bigint AS cents
+           FROM spend_events
+          WHERE tenant_id = $1
+            AND occurred_at >= CURRENT_DATE - ($2::int)
+          GROUP BY 1`;
+    const spendParams = isQuarter
+      ? [tid, window.startUtc, window.queryEndExclusiveUtc]
+      : [tid, days];
+    const r = await pool.query(spendSql, spendParams);
     sources.spend_events.ok = true;
     let added = 0;
     for (const row of r.rows) {
@@ -573,14 +624,22 @@ async function computeCanonicalMetrics(tid, opts = {}) {
 
   // 3) Offline conversions
   try {
-    const r = await pool.query(
-      `SELECT COALESCE(SUM(revenue_cents),0)::bigint AS cents,
-              COUNT(*)::int AS n
-         FROM offline_conversions
-        WHERE tenant_id = $1
-          AND closed_at >= now() - ($2)::interval`,
-      [tid, interval],
-    );
+    const offlineSql = isQuarter
+      ? `SELECT COALESCE(SUM(revenue_cents),0)::bigint AS cents,
+                COUNT(*)::int AS n
+           FROM offline_conversions
+          WHERE tenant_id = $1
+            AND closed_at >= $2::timestamptz
+            AND closed_at < $3::timestamptz`
+      : `SELECT COALESCE(SUM(revenue_cents),0)::bigint AS cents,
+                COUNT(*)::int AS n
+           FROM offline_conversions
+          WHERE tenant_id = $1
+            AND closed_at >= now() - ($2)::interval`;
+    const offlineParams = isQuarter
+      ? [tid, window.startUtc, window.queryEndExclusiveUtc]
+      : [tid, interval];
+    const r = await pool.query(offlineSql, offlineParams);
     sources.offline_conversions.ok = true;
     out._raw.offline_revenue = Number(r.rows[0]?.cents || 0) / 100;
     out._raw.offline_buyers = Number(r.rows[0]?.n || 0);
@@ -593,61 +652,61 @@ async function computeCanonicalMetrics(tid, opts = {}) {
   _applyDerivedMetrics(out, sources);
   provenance.push(_provenance('canonical_metrics', 'availability+derived', `defs ${DEFINITION_VERSION}`));
 
-  // 4) Goals vs actuals — live canonical actuals for auto-tracked metrics (PR10G.7)
+  // 4) Goals vs actuals inputs — assembled after labelled KPIs (PR10G.7 / PR10G.8)
   const { buildGoalsVsActuals } = require('./goals_vs_actuals');
   const { tkey } = require('../tenants/kv_scope');
   let okrRows = [];
   let agentGoalRows = [];
   let growthGoals = [];
-  try {
-    const okr = await pool.query(
-      `SELECT o.title AS objective, o.quarter, o.status AS objective_status,
-              kr.title AS kr_title, kr.metric_type, kr.linked_channel,
-              kr.target_value, kr.current_value, kr.unit
-         FROM okr_key_results kr
-         JOIN okr_objectives o ON o.id = kr.objective_id
-        WHERE o.tenant_id = $1
-        ORDER BY o.created_at DESC
-        LIMIT 20`,
-      [tid],
-    );
-    okrRows = okr.rows;
-    if (okr.rows.length) provenance.push(_provenance('okr_key_results', 'goals_vs_actuals', 'live canonical actuals'));
-  } catch (e) {
-    provenance.push(_provenance('okr_key_results', 'goals_vs_actuals', `unavailable: ${e.message}`));
-  }
-
-  try {
-    const ag = await pool.query(
-      `SELECT title, progress_pct, status, deadline
-         FROM agent_goals
-        WHERE tenant_id = $1 AND status NOT IN ('done','cancelled','archived')
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC
-        LIMIT 15`,
-      [tid],
-    );
-    agentGoalRows = ag.rows;
-    if (ag.rows.length) provenance.push(_provenance('agent_goals', 'goals_vs_actuals'));
-  } catch (e) {
-    provenance.push(_provenance('agent_goals', 'goals_vs_actuals', `unavailable: ${e.message}`));
-  }
-
-  try {
-    const raw = await _db.kvGet(tkey('goals', tid), []);
-    growthGoals = Array.isArray(raw) ? raw : [];
-    if (growthGoals.length) {
-      provenance.push(_provenance('kv_store', 'goals_vs_actuals', `${growthGoals.length} growth goal(s)`));
+  if (!opts._skipGoals) {
+    try {
+      const okr = await pool.query(
+        `SELECT o.title AS objective, o.quarter, o.status AS objective_status,
+                kr.title AS kr_title, kr.metric_type, kr.linked_channel,
+                kr.target_value, kr.current_value, kr.unit
+           FROM okr_key_results kr
+           JOIN okr_objectives o ON o.id = kr.objective_id
+          WHERE o.tenant_id = $1
+          ORDER BY o.created_at DESC
+          LIMIT 20`,
+        [tid],
+      );
+      okrRows = okr.rows;
+      if (okr.rows.length) provenance.push(_provenance('okr_key_results', 'goals_vs_actuals', 'live canonical actuals'));
+    } catch (e) {
+      provenance.push(_provenance('okr_key_results', 'goals_vs_actuals', `unavailable: ${e.message}`));
     }
-  } catch (e) {
-    provenance.push(_provenance('kv_store', 'goals_vs_actuals', `unavailable: ${e.message}`));
+
+    try {
+      const ag = await pool.query(
+        `SELECT title, progress_pct, status, deadline
+           FROM agent_goals
+          WHERE tenant_id = $1 AND status NOT IN ('done','cancelled','archived')
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC
+          LIMIT 15`,
+        [tid],
+      );
+      agentGoalRows = ag.rows;
+      if (ag.rows.length) provenance.push(_provenance('agent_goals', 'goals_vs_actuals'));
+    } catch (e) {
+      provenance.push(_provenance('agent_goals', 'goals_vs_actuals', `unavailable: ${e.message}`));
+    }
+
+    try {
+      const raw = await _db.kvGet(tkey('goals', tid), []);
+      growthGoals = Array.isArray(raw) ? raw : [];
+      if (growthGoals.length) {
+        provenance.push(_provenance('kv_store', 'goals_vs_actuals', `${growthGoals.length} growth goal(s)`));
+      }
+    } catch (e) {
+      provenance.push(_provenance('kv_store', 'goals_vs_actuals', `unavailable: ${e.message}`));
+    }
   }
 
-  // goals_vs_actuals assembled after labelled KPIs (see end of compute)
-
-  // 5) Prior-period comparison
+  // 5) Prior-period comparison (rolling mode only)
   out.prior = null;
   out.deltas = {};
-  if (sources.ad_performance_hourly.ok) {
+  if (!isQuarter && sources.ad_performance_hourly.ok) {
     try {
       const priorStart = days * 2;
       const r = await pool.query(
@@ -714,17 +773,28 @@ async function computeCanonicalMetrics(tid, opts = {}) {
   out.daily = [];
   if (sources.ad_performance_hourly.ok) {
     try {
-      const r = await pool.query(
-        `SELECT to_char(p.bucket_hour,'YYYY-MM-DD') AS day,
-                COALESCE(SUM(p.spend),0)::float8 AS spend,
-                COALESCE(SUM(p.revenue),0)::float8 AS revenue
-           FROM ad_performance_hourly p
-           JOIN ad_campaigns c ON c.id = p.campaign_id
-          WHERE c.tenant_id = $1
-            AND p.bucket_hour >= now() - ($2)::interval
-          GROUP BY 1 ORDER BY 1`,
-        [tid, interval],
-      );
+      const dailySql = isQuarter
+        ? `SELECT to_char(p.bucket_hour,'YYYY-MM-DD') AS day,
+                  COALESCE(SUM(p.spend),0)::float8 AS spend,
+                  COALESCE(SUM(p.revenue),0)::float8 AS revenue
+             FROM ad_performance_hourly p
+             JOIN ad_campaigns c ON c.id = p.campaign_id
+            WHERE c.tenant_id = $1
+              AND p.bucket_hour >= $2::timestamptz
+              AND p.bucket_hour < $3::timestamptz
+            GROUP BY 1 ORDER BY 1`
+        : `SELECT to_char(p.bucket_hour,'YYYY-MM-DD') AS day,
+                  COALESCE(SUM(p.spend),0)::float8 AS spend,
+                  COALESCE(SUM(p.revenue),0)::float8 AS revenue
+             FROM ad_performance_hourly p
+             JOIN ad_campaigns c ON c.id = p.campaign_id
+            WHERE c.tenant_id = $1
+              AND p.bucket_hour >= now() - ($2)::interval
+            GROUP BY 1 ORDER BY 1`;
+      const dailyParams = isQuarter
+        ? [tid, window.startUtc, window.queryEndExclusiveUtc]
+        : [tid, interval];
+      const r = await pool.query(dailySql, dailyParams);
       out.daily = r.rows.map((row) => ({
         day: row.day,
         spend: _round(row.spend) || 0,
@@ -734,9 +804,9 @@ async function computeCanonicalMetrics(tid, opts = {}) {
     } catch (_) { /* optional */ }
   }
 
-  // 7) Budget pacing
+  // 7) Budget pacing (rolling snapshots only)
   out.pacing = null;
-  try {
+  if (!isQuarter && !opts._skipPacing) try {
     const { computePacing, _ymNow } = require('./pacing');
     const period = _ymNow();
     const bRow = await pool.query(
@@ -789,11 +859,39 @@ async function computeCanonicalMetrics(tid, opts = {}) {
   }
 
   _buildKpisAndLabelled(out);
-  out.goals_vs_actuals = buildGoalsVsActuals(out, {
-    okrRows,
-    agentGoalRows,
-    growthGoals,
-  });
+
+  if (!opts._skipGoals) {
+    const quarterSnapshots = {};
+    if (!isQuarter && okrRows.length) {
+      const uniqueQuarters = [...new Set(
+        okrRows.map((row) => row.quarter).filter((q) => parseQuarter(q)),
+      )];
+      for (const quarter of uniqueQuarters) {
+        quarterSnapshots[quarter] = await computeCanonicalMetrics(tid, {
+          quarter,
+          asOf: opts.asOf,
+          _skipGoals: true,
+          _skipPacing: true,
+        });
+      }
+      if (uniqueQuarters.length) {
+        provenance.push(_provenance(
+          'canonical_metrics',
+          'quarter_snapshots',
+          `${uniqueQuarters.length} calendar quarter(s)`,
+        ));
+      }
+    }
+    out.goals_vs_actuals = buildGoalsVsActuals(out, {
+      okrRows,
+      agentGoalRows,
+      growthGoals,
+      quarterSnapshots,
+    });
+  } else {
+    out.goals_vs_actuals = [];
+  }
+
   out.definitions = listDefinitions();
   out.sources = sources;
   delete out._raw;

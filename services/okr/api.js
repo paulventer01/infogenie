@@ -19,42 +19,56 @@ function _safe(h) {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function _quarterBounds(quarter) {
-  const m = quarter.match(/^(\d{4})-Q([1-4])$/);
-  if (!m) return null;
-  const year = parseInt(m[1], 10);
-  const q    = parseInt(m[2], 10);
-  const startMonth = (q - 1) * 3 + 1;
-  const endMonth   = startMonth + 2;
-  const start = `${year}-${String(startMonth).padStart(2,'0')}-01`;
-  const endDate = new Date(year, endMonth, 0);
-  const end = endDate.toISOString().slice(0,10);
-  return { start, end };
+const {
+  CANONICAL_OKR_AUTO,
+  OKR_METRIC_TO_CANONICAL,
+} = require('../canonical_metrics/goals_vs_actuals');
+const { quarterBounds } = require('../canonical_metrics/period');
+
+function _quarterSnapshotKey(tid, quarter) {
+  return `${tid}:${quarter}`;
 }
 
-async function _pullAutoMetric(tid, metric_type, linked_channel, quarter) {
-  if (!hasDb()) return { value: null, from_canonical: false };
-  const bounds = _quarterBounds(quarter);
-  if (!bounds) return { value: null, from_canonical: false };
+/** Request-local cache: one canonical snapshot promise per tenant + quarter. */
+function _getQuarterSnapshot(tid, quarter, cache) {
+  const key = _quarterSnapshotKey(tid, quarter);
+  if (!cache.has(key)) {
+    const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
+    cache.set(
+      key,
+      computeCanonicalMetrics(tid, { quarter, _skipGoals: true, _skipPacing: true }),
+    );
+  }
+  return cache.get(key);
+}
+
+async function _resolveCanonicalAutoMetric(tid, metric_type, quarter, cache) {
   const {
     resolveConsumerMetric,
     unavailableConsumerMetric,
   } = require('../canonical_metrics/consumer');
-
-  // Canonical SSOT for ROAS family (channel filter still uses legacy path below)
-  if (!linked_channel && ['roas', 'true_roas', 'blended_roas'].includes(metric_type)) {
-    try {
-      const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
-      const days = Math.max(1, Math.ceil((new Date(bounds.end) - new Date(bounds.start)) / 864e5));
-      const snap = await computeCanonicalMetrics(tid, { days: Math.min(90, days) });
-      const key = metric_type === 'true_roas' ? 'true_roas' : metric_type === 'blended_roas' ? 'blended_roas' : 'roas';
-      const detail = resolveConsumerMetric(snap, key);
-      if (detail.availability === 'unavailable') return detail;
-      if (detail.value != null || detail.availability === 'available') return detail;
-      return detail;
-    } catch (_) {
-      return unavailableConsumerMetric();
+  try {
+    const snap = await _getQuarterSnapshot(tid, quarter, cache);
+    if (snap.period_cutoff === 'not_started') {
+      return unavailableConsumerMetric('not_started');
     }
+    const canonicalKey = OKR_METRIC_TO_CANONICAL[metric_type];
+    if (!canonicalKey) return unavailableConsumerMetric();
+    const detail = resolveConsumerMetric(snap, canonicalKey);
+    return { ...detail, from_canonical: true };
+  } catch (_) {
+    return unavailableConsumerMetric();
+  }
+}
+
+async function _pullAutoMetric(tid, metric_type, linked_channel, quarter, cache = new Map()) {
+  if (!hasDb()) return { value: null, from_canonical: false };
+  const bounds = quarterBounds(quarter);
+  if (!bounds) return { value: null, from_canonical: false };
+
+  // Canonical SSOT for tenant-wide auto metrics (PR10G.8 calendar-quarter bounds)
+  if (!linked_channel && CANONICAL_OKR_AUTO.has(metric_type)) {
+    return _resolveCanonicalAutoMetric(tid, metric_type, quarter, cache);
   }
   try {
     if (metric_type === 'spend') {
@@ -146,9 +160,9 @@ function _deriveStatus(krs) {
   return 'off_track';
 }
 
-async function _enrichKrForDisplay(tid, kr, quarter) {
+async function _enrichKrForDisplay(tid, kr, quarter, cache = new Map()) {
   if (kr.metric_type === 'manual') return kr;
-  const measured = await _pullAutoMetric(tid, kr.metric_type, kr.linked_channel, quarter);
+  const measured = await _pullAutoMetric(tid, kr.metric_type, kr.linked_channel, quarter, cache);
   const metaFields = measured?.from_canonical ? {
     metric_availability: measured.availability || null,
     metric_availability_reason: measured.availability_reason || null,
@@ -187,10 +201,11 @@ router.get('/objectives', _safe(async (req, res) => {
     if (!krMap[kr.objective_id]) krMap[kr.objective_id] = [];
     krMap[kr.objective_id].push(kr);
   }
+  const quarterCache = new Map();
   const objectives = await Promise.all(objs.rows.map(async (o) => {
     const rawKrs = krMap[o.id] || [];
     const key_results = await Promise.all(
-      rawKrs.map((kr) => _enrichKrForDisplay(tid, kr, o.quarter)),
+      rawKrs.map((kr) => _enrichKrForDisplay(tid, kr, o.quarter, quarterCache)),
     );
     return { ...o, key_results };
   }));
@@ -300,10 +315,11 @@ router.post('/objectives/:id/refresh', _safe(async (req, res) => {
     `SELECT * FROM okr_key_results WHERE objective_id=$1 AND tenant_id=$2`,
     [obj.id, tid]
   );
+  const quarterCache = new Map();
   const updated = [];
   for (const kr of krs.rows) {
     if (kr.metric_type === 'manual') { updated.push(kr); continue; }
-    const measured = await _pullAutoMetric(tid, kr.metric_type, kr.linked_channel, obj.quarter);
+    const measured = await _pullAutoMetric(tid, kr.metric_type, kr.linked_channel, obj.quarter, quarterCache);
     const val = _metricValue(measured);
     const metaFields = measured?.from_canonical ? {
       metric_availability: measured.availability || null,
@@ -332,3 +348,5 @@ router.post('/objectives/:id/refresh', _safe(async (req, res) => {
 }));
 
 module.exports = router;
+module.exports._quarterSnapshotKey = _quarterSnapshotKey;
+module.exports._getQuarterSnapshot = _getQuarterSnapshot;

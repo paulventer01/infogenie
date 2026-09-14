@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * PR10G.7 — Live goals vs actuals from an already-computed canonical snapshot.
- * Reuses snapshot metrics (no recursive compute). Preserves saved targets,
- * manual / channel-scoped measurements, explicit completion, and period scope.
+ * PR10G.7 / PR10G.8 — Live goals vs actuals from canonical snapshots.
+ * Reuses snapshot metrics (no recursive compute). Quarterly OKRs resolve from
+ * authoritative calendar-quarter snapshots; growth goals stay on rolling windows.
  */
 
 const { AVAILABILITY, REASON } = require('./availability');
@@ -11,6 +11,11 @@ const {
   canonicalMetricMeta,
   safeAvailabilityReason,
 } = require('./consumer');
+const {
+  quarterBounds,
+  okrMeasurementPeriod,
+  formatMeasurementPeriodLabel,
+} = require('./period');
 
 function readMetricDetail(snapshot, metricKey) {
   // Lazy require avoids circular dependency with compute.js.
@@ -50,35 +55,6 @@ const GROWTH_CANONICAL_METRICS = {
 };
 
 const DEFAULT_GROWTH_PERIOD_DAYS = 30;
-const MS_PER_DAY = 86400000;
-
-function quarterBounds(quarter) {
-  const m = String(quarter || '').match(/^(\d{4})-Q([1-4])$/);
-  if (!m) return null;
-  const year = parseInt(m[1], 10);
-  const q = parseInt(m[2], 10);
-  const startMonth = (q - 1) * 3;
-  const start = new Date(Date.UTC(year, startMonth, 1)).toISOString().slice(0, 10);
-  const end = new Date(Date.UTC(year, startMonth + 3, 0)).toISOString().slice(0, 10);
-  return { start, end, quarter };
-}
-
-function okrMeasurementPeriod(quarter) {
-  const bounds = quarterBounds(quarter);
-  if (!bounds) return null;
-  const startMs = Date.UTC(
-    parseInt(bounds.start.slice(0, 4), 10),
-    parseInt(bounds.start.slice(5, 7), 10) - 1,
-    parseInt(bounds.start.slice(8, 10), 10),
-  );
-  const endMs = Date.UTC(
-    parseInt(bounds.end.slice(0, 4), 10),
-    parseInt(bounds.end.slice(5, 7), 10) - 1,
-    parseInt(bounds.end.slice(8, 10), 10),
-  );
-  const days = Math.floor((endMs - startMs) / MS_PER_DAY) + 1;
-  return { kind: 'quarter', quarter: bounds.quarter, days, start: bounds.start, end: bounds.end };
-}
 
 function growthMeasurementPeriod(goal) {
   const raw = goal?.periodDays ?? goal?.period_days ?? goal?.days;
@@ -176,6 +152,7 @@ function buildOkrRow(row, snapshot) {
   const objectiveStatus = row.objective_status || null;
   const goalPeriod = okrMeasurementPeriod(row.quarter);
   const periodMatches = snapshotMatchesGoalPeriod(snapshot, goalPeriod);
+  const measurementPeriodLabel = formatMeasurementPeriodLabel(goalPeriod, snapshot);
 
   const base = {
     source: 'okr',
@@ -186,6 +163,7 @@ function buildOkrRow(row, snapshot) {
     unit,
     objective_status: objectiveStatus,
     measurement_period: goalPeriod,
+    measurement_period_label: measurementPeriodLabel,
     snapshot_days: snapshot?.days ?? null,
     stored_actual: storedActual,
   };
@@ -235,6 +213,20 @@ function buildOkrRow(row, snapshot) {
   }
 
   const recognized = isCanonicalAutoOkrKr(row.metric_type, linkedChannel);
+
+  if (goalPeriod?.kind === 'quarter' && snapshot?.period_cutoff === 'not_started' && recognized) {
+    return _unverifiedRow({
+      ...base,
+      actual: null,
+      pct: null,
+      measurement_source: 'canonical',
+      from_canonical: true,
+      metric_availability: AVAILABILITY.UNAVAILABLE,
+      metric_availability_reason: 'not_started',
+      metric_is_proxy: false,
+    }, 'not_started');
+  }
+
   if (!recognized || !periodMatches) {
     return _unverifiedRow({
       ...base,
@@ -328,6 +320,7 @@ function buildGrowthGoalRow(goal, snapshot) {
     target,
     unit: spec.unit,
     measurement_period: goalPeriod,
+    measurement_period_label: formatMeasurementPeriodLabel(goalPeriod, snapshot),
     snapshot_days: snapshot?.days ?? null,
   };
 
@@ -403,18 +396,26 @@ function buildGrowthGoalRow(goal, snapshot) {
 }
 
 /**
- * Build goals_vs_actuals rows from DB/KV inputs and a finished canonical snapshot.
+ * Build goals_vs_actuals rows from DB/KV inputs and canonical snapshot(s).
+ * @param {object} rollingSnapshot — rolling-window snapshot for growth goals
+ * @param {{ okrRows?, agentGoalRows?, growthGoals?, quarterSnapshots? }} inputs
  */
-function buildGoalsVsActuals(snapshot, { okrRows = [], agentGoalRows = [], growthGoals = [] } = {}) {
+function buildGoalsVsActuals(rollingSnapshot, {
+  okrRows = [],
+  agentGoalRows = [],
+  growthGoals = [],
+  quarterSnapshots = {},
+} = {}) {
   const items = [];
   for (const row of okrRows) {
-    items.push(buildOkrRow(row, snapshot));
+    const quarterSnap = quarterSnapshots[row.quarter] || rollingSnapshot;
+    items.push(buildOkrRow(row, quarterSnap));
   }
   for (const row of agentGoalRows) {
     items.push(buildAgentGoalRow(row));
   }
   for (const goal of growthGoals) {
-    const built = buildGrowthGoalRow(goal, snapshot);
+    const built = buildGrowthGoalRow(goal, rollingSnapshot);
     if (built) items.push(built);
   }
   return items;
@@ -458,6 +459,7 @@ function formatGoalActualDisplay(row) {
 
   if (row.metric_availability === AVAILABILITY.UNAVAILABLE && row.actual == null) {
     if (row.unverified_reason === 'period_mismatch') return 'unverified (period mismatch)';
+    if (row.unverified_reason === 'not_started') return 'unverified (not started)';
     return `unavailable (${reason})`;
   }
 
@@ -484,6 +486,7 @@ function formatGoalStatusDisplay(row) {
   if (row.status === 'complete') return 'complete';
   if (row.status === 'unverified') {
     if (row.unverified_reason === 'period_mismatch') return 'unverified (period mismatch)';
+    if (row.unverified_reason === 'not_started') return 'unverified (not started)';
     if (row.measurement_source === 'stored') {
       const pct = row.pct != null ? ` (${row.pct}%)` : '';
       return `unverified (stored)${pct}`;
@@ -506,12 +509,14 @@ module.exports = {
   isVerifiedGoalRow,
   formatGoalActualDisplay,
   formatGoalStatusDisplay,
+  formatMeasurementPeriodLabel,
   snapshotMatchesGoalPeriod,
   hasAuthoritativeQuarterSnapshot,
   okrMeasurementPeriod,
   growthMeasurementPeriod,
   quarterBounds,
   CANONICAL_OKR_AUTO,
+  OKR_METRIC_TO_CANONICAL,
   GROWTH_CANONICAL_METRICS,
   DEFAULT_GROWTH_PERIOD_DAYS,
 };

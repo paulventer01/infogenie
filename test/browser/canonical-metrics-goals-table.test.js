@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const dedicatedUrl = process.env.PR10E9_TEST_DATABASE_URL;
-const required = process.env.PR10G7_REQUIRE_BROWSER === '1';
+const required = process.env.PR10G7_REQUIRE_BROWSER === '1' || process.env.PR10G8_REQUIRE_BROWSER === '1';
 const PANEL = '#ig-react-panel';
 const CANONICAL_ROUTE = '/manage/canonical-metrics';
 
@@ -46,6 +46,22 @@ const canonicalFixture = {
       status: 'complete',
       objective_status: 'complete',
       measurement_source: 'stored',
+      measurement_period_label: '2026-Q2',
+    },
+    {
+      source: 'okr',
+      label: 'QTD objective · Spend',
+      metric: 'spend',
+      linked_channel: '',
+      target: 1000,
+      actual: 420,
+      unit: '$',
+      pct: 42,
+      status: 'at-risk',
+      measurement_source: 'canonical',
+      measurement_period_label: '2026-Q2 (quarter-to-date through 2026-06-15)',
+      from_canonical: true,
+      metric_availability: 'available',
     },
     {
       source: 'growth_goals',
@@ -78,7 +94,7 @@ async function login(page, baseUrl, actors) {
   await page.waitForSelector(PANEL, { visible: true, timeout: 90_000 });
 }
 
-test('PR10G.7 canonical metrics goals vs actuals table browser acceptance', {
+test('PR10G.8 canonical metrics goals vs actuals table browser acceptance', {
   skip: !dedicatedUrl && !required ? 'optional local run: no PR10E9_TEST_DATABASE_URL' : false,
   timeout: 600_000,
 }, async (t) => {
@@ -153,4 +169,7 @@ test('PR10G.7 canonical metrics goals vs actuals table browser acceptance', {
   assert.match(text, /complete/);
   assert.match(text, /period mismatch/i);
   assert.match(text, /Spend cap/);
+  assert.match(text, /quarter-to-date through 2026-06-15/);
+  assert.match(text, /2026-Q2/);
+  assert.doesNotMatch(text, /Last 30 days \(rolling\)/i);
 });

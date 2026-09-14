@@ -35,7 +35,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify goals and OKR availability UI behavior
-        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/goals-okr-availability-ui.test.js test/canonical-metrics-consumer-consistency.test.js test/canonical-metrics-goals-vs-actuals.test.js
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/goals-okr-availability-ui.test.js test/canonical-metrics-consumer-consistency.test.js test/canonical-metrics-goals-vs-actuals.test.js test/integration/canonical-metrics-quarter-boundaries.test.js
 
   browser-postgres:
     name: Goals OKR availability Chromium + PostgreSQL (zero skips)
@@ -86,12 +86,18 @@ jobs:
             test "$attempt" -lt 30 || exit 1
             sleep 1
           done
+      - name: Verify calendar-quarter canonical metrics boundaries
+        env:
+          PR10E9_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/infogenie_agency_browser
+          PR10G8_REQUIRE_DATABASE: '1'
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/integration/canonical-metrics-quarter-boundaries.test.js
       - name: Verify browser journeys for goals and OKR availability
         shell: bash
         env:
           PR10E9_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/infogenie_agency_browser
           PR10G3_REQUIRE_BROWSER: '1'
           PR10G7_REQUIRE_BROWSER: '1'
+          PR10G8_REQUIRE_BROWSER: '1'
           NEXT_TELEMETRY_DISABLED: '1'
         run: |
           set -o pipefail
