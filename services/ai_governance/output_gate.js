@@ -5,10 +5,14 @@
 
 const { scanPii, scanCompliance } = require('./brand_rules');
 
+/** Full-text scan ceiling — reject output above this rather than scanning a prefix only. */
+const MAX_OUTPUT_SCAN_CHARS = 100_000;
+
 const USER_MESSAGES = Object.freeze({
   blocked: 'Generated content did not pass brand and compliance checks. Revise the prompt or request human review.',
   unavailable: 'Content safety checks are temporarily unavailable. Generation was stopped to protect your brand.',
   caution: 'Content includes claims or patterns that need review before external publish.',
+  oversized: 'Generated output exceeds supported content safety scan limits.',
 });
 
 function _aggregateVerdict(checks) {
@@ -42,14 +46,36 @@ function scanOutput(payload, opts = {}) {
 
   const warnings = [];
   const checks = [];
-  const text = String(
+  const rawText = String(
     payload?.draft
     || payload?.text
     || payload?.content
     || payload?.preview
     || payload?.title
     || '',
-  ).slice(0, 8000);
+  );
+
+  if (rawText.length > MAX_OUTPUT_SCAN_CHARS) {
+    const check = {
+      check_type: 'output_size',
+      verdict: 'block',
+      risk_score: 80,
+      detail: {
+        reason: USER_MESSAGES.oversized,
+        length: rawText.length,
+        max: MAX_OUTPUT_SCAN_CHARS,
+      },
+    };
+    return {
+      verdict: 'block',
+      warnings: [check.detail.reason],
+      checks: [check],
+      userMessage: USER_MESSAGES.blocked,
+      enforcedSurfaces: ['content_generation'],
+    };
+  }
+
+  const text = rawText;
 
   if (!text.trim()) {
     return {
@@ -106,4 +132,4 @@ function scanOutput(payload, opts = {}) {
   };
 }
 
-module.exports = { scanOutput, USER_MESSAGES };
+module.exports = { scanOutput, USER_MESSAGES, MAX_OUTPUT_SCAN_CHARS };

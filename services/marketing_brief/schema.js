@@ -16,10 +16,13 @@ async function ensureMarketingBriefSchema() {
       sections      JSONB NOT NULL DEFAULT '[]',
       active_pillars JSONB NOT NULL DEFAULT '[]',
       generated_by  TEXT NOT NULL DEFAULT 'template',
+      content_safety_warnings JSONB NOT NULL DEFAULT '[]',
       delivered_to  JSONB NOT NULL DEFAULT '[]',
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE marketing_briefs
+    ADD COLUMN IF NOT EXISTS content_safety_warnings JSONB NOT NULL DEFAULT '[]'`);
   await pool.query(`CREATE INDEX IF NOT EXISTS marketing_briefs_tenant_created
     ON marketing_briefs(tenant_id, created_at DESC)`);
 

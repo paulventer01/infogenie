@@ -95,7 +95,7 @@ async function discoverThreads({ brand, niche, subreddits = [], limit = 8 } = {}
   return { ok: true, threads: unique, query_count: queries.length, source: posts[0]?.id?.startsWith?.('demo') ? 'demo' : 'reddit' };
 }
 
-async function draftBrandReply({ thread, brand, niche, product, voice } = {}) {
+async function draftBrandReply({ thread, brand, niche, product, voice, tenantId } = {}) {
   if (!thread || !thread.title) {
     return { ok: false, error: 'thread with title is required' };
   }
@@ -114,10 +114,18 @@ async function draftBrandReply({ thread, brand, niche, product, voice } = {}) {
     const out = await chatForCategory('seo', [
       { role: 'system', content: 'You write authentic Reddit replies that also work as citable AEO answers.' },
       { role: 'user', content: prompt },
-    ], { maxTokens: 500, temperature: 0.55 });
+    ], { maxTokens: 500, temperature: 0.55, tenantId: tenantId ?? null });
     reply = String(out?.content || '').trim();
     model = out?.model || null;
-  } catch {
+  } catch (e) {
+    if (e?.code === 'content_safety_blocked') {
+      return {
+        ok: false,
+        error: 'content_safety_blocked',
+        userMessage: e.message,
+        governance: e.governance || null,
+      };
+    }
     reply = '';
   }
 

@@ -13,6 +13,7 @@ const {
 } = require('./policy');
 const outputGate = require('./output_gate');
 const { isContentGeneration } = require('./brand_rules');
+const { buildSafePreview, sanitizeCheckDetail } = require('./preview_redact');
 const { newId } = require('./schema');
 
 async function loadPolicy(tenantId) {
@@ -102,7 +103,7 @@ async function _persistChecks(tenantId, eventId, checks) {
           c.check_type,
           c.verdict,
           c.risk_score ?? null,
-          JSON.stringify(c.detail || {}),
+          JSON.stringify(sanitizeCheckDetail(c.detail || {})),
         ],
       );
     } catch (e) {
@@ -245,9 +246,7 @@ async function govern(opts = {}) {
       blockReason = null;
     }
 
-    const preview = String(
-      payload?.preview || payload?.title || payload?.draft || payload?.text || '',
-    ).slice(0, 280);
+    const preview = buildSafePreview(payload);
 
     await _persistEvent({
       id: auditId,

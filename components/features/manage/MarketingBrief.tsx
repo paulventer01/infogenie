@@ -33,6 +33,7 @@ interface Brief {
   actions?: BriefAction[];
   active_pillars: string[];
   generated_by: string;
+  content_safety_warnings?: string[];
   created_at: string;
   delivered_to: { channel: string; at: string; ok: boolean }[];
 }
@@ -943,6 +944,27 @@ export default function MarketingBrief() {
             </h1>
             {brief?.greeting && (
               <p style={{ margin: '8px 0 0', fontSize: '0.82rem', color: '#475569', lineHeight: 1.5 }}>{brief.greeting}</p>
+            )}
+            {brief?.content_safety_warnings && brief.content_safety_warnings.length > 0 && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: '10px 12px',
+                  background: '#FEF3C7',
+                  border: '1px solid #FCD34D',
+                  borderRadius: 8,
+                  fontSize: '0.78rem',
+                  color: '#92400E',
+                  lineHeight: 1.45,
+                }}
+              >
+                <strong>Content safety warnings</strong>
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                  {brief.content_safety_warnings.map((w, i) => (
+                    <li key={`${i}-${w.slice(0, 24)}`}>{w}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
           <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', flexWrap: 'wrap', flexShrink: 0 }}>

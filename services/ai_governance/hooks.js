@@ -4,6 +4,7 @@
 
 const { isContentGeneration } = require('./brand_rules');
 const outputGate = require('./output_gate');
+const { buildSafePreview } = require('./preview_redact');
 
 async function governSafe(opts) {
   try {
@@ -61,7 +62,7 @@ async function gateGeneratedContent(opts = {}) {
       text,
       draft: text,
       content: text,
-      preview: text.slice(0, 280),
+      preview: buildSafePreview({ text, draft: text, content: text }),
       hasContext: !!opts.hasContext,
       contextPack: opts.contextPack || null,
     },

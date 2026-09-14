@@ -16,6 +16,7 @@ const {
   _normalizeTiers,
 } = require('./policy');
 const { loadPolicy, govern } = require('./orchestrator');
+const { redactSensitiveText } = require('./preview_redact');
 const { newId } = require('./schema');
 
 const SETTINGS_PERM = 'tenant.settings.manage';
@@ -291,7 +292,13 @@ router.get('/audit', _route(async (req, res) => {
      LIMIT $${params.length}`,
     params,
   );
-  res.json({ ok: true, events: r.rows, total: r.rows.length });
+  const events = r.rows.map((row) => ({
+    ...row,
+    output_preview: row.output_preview
+      ? redactSensitiveText(row.output_preview, 280)
+      : row.output_preview,
+  }));
+  res.json({ ok: true, events, total: events.length });
 }));
 
 router.post('/review/:eventId', express.json(), _route(async (req, res) => {
@@ -345,7 +352,7 @@ router.post('/demo-event', express.json(), _route(async (req, res) => {
     payload: {
       title: req.body?.title || 'Demo content generation',
       text: req.body?.text || 'Demo governance content scan',
-      preview: req.body?.preview || 'Demo governance event',
+      preview: req.body?.preview || req.body?.text || 'Demo governance event',
       __force_brand_safety_block: !!req.body?.forceBlock,
     },
   });

@@ -7,10 +7,11 @@ const {
   defaultPolicy,
   _normalizeContentSafetyMode,
 } = require('../services/ai_governance/policy');
-const { scanOutput, USER_MESSAGES } = require('../services/ai_governance/output_gate');
+const { scanOutput, USER_MESSAGES, MAX_OUTPUT_SCAN_CHARS } = require('../services/ai_governance/output_gate');
 const { govern, loadPolicy } = require('../services/ai_governance/orchestrator');
 const { gateGeneratedContent, governContent } = require('../services/ai_governance/hooks');
 const { isContentGeneration } = require('../services/ai_governance/brand_rules');
+const { buildSafePreview, redactSensitiveText } = require('../services/ai_governance/preview_redact');
 
 describe('PR10H.1 policy defaults', () => {
   it('platform content safety default is enforce', () => {
@@ -49,6 +50,19 @@ describe('PR10H.1 output gate real checks', () => {
   it('passing benign content succeeds', () => {
     const g = scanOutput({ text: 'Schedule a demo to learn how our platform helps marketing teams.' });
     assert.equal(g.verdict, 'pass');
+  });
+
+  it('scans prohibited content beyond the former 8k prefix window', () => {
+    const pad = 'x'.repeat(8100);
+    const g = scanOutput({ text: `${pad} guaranteed 100% returns every month` });
+    assert.equal(g.verdict, 'block');
+    assert.ok(g.checks.some((c) => c.check_type === 'brand_compliance'));
+  });
+
+  it('rejects output above supported scan ceiling', () => {
+    const g = scanOutput({ text: 'a'.repeat(MAX_OUTPUT_SCAN_CHARS + 1) });
+    assert.equal(g.verdict, 'block');
+    assert.ok(g.checks.some((c) => c.check_type === 'output_size'));
   });
 
   it('gate unavailable fails closed via orchestrator', async () => {
@@ -164,6 +178,59 @@ describe('PR10H.1 gateGeneratedContent helper', () => {
     });
     assert.equal(out.ok, true);
     assert.equal(out.content, 'Book a strategy session with our team.');
+  });
+});
+
+describe('PR10H.1 preview redaction', () => {
+  it('redacts synthetic SSN from audit preview material', () => {
+    const syntheticId = '123-45-6789';
+    const preview = buildSafePreview({ text: `Reach us at ${syntheticId} today.` });
+    assert.ok(preview.includes('[redacted]'));
+    assert.ok(!preview.includes(syntheticId));
+  });
+
+  it('redactSensitiveText strips identifiers from API-facing strings', () => {
+    const out = redactSensitiveText('SSN 123-45-6789 on file');
+    assert.match(out, /\[redacted\]/);
+    assert.ok(!out.includes('123-45-6789'));
+  });
+});
+
+describe('PR10H.1 chat gate bypass closure', () => {
+  it('draftBrandReply does not template-fallback on content safety block', async () => {
+    const chatPath = require.resolve('../services/ai/chat_router');
+    const redditPath = require.resolve('../services/seo_autopilot/reddit_aeo');
+    require(chatPath);
+    const chatCached = require.cache[chatPath];
+    const origChat = chatCached.exports.chatForCategory;
+    chatCached.exports.chatForCategory = async () => {
+      const err = new Error('blocked');
+      err.code = 'content_safety_blocked';
+      throw err;
+    };
+    try {
+      delete require.cache[redditPath];
+      const { draftBrandReply } = require(redditPath);
+      const result = await draftBrandReply({
+        thread: { title: 'Best SEO tool?', subreddit: 'marketing' },
+        brand: 'InfoGenie',
+        tenantId: 1,
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.error, 'content_safety_blocked');
+      assert.equal(result.reply, undefined);
+    } finally {
+      chatCached.exports.chatForCategory = origChat;
+    }
+  });
+
+  it('gateGeneratedContent enforces without tenantId (platform default)', async () => {
+    const out = await gateGeneratedContent({
+      tenantId: null,
+      text: 'guaranteed 100% returns with zero risk',
+    });
+    assert.equal(out.ok, false);
+    assert.ok(out.userMessage);
   });
 });
 
