@@ -38,6 +38,17 @@ async function selectClient(page, id) {
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
   await page.waitForSelector(`${FORM} [name="report_title"]:enabled`, { visible: true });
 }
+async function waitSubmitReady(page, scope = APPROVALS) {
+  await page.waitForFunction(
+    (selector) => {
+      const section = document.querySelector(selector);
+      const buttons = section ? [...section.querySelectorAll('button')] : [];
+      return buttons.some((btn) => /Submit displayed report for approval/.test(btn.textContent || '') && !btn.disabled);
+    },
+    { timeout: 120_000 },
+    scope,
+  );
+}
 
 test('PR10H.3 portal approval browser journey', {
   skip: !dedicatedUrl && !required ? 'optional local run: no PR10E9_TEST_DATABASE_URL' : false,
@@ -93,6 +104,7 @@ test('PR10H.3 portal approval browser journey', {
   await button(owner, 'Preview report');
   await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
   await owner.waitForSelector(APPROVALS, { visible: true });
+  await waitSubmitReady(owner);
   const invite = await responseFor(owner, 'POST', `${API}/clients/${clientId}/portal/invitations`,
     () => button(owner, 'Create invitation link', PORTAL), 201);
   const inviteUrl = `${baseUrl}${invite.invite_path}`;
@@ -130,6 +142,7 @@ test('PR10H.3 portal approval browser journey', {
 
   await button(owner, 'Preview report');
   await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
+  await waitSubmitReady(owner);
   await responseFor(owner, 'POST', `${API}/clients/${clientId}/approval-requests`,
     () => button(owner, 'Submit displayed report for approval', APPROVALS), 201);
   await text(owner, 'Pending client approval', APPROVALS);
