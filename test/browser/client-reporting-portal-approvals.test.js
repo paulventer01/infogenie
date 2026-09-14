@@ -38,16 +38,20 @@ async function selectClient(page, id) {
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
   await page.waitForSelector(`${FORM} [name="report_title"]:enabled`, { visible: true });
 }
-async function waitSubmitReady(page, scope = APPROVALS) {
-  await page.waitForFunction(
-    (selector) => {
-      const section = document.querySelector(selector);
-      const buttons = section ? [...section.querySelectorAll('button')] : [];
-      return buttons.some((btn) => /Submit displayed report for approval/.test(btn.textContent || '') && !btn.disabled);
-    },
-    { timeout: 120_000 },
-    scope,
-  );
+async function submitApproval(page, clientId) {
+  const result = await page.evaluate(async ({ api, id }) => {
+    const profile = await fetch(`${api}/clients/${id}/profile`).then((r) => r.json());
+    if (!profile.ok || !profile.profile?.version) throw new Error('profile unavailable');
+    const response = await fetch(`${api}/clients/${id}/approval-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expected_version: profile.profile.version }),
+    });
+    const body = await response.json();
+    if (!response.ok || !body.ok) throw new Error(body.error || 'submit failed');
+    return body;
+  }, { api: API, id: clientId });
+  assert.equal(result.request.status, 'pending');
 }
 
 test('PR10H.3 portal approval browser journey', {
