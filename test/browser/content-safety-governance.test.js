@@ -26,7 +26,6 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   assert.ok(dedicatedUrl, 'PR10E9_TEST_DATABASE_URL is required when PR10H1_REQUIRE_BROWSER=1');
 
   const errors = [];
-  let toleratedDiag404s = 0;
   let browser;
   t.after(async () => {
     if (browser) await browser.close();
@@ -49,19 +48,36 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   page.setDefaultTimeout(45_000);
   page.setDefaultNavigationTimeout(90_000);
   await page.setViewport({ width: 1440, height: 1050 });
-  page.on('response', (res) => {
-    const url = new URL(res.url());
-    if (res.status() === 404 && url.pathname === '/api/diag-capture/latest') toleratedDiag404s += 1;
+  await page.setBypassServiceWorker(true);
+  await page.setCacheEnabled(false);
+  await page.setRequestInterception(true);
+  const passThroughApi = new Set([
+    '/api/auth/login',
+    '/api/auth/me',
+    '/api/ai-governance/status',
+    '/api/ai-governance/policy',
+    '/api/ai-governance/audit',
+  ]);
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (!['data:', 'blob:'].includes(url.protocol) && url.origin !== baseUrl) {
+      void request.abort('blockedbyclient');
+      return;
+    }
+    if (request.method() === 'GET' && url.pathname.startsWith('/api/') && !passThroughApi.has(url.pathname)) {
+      void request.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: false, error: 'not_required_for_governance_browser_test' }),
+      });
+      return;
+    }
+    void request.continue();
   });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (msg) => {
     if (msg.type() !== 'error') return;
-    const text = msg.text();
-    if (text === 'Failed to load resource: the server responded with a status of 404 (Not Found)' && toleratedDiag404s > 0) {
-      toleratedDiag404s -= 1;
-      return;
-    }
-    errors.push(text);
+    errors.push(msg.text());
   });
 
   await login(page, baseUrl, loginActor);
