@@ -277,6 +277,42 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
       () => button(owner, 'View contributing records for row 2', SECTION));
     await text(owner, '2 contributing records total', SECTION);
   });
+  await t.test('metric availability labels and verified zero render in preview', async () => {
+    await owner.reload({ waitUntil: 'networkidle2' });
+    await save('pdf', 'search-intel');
+    await owner.reload({ waitUntil: 'networkidle2' });
+    await selectClient(owner, first.id);
+    const profileResult = await call(owner, profilePath(first.id), 'PUT', {
+      ...profile('pdf', 'search-intel', version),
+      selected_metrics: ['runs', 'brand_mentions'],
+      reporting_period: 'all_time',
+      expected_version: version,
+    });
+    assert.equal(profileResult.status, 200);
+    version = profileResult.body.profile.version;
+    await owner.evaluate(() => {
+      const original = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const response = await original(input, init);
+        const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+        if (!url.includes('/report-preview')) return response;
+        const body = await response.clone().json();
+        const totals = body.report?.sections?.find((section) => section.title === 'Search totals');
+        if (totals?.row_meta?.length >= 2) {
+          totals.row_meta[0] = { ...totals.row_meta[0], value: 0, availability: 'available', availability_reason: null, is_proxy: false };
+          totals.rows[0][1] = '0';
+          totals.row_meta[1] = { ...totals.row_meta[1], value: 12, availability: 'partial', availability_reason: 'input_partial', is_proxy: true };
+          totals.rows[1][1] = '12 · Proxy · Partial (input partial)';
+        }
+        return new Response(JSON.stringify(body), { status: response.status, headers: { 'Content-Type': 'application/json' } });
+      };
+    });
+    await preview();
+    const visible = await owner.$eval(`${SECTION} article`, (el) => el.innerText);
+    assert.match(visible, /\b0\b/);
+    assert.match(visible, /Partial/);
+    assert.match(visible, /Proxy/);
+  });
   await t.test('preview honors saved metric order from profile', async () => {
     await save('pdf');
     await owner.reload({ waitUntil: 'networkidle2' });

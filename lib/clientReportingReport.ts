@@ -1,11 +1,13 @@
 import { BRAND_FIELDS, validClient, type Branding, type Client, type Draft } from "@/lib/clientReporting";
 import type { DrilldownRowMeta } from "@/lib/clientReportingDrilldown";
+import type { ClientReportMetricMeta } from "@/lib/clientReportingAvailability";
 export type ReportSection = {
   kind: "table";
   title: string;
   headers: string[];
   rows: (string | number | null)[][];
   drilldown_rows?: DrilldownRowMeta[] | null;
+  row_meta?: ClientReportMetricMeta[] | null;
 };
 export type Preview = { ok: true; client: Client; profile_version: number; format: Draft["default_format"]; can_generate: boolean;
   reporting_period?: string; reporting_dates?: { start: string; end: string; timezone: string } | null;

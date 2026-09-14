@@ -6,6 +6,7 @@ const path = require('node:path');
 const { createRequire } = require('node:module');
 const express = require('express');
 const { buildReport } = require('../services/client_reporting/report');
+const { availableMetricMetaFromSummary } = require('../services/client_reporting/availability');
 const client = { id: 11, name: 'ALPINE', status: 'active' };
 const profile = { version: 2, report_source: 'search-intel', default_format: 'pdf', report_title: 'Saved report', branding_mode: 'custom', branding_overrides: { agencyName: 'Agency' } };
 const data = () => ({ source: 'search-intel', records: [{ id: 1, query: 'ALPINE', brand: 'Brand', locale: 'en' }], summary: { mapped_records: 1, runs: 3, successful_runs: 2, brand_mentions: 1 }, recent: { llm_runs: [] } });
@@ -120,6 +121,7 @@ test('workspace brand loads only scoped singleton inside snapshot and omits asse
 test('report bounds tables and primitive cells, keeps scope notices and currencies separate', () => {
   const d = { source: 'campaigns', records: Array.from({ length: 110 }, (_, id) => ({ id, name: '=SUM(A1)\u0000', currency: 'USD' })),
     summary: { mapped_records: 110, by_currency: [{ currency: 'USD', spend: '12.50' }, { currency: 'ZAR', spend: '20.00' }] },
+    metric_meta: availableMetricMetaFromSummary('campaigns', { mapped_records: 110, by_currency: [{ currency: 'USD', spend: '12.50' }, { currency: 'ZAR', spend: '20.00' }] }),
     recent: { performance: [{ spend: { formula: '1+1' }, bucket_hour: new Date('2026-01-01') }], optimizer_actions: [] } };
   const out = buildReport(client, { ...profile, branding_overrides: { agencyName: { formula: '1+1' }, primaryColor: 'red', logoDataUrl: 'secret', footerText: 'Footer' } }, d, null,
     ['performance_rows', 'spend', 'impressions', 'clicks', 'conversions', 'revenue', 'mapped_campaigns', 'recent_performance', 'recent_actions'], null);

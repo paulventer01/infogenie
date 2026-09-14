@@ -9,6 +9,7 @@ const { randomUUID } = require('node:crypto');
 const sources = require('./sources');
 const reports = require('./report');
 const delivery = require('./delivery');
+const { buildReportEmailBody } = require('./availability');
 const _snapshot = require('./snapshot');
 const schedule = require('./schedule');
 const portal = require('./portal');
@@ -383,11 +384,7 @@ router.post('/clients/:clientId/report-email', writeLimiter, safe(async (req, re
   const { snapshot, recipient } = await deliveryContext(req, expectedVersion, customRange);
   const { buffer, filename, contentType } = await delivery.bufferReport(snapshot);
   const subject = `${snapshot.report.title} — ${snapshot.client.name}`;
-  const text = `Attached is the ${snapshot.format.toUpperCase()} report "${snapshot.report.title}" for ${snapshot.client.name}.`;
-  const html = `<div style="font-family:sans-serif;max-width:560px;line-height:1.6">
-    <p>Attached is the <strong>${snapshot.format.toUpperCase()}</strong> report <strong>${snapshot.report.title}</strong> for ${snapshot.client.name}.</p>
-    <p style="color:#64748B;font-size:13px">Generated from the saved client reporting profile (version ${snapshot.profile_version}).</p>
-  </div>`;
+  const { text, html } = buildReportEmailBody(snapshot);
   try {
     await delivery.sendReportEmail({ to: recipient, subject, html, text, filename, content: buffer, contentType });
   } catch (error) {

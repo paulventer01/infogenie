@@ -5,6 +5,8 @@ import { API, PERIOD_HELP, accessLost, responseError, validClient, validProfile,
 import { validRecipient, type RecipientResponse } from "@/lib/clientReportingDelivery";
 import { validPreview, validReportBlob, type Preview } from "@/lib/clientReportingReport";
 import ClientReportingDrilldown, { DrilldownControl } from "@/components/features/manage/ClientReportingDrilldown";
+import ClientReportAvailabilityBadges from "@/components/features/shared/ClientReportAvailabilityBadges";
+import { clientReportCellDisplay } from "@/lib/clientReportingAvailability";
 import type { DrilldownTarget } from "@/lib/clientReportingDrilldown";
 
 type DateStamp = { custom: boolean; start: string; end: string };
@@ -190,11 +192,16 @@ export default function ClientReportingReport({ clientId, version, format, timez
         {!section.rows.length ? <p>No data available for this section.</p> : <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={section.title}>
           <table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr>{section.headers.map((header, j) => <th key={j} scope="col" style={{ textAlign: "left", padding: 8 }}>{header}</th>)}</tr></thead>
             <tbody>{section.rows.map((row, j) => <tr key={j}>
-              {row.map((cell, k) => <td key={k} style={{ padding: 8, borderTop: "1px solid #E2E8F0", verticalAlign: "top" }}>
-                <div>{cell === null ? "—" : cell}</div>
-                {k === row.length - 1 && preview && <DrilldownControl meta={section.drilldown_rows?.[j]} rowIndex={j}
-                  preview={preview} onOpen={setDrilldown} />}
-              </td>)}
+              {row.map((cell, k) => {
+                const meta = k === row.length - 1 ? section.row_meta?.[j] : null;
+                const display = clientReportCellDisplay(cell, meta);
+                return <td key={k} style={{ padding: 8, borderTop: "1px solid #E2E8F0", verticalAlign: "top" }}>
+                  <div>{display}</div>
+                  {k === row.length - 1 && meta ? <ClientReportAvailabilityBadges meta={meta} /> : null}
+                  {k === row.length - 1 && preview && <DrilldownControl meta={section.drilldown_rows?.[j]} rowIndex={j}
+                    preview={preview} onOpen={setDrilldown} />}
+                </td>;
+              })}
             </tr>)}</tbody></table>
         </div>}
         {section.title.startsWith("Mapped ") || section.title.startsWith("Recent ")
