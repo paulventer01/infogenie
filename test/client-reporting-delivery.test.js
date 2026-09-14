@@ -5,8 +5,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createRequire } = require('node:module');
 const express = require('express');
+const metrics = require('../services/client_reporting/metrics');
 const client = { id: 11, name: 'ALPINE', status: 'active' };
-const profile = { version: 2, report_source: 'search-intel', default_format: 'pdf', report_title: 'Saved report', branding_mode: 'custom', branding_overrides: { agencyName: 'Agency' } };
+const searchMetrics = metrics.defaultKeys('search-intel');
+const profile = { version: 2, report_source: 'search-intel', default_format: 'pdf', report_title: 'Saved report',
+  branding_mode: 'custom', branding_overrides: { agencyName: 'Agency' }, selected_metrics: searchMetrics,
+  reporting_period: 'last_30_days', reporting_timezone: 'UTC' };
 const data = () => ({ source: 'search-intel', records: [{ id: 1, query: 'ALPINE', brand: 'Brand', locale: 'en' }], summary: { mapped_records: 1, runs: 3, successful_runs: 2, brand_mentions: 1 }, recent: { llm_runs: [] } });
 async function fixture(t, options = {}) {
   const audits = [], current = { profile: { ...profile }, data: data(), recipient: 'client@example.com', ...options };
@@ -36,7 +40,8 @@ async function fixture(t, options = {}) {
         assert.equal(tenantId, 101); assert.equal(clientId, 11);
         if (expectedVersion !== undefined && current.profile.version !== expectedVersion) throw Object.assign(new Error('version_conflict'), { status: 409 });
         if (!current.profile) throw Object.assign(new Error('profile_required'), { status: 409 });
-        const built = require('../services/client_reporting/report').buildReport(client, current.profile, current.data, null);
+        const built = require('../services/client_reporting/report').buildReport(client, current.profile, current.data, null,
+          metrics.resolveSelection(current.profile.report_source, current.profile.selected_metrics), null);
         if (expectedVersion !== undefined && !built.can_generate) throw Object.assign(new Error('no_mapped_records'), { status: 409 });
         return { snapshot: built, profile: current.profile, client };
       },

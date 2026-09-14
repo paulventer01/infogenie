@@ -15,9 +15,12 @@ const portal = require('./portal');
 const _audit = require('../admin/audit');
 const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
+const metrics = require('./metrics');
+const period = require('./period');
 const CLIENT_COLUMNS = 'id, name, slug, website, status';
-const PROFILE_COLUMNS = 'client_id, report_source, default_format, report_title, branding_mode, branding_overrides, version, created_at, updated_at';
-const PROFILE_KEYS = ['report_source', 'default_format', 'report_title', 'branding_mode', 'branding_overrides', 'expected_version'];
+const PROFILE_COLUMNS = 'client_id, report_source, default_format, report_title, branding_mode, branding_overrides, selected_metrics, reporting_period, reporting_timezone, version, created_at, updated_at';
+const PROFILE_KEYS = ['report_source', 'default_format', 'report_title', 'branding_mode', 'branding_overrides',
+  'selected_metrics', 'reporting_period', 'reporting_timezone', 'expected_version'];
 const BRAND_LIMITS = { agencyName: 80, footerText: 200, primaryColor: 7, accentColor: 7, textColor: 7 };
 
 function fail(status, code) { return Object.assign(new Error(code), { status }); }
@@ -66,12 +69,15 @@ function profileInput(req) {
   if (!object(body) || Object.keys(body).some((key) => !PROFILE_KEYS.includes(key)) || PROFILE_KEYS.some((key) => !Object.hasOwn(body, key))) {
     throw fail(400, 'invalid_profile');
   }
-  const { report_source, default_format, branding_mode, expected_version, branding_overrides } = body;
+  const { report_source, default_format, branding_mode, expected_version, branding_overrides,
+    selected_metrics, reporting_period, reporting_timezone } = body;
   if (!['search-intel', 'campaigns'].includes(report_source) || !['pdf', 'pptx', 'xlsx'].includes(default_format) ||
       !['workspace', 'custom'].includes(branding_mode) || !Number.isInteger(expected_version) || expected_version < 0 || expected_version >= 2147483647 ||
-      typeof body.report_title !== 'string' || !body.report_title.trim() || body.report_title.trim().length > 160 || !object(branding_overrides)) {
+      typeof body.report_title !== 'string' || !body.report_title.trim() || body.report_title.trim().length > 160 || !object(branding_overrides) ||
+      !period.RELATIVE_PERIODS.has(reporting_period) || !schedule.validTimezone(reporting_timezone)) {
     throw fail(400, 'invalid_profile');
   }
+  const metricKeys = metrics.validateSelection(report_source, selected_metrics);
   const branding = {};
   for (const [key, value] of Object.entries(branding_overrides)) {
     if (!Object.hasOwn(BRAND_LIMITS, key) || typeof value !== 'string' || value.trim().length > BRAND_LIMITS[key] ||
@@ -79,7 +85,8 @@ function profileInput(req) {
     branding[key] = value.trim();
   }
   if (branding_mode === 'workspace' && Object.keys(branding).length) throw fail(400, 'invalid_profile');
-  return { report_source, default_format, report_title: body.report_title.trim(), branding_mode, branding_overrides: branding, expected_version };
+  return { report_source, default_format, report_title: body.report_title.trim(), branding_mode, branding_overrides: branding,
+    selected_metrics: metricKeys, reporting_period, reporting_timezone, expected_version };
 }
 
 function clientId(req) {
@@ -120,15 +127,18 @@ router.put('/clients/:clientId/profile', writeLimiter, safe(async (req, res) => 
     await connection.query('BEGIN');
     await activeClient(connection, tenantId, id, true);
     const values = [tenantId, id, input.report_source, input.default_format, input.report_title,
-      input.branding_mode, JSON.stringify(input.branding_overrides), positiveId(req.user.id)];
+      input.branding_mode, JSON.stringify(input.branding_overrides), JSON.stringify(input.selected_metrics),
+      input.reporting_period, input.reporting_timezone, positiveId(req.user.id)];
     const result = input.expected_version === 0
       ? await connection.query(`INSERT INTO client_reporting_profiles
-          (tenant_id,client_id,report_source,default_format,report_title,branding_mode,branding_overrides,updated_by_user_id)
-          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
+          (tenant_id,client_id,report_source,default_format,report_title,branding_mode,branding_overrides,
+           selected_metrics,reporting_period,reporting_timezone,updated_by_user_id)
+          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11)
           ON CONFLICT (tenant_id,client_id) DO NOTHING RETURNING ${PROFILE_COLUMNS}`, values)
       : await connection.query(`UPDATE client_reporting_profiles SET report_source=$3,default_format=$4,
-          report_title=$5,branding_mode=$6,branding_overrides=$7::jsonb,updated_by_user_id=$8,version=version+1,updated_at=now()
-          WHERE tenant_id=$1 AND client_id=$2 AND version=$9 RETURNING ${PROFILE_COLUMNS}`, [...values, input.expected_version]);
+          report_title=$5,branding_mode=$6,branding_overrides=$7::jsonb,selected_metrics=$8::jsonb,
+          reporting_period=$9,reporting_timezone=$10,updated_by_user_id=$11,version=version+1,updated_at=now()
+          WHERE tenant_id=$1 AND client_id=$2 AND version=$12 RETURNING ${PROFILE_COLUMNS}`, [...values, input.expected_version]);
     if (!result.rows[0]) throw fail(409, 'version_conflict');
     await connection.query('COMMIT');
     return res.json({ ok: true, configured: true, profile: result.rows[0] });
@@ -159,6 +169,12 @@ router.get('/sources/:source/records', readLimiter, safe(async (req, res) => {
   const spec = sources.source(req.params.source), { cursor, limit } = pagination(req);
   return res.json({ ok: true, source: req.params.source,
     ...await sources.candidates(_db.getPool(), spec, req.clientReportingTenantId, cursor, limit) });
+}));
+
+router.get('/sources/:source/metrics', readLimiter, safe(async (req, res) => {
+  if (Object.keys(req.query).length) throw fail(400, 'invalid_source');
+  const catalog = metrics.catalog(req.params.source);
+  return res.json({ ok: true, source: req.params.source, metrics: catalog, default_metrics: metrics.defaultKeys(req.params.source) });
 }));
 
 const mutateMapping = safe(async (req, res) => {
@@ -204,32 +220,60 @@ router.get('/clients/:clientId/data/:source', readLimiter, safe(async (req, res)
   } finally { connection.release(); }
 }));
 
-async function reportSnapshot(req, expectedVersion) {
+function customRangeFromQuery(query) {
+  const keys = Object.keys(query);
+  if (!keys.length) return null;
+  const hasStart = Object.hasOwn(query, 'start_date');
+  const hasEnd = Object.hasOwn(query, 'end_date');
+  if (hasStart !== hasEnd) throw fail(400, 'invalid_report');
+  if (!hasStart) throw fail(400, 'invalid_report');
+  if (keys.length !== 2) throw fail(400, 'invalid_report');
+  if (typeof query.start_date !== 'string' || typeof query.end_date !== 'string') throw fail(400, 'invalid_report');
+  return { startDate: query.start_date, endDate: query.end_date };
+}
+
+function customRangeFromBody(body) {
+  const keys = Object.keys(body).filter((key) => key !== 'expected_version' && key !== 'confirm');
+  const hasStart = Object.hasOwn(body, 'start_date');
+  const hasEnd = Object.hasOwn(body, 'end_date');
+  if (hasStart !== hasEnd) throw fail(400, 'invalid_report');
+  if (!hasStart) return null;
+  if (keys.length !== 2) throw fail(400, 'invalid_report');
+  if (typeof body.start_date !== 'string' || typeof body.end_date !== 'string') throw fail(400, 'invalid_report');
+  return { startDate: body.start_date, endDate: body.end_date };
+}
+
+async function reportSnapshot(req, expectedVersion, customRange) {
   const connection = await _db.getPool().connect();
   try {
-    const { snapshot: built } = await _snapshot.buildReportSnapshot(connection, req.clientReportingTenantId, clientId(req), expectedVersion);
+    const { snapshot: built } = await _snapshot.buildReportSnapshot(connection, req.clientReportingTenantId, clientId(req), expectedVersion, customRange);
     return built;
   } finally { connection.release(); }
 }
 router.get('/clients/:clientId/report-preview', readLimiter, safe(async (req, res) => {
-  if (Object.keys(req.query).length) throw fail(400, 'invalid_report');
-  return res.json(await reportSnapshot(req));
+  const customRange = customRangeFromQuery(req.query);
+  return res.json(await reportSnapshot(req, undefined, customRange));
 }));
 router.post('/clients/:clientId/report', writeLimiter, safe(async (req, res) => {
   const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
   if (Buffer.byteLength(raw, 'utf8') > 8192) throw fail(413, 'payload_too_large');
-  if (Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 1 ||
-      !Number.isInteger(body.expected_version) || body.expected_version < 1 || body.expected_version >= 2147483647) throw fail(400, 'invalid_report');
-  return reports.streamReport(await reportSnapshot(req, body.expected_version), res);
+  if (Object.keys(req.query).length || !object(body) || !Number.isInteger(body.expected_version) ||
+      body.expected_version < 1 || body.expected_version >= 2147483647) throw fail(400, 'invalid_report');
+  const customRange = customRangeFromBody(body);
+  const allowed = customRange ? ['expected_version', 'start_date', 'end_date'] : ['expected_version'];
+  if (Object.keys(body).some((key) => !allowed.includes(key))) throw fail(400, 'invalid_report');
+  return reports.streamReport(await reportSnapshot(req, body.expected_version, customRange), res);
 }));
 
 function deliveryInput(req) {
   const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
   if (Buffer.byteLength(raw, 'utf8') > 8192) throw fail(413, 'payload_too_large');
-  if (Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 2 ||
-      !Number.isInteger(body.expected_version) || body.expected_version < 1 || body.expected_version >= 2147483647 ||
-      body.confirm !== true) throw fail(400, 'invalid_delivery');
-  return body.expected_version;
+  if (Object.keys(req.query).length || !object(body) || !Number.isInteger(body.expected_version) ||
+      body.expected_version < 1 || body.expected_version >= 2147483647 || body.confirm !== true) throw fail(400, 'invalid_delivery');
+  const customRange = customRangeFromBody(body);
+  const allowed = customRange ? ['expected_version', 'confirm', 'start_date', 'end_date'] : ['expected_version', 'confirm'];
+  if (Object.keys(body).some((key) => !allowed.includes(key))) throw fail(400, 'invalid_delivery');
+  return { expectedVersion: body.expected_version, customRange };
 }
 
 const RECIPIENT_COLUMNS = 'client_id, email, enabled, updated_at';
@@ -258,9 +302,9 @@ function recipientInput(req) {
   return { email, enabled: body.enabled };
 }
 
-async function deliveryContext(req, expectedVersion) {
+async function deliveryContext(req, expectedVersion, customRange) {
   const tenantId = req.clientReportingTenantId, id = clientId(req), pool = _db.getPool();
-  const snapshot = await reportSnapshot(req, expectedVersion);
+  const snapshot = await reportSnapshot(req, expectedVersion, customRange);
   const recipient = await delivery.clientRecipient(pool, tenantId, id);
   if (!recipient) throw fail(409, 'no_recipient');
   return { snapshot, recipient };
@@ -317,8 +361,8 @@ router.get('/clients/:clientId/report-recipient', readLimiter, safe(async (req, 
 }));
 
 router.post('/clients/:clientId/report-email', writeLimiter, safe(async (req, res) => {
-  const expectedVersion = deliveryInput(req);
-  const { snapshot, recipient } = await deliveryContext(req, expectedVersion);
+  const { expectedVersion, customRange } = deliveryInput(req);
+  const { snapshot, recipient } = await deliveryContext(req, expectedVersion, customRange);
   const { buffer, filename, contentType } = await delivery.bufferReport(snapshot);
   const subject = `${snapshot.report.title} — ${snapshot.client.name}`;
   const text = `Attached is the ${snapshot.format.toUpperCase()} report "${snapshot.report.title}" for ${snapshot.client.name}.`;

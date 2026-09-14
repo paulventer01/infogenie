@@ -4,7 +4,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), ts = require("typescript");
 const React = require("react"), { JSDOM } = require("jsdom"), { act } = React;
 const client = (id) => ({ id, name: "Client", slug: null, website: null, status: "active" });
-const profile = (s) => ({ client_id: s.clientId, version: s.version, report_source: "search-intel", default_format: s.format, report_title: "Saved report", branding_mode: "workspace", branding_overrides: {}, created_at: "2026-01-01", updated_at: "2026-01-01" });
+const profile = (s) => ({ client_id: s.clientId, version: s.version, report_source: "search-intel", default_format: s.format, report_title: "Saved report", branding_mode: "workspace", branding_overrides: {},
+  selected_metrics: ["runs", "successful_runs", "brand_mentions", "mapped_queries", "recent_search_runs"],
+  reporting_period: "last_30_days", reporting_timezone: "UTC", created_at: "2026-01-01", updated_at: "2026-01-01" });
 const preview = (s) => ({ ok: true, client: client(s.clientId), profile_version: s.version, format: s.format, can_generate: true, brand: {}, report: { title: "Saved report", generated_at: "2026-01-01", sections: [{ kind: "table", title: "Mapped records", headers: ["Name"], rows: [["Client record"]] }] } });
 const recipient = (s) => ({ ok: true, client: client(s.clientId), profile_version: s.version, format: s.format, recipient: { email: "client@example.com", source: "client_reporting_recipient", enabled: true } });
 async function harness(t, handler = () => undefined) {

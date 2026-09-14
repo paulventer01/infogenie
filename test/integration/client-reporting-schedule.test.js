@@ -65,7 +65,9 @@ test('Client reporting schedules: tenant isolation, CSRF and idempotent claims',
   const schedulePath = (id) => `${prefix}/${id}/schedule`;
   const historyPath = (id) => `${prefix}/${id}/delivery-history`;
   for (const [actorRow, clientId] of [[a, ca], [b, cb]]) {
-    await call(actorRow, 'PUT', profile(clientId), { report_source: 'search-intel', default_format: 'pdf', report_title: 'Report', branding_mode: 'workspace', branding_overrides: {}, expected_version: 0 });
+    await call(actorRow, 'PUT', profile(clientId), { report_source: 'search-intel', default_format: 'pdf', report_title: 'Report', branding_mode: 'workspace', branding_overrides: {},
+      selected_metrics: ['runs', 'successful_runs', 'brand_mentions', 'mapped_queries', 'recent_search_runs'],
+      reporting_period: 'last_30_days', reporting_timezone: 'UTC', expected_version: 0 });
     await call(actorRow, 'PUT', recipient(clientId), { email: `${clientId}@example.com`, enabled: true });
     await call(actorRow, 'PUT', schedulePath(clientId), { cadence: 'weekly', timezone: 'UTC', send_time: '09:00', format: 'pdf', opt_in: true });
   }
