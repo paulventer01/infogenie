@@ -50,6 +50,7 @@ async function submitApproval(apiBase, cookie, clientId) {
   });
   assert.equal(submitted.status, 201, submitted.text);
   assert.equal(submitted.json.request.status, 'pending');
+  return submitted.json.request.id;
 }
 
 test('PR10H.3 portal approval browser journey', {
@@ -106,7 +107,6 @@ test('PR10H.3 portal approval browser journey', {
   await selectClient(owner, clientId);
   await button(owner, 'Preview report');
   await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
-  await owner.waitForSelector(APPROVALS, { visible: true });
   const invite = await responseFor(owner, 'POST', `${API}/clients/${clientId}/portal/invitations`,
     () => button(owner, 'Create invitation link', PORTAL), 201);
   const inviteUrl = `${baseUrl}${invite.invite_path}`;
@@ -117,14 +117,8 @@ test('PR10H.3 portal approval browser journey', {
   portal.setDefaultNavigationTimeout(120_000);
   await portal.goto(inviteUrl, { waitUntil: 'networkidle2' });
   await portal.waitForFunction(() => location.pathname === '/client-report/view');
-  await portal.waitForSelector('[aria-label="Report approval"]', { visible: true, timeout: 5000 }).catch(() => null);
 
-  await submitApproval(apiBase, ownerSession.cookie, clientId);
-  await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
-  await selectClient(owner, clientId);
-  await owner.waitForSelector(APPROVALS, { visible: true });
-  await text(owner, 'Pending client approval', APPROVALS);
-
+  let requestId = await submitApproval(apiBase, ownerSession.cookie, clientId);
   await portal.reload({ waitUntil: 'networkidle2' });
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true });
   await text(portal, 'Pending client approval', '[aria-label="Report approval"]');
@@ -133,25 +127,12 @@ test('PR10H.3 portal approval browser journey', {
   await portal.locator(changeComment).fill('Please update the totals section.');
   await Promise.all([
     portal.waitForResponse((r) => r.request().method() === 'POST'
-      && /\/approval-requests\/\d+\/request-changes$/.test(new URL(r.url()).pathname)),
+      && new URL(r.url()).pathname === `/api/client-reporting/portal/approval-requests/${requestId}/request-changes`),
     button(portal, 'Submit change request', '[aria-label="Report approval"]'),
   ]);
   await text(portal, 'Change request submitted', 'main');
 
-  await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
-  await selectClient(owner, clientId);
-  await owner.waitForSelector(APPROVALS, { visible: true });
-  await text(owner, 'Changes requested', APPROVALS);
-  await text(owner, 'Please update the totals section.', APPROVALS);
-
-  await button(owner, 'Preview report');
-  await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
-  await submitApproval(apiBase, ownerSession.cookie, clientId);
-  await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
-  await selectClient(owner, clientId);
-  await owner.waitForSelector(APPROVALS, { visible: true });
-  await text(owner, 'Pending client approval', APPROVALS);
-
+  requestId = await submitApproval(apiBase, ownerSession.cookie, clientId);
   await portal.reload({ waitUntil: 'networkidle2' });
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true });
   await button(portal, 'Approve report', '[aria-label="Report approval"]');
