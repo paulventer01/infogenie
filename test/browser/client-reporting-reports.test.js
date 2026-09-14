@@ -308,10 +308,17 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
       };
     });
     await preview();
-    const visible = await owner.$eval(`${SECTION} article`, (el) => el.innerText);
-    assert.match(visible, /\b0\b/);
-    assert.match(visible, /Partial/);
-    assert.match(visible, /Proxy/);
+    await owner.waitForSelector(`${SECTION} [aria-label="Partial"]`, { visible: true });
+    await owner.waitForSelector(`${SECTION} [aria-label="Proxy"]`, { visible: true });
+    const runsDisplay = await owner.$eval(`${SECTION} article`, (article) => {
+      const headings = [...article.querySelectorAll('h4')];
+      const totalsHeading = headings.find((h) => h.textContent === 'Search totals');
+      const table = totalsHeading?.parentElement?.querySelector('table');
+      const rows = table ? [...table.querySelectorAll('tbody tr')] : [];
+      const runsRow = rows.find((row) => row.cells[0]?.textContent === 'Runs');
+      return runsRow?.cells[1]?.textContent ?? null;
+    });
+    assert.equal(runsDisplay, '0');
   });
   await t.test('preview honors saved metric order from profile', async () => {
     await save('pdf');
