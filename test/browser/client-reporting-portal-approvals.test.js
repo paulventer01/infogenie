@@ -8,9 +8,12 @@ const ROUTE = '/manage/client-reporting';
 const API = '/api/client-reporting';
 const PANEL = '#ig-react-panel';
 const FORM = `${PANEL} form[aria-label="Reporting profile"]`;
+const SECTION = `${PANEL} [aria-label="Client report preview"]`;
 const PORTAL = `${PANEL} [aria-label="Client reporting portal access"]`;
 const APPROVALS = `${PANEL} [aria-label="Client report approvals"]`;
 const profilePath = (id) => `${API}/clients/${id}/profile`;
+const previewPath = (id) => `${API}/clients/${id}/report-preview`;
+const approvalsPath = (id) => `${API}/clients/${id}/approval-requests`;
 
 async function button(page, name, scope = PANEL) {
   await page.locator(`${scope} ::-p-aria([name="${name}"][role="button"])`).click();
@@ -31,12 +34,29 @@ async function responseFor(page, method, path, action, status = 200) {
   assert.equal(response.status(), status, `${method} ${path}`);
   const body = status === 204 ? null : await response.json().catch(() => null);
   if (body && typeof body.ok === 'boolean' && status < 400) assert.equal(body.ok, true);
-  return body;
+  return { response, body };
 }
 async function selectClient(page, id) {
   await page.waitForSelector(`${PANEL} select[name="client_id"]:enabled`, { visible: true });
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
   await page.waitForSelector(`${FORM} [name="report_title"]:enabled`, { visible: true });
+}
+async function previewReport(page, clientId) {
+  const { body } = await responseFor(page, 'GET', previewPath(clientId), () => button(page, 'Preview report', SECTION));
+  assert.ok(body.content_hash, 'preview must return content_hash');
+  await page.waitForSelector(`${SECTION} article`, { visible: true });
+  await page.waitForFunction((scope) => {
+    const section = document.querySelector(scope);
+    const btn = [...(section?.querySelectorAll('button') || [])]
+      .find((node) => node.textContent === 'Submit displayed report for approval');
+    return btn && !btn.disabled;
+  }, {}, APPROVALS);
+  return body;
+}
+async function submitApproval(page, clientId) {
+  const { body } = await responseFor(page, 'POST', approvalsPath(clientId),
+    () => button(page, 'Submit displayed report for approval', APPROVALS), 201);
+  return body.request;
 }
 
 test('PR10H.3 portal approval browser journey', {
@@ -90,11 +110,10 @@ test('PR10H.3 portal approval browser journey', {
   }, `${baseUrl}${profilePath(clientId)}`);
   await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
-  await button(owner, 'Preview report');
-  await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
+  await previewReport(owner, clientId);
   const invite = await responseFor(owner, 'POST', `${API}/clients/${clientId}/portal/invitations`,
     () => button(owner, 'Create invitation link', PORTAL), 201);
-  const inviteUrl = `${baseUrl}${invite.invite_path}`;
+  const inviteUrl = `${baseUrl}${invite.body.invite_path}`;
 
   const portalContext = await browser.createBrowserContext();
   const portal = await portalContext.newPage();
@@ -103,31 +122,33 @@ test('PR10H.3 portal approval browser journey', {
   await portal.goto(inviteUrl, { waitUntil: 'networkidle2' });
   await portal.waitForFunction(() => location.pathname === '/client-report/view');
 
-  const submitResponse = await responseFor(owner, 'POST', `${API}/clients/${clientId}/approval-requests`,
-    () => button(owner, 'Submit displayed report for approval', APPROVALS), 201);
-  const requestId = submitResponse.request.id;
+  const submitted = await submitApproval(owner, clientId);
+  const requestId = submitted.id;
   await portal.reload({ waitUntil: 'networkidle2' });
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true });
   await text(portal, 'Pending client approval', '[aria-label="Report approval"]');
   const changeComment = '[aria-label="Report approval"] textarea';
   await portal.waitForSelector(changeComment, { visible: true });
   await portal.locator(changeComment).fill('Please update the totals section.');
-  await Promise.all([
-    portal.waitForResponse((r) => r.request().method() === 'POST'
-      && new URL(r.url()).pathname === `/api/client-reporting/portal/approval-requests/${requestId}/request-changes`),
-    button(portal, 'Submit change request', '[aria-label="Report approval"]'),
-  ]);
+  const { body: changeBody } = await responseFor(portal, 'POST',
+    `/api/client-reporting/portal/approval-requests/${requestId}/request-changes`,
+    () => button(portal, 'Submit change request', '[aria-label="Report approval"]'));
+  assert.equal(changeBody.request.status, 'changes_requested');
   await text(portal, 'Change request submitted', 'main');
 
-  await button(owner, 'Preview report');
-  await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
-  const resubmitResponse = await responseFor(owner, 'POST', `${API}/clients/${clientId}/approval-requests`,
-    () => button(owner, 'Submit displayed report for approval', APPROVALS), 201);
-  const requestId2 = resubmitResponse.request.id;
+  await owner.reload({ waitUntil: 'networkidle2' });
+  await selectClient(owner, clientId);
+  await previewReport(owner, clientId);
+  const resubmitted = await submitApproval(owner, clientId);
+  const requestId2 = resubmitted.id;
   await portal.reload({ waitUntil: 'networkidle2' });
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true });
-  await button(portal, 'Approve report', '[aria-label="Report approval"]');
-  await button(portal, 'Confirm approval', '[aria-label="Report approval"]');
+  const { body: approveBody } = await responseFor(portal, 'POST',
+    `/api/client-reporting/portal/approval-requests/${requestId2}/approve`, async () => {
+      await button(portal, 'Approve report', '[aria-label="Report approval"]');
+      await button(portal, 'Confirm approval', '[aria-label="Report approval"]');
+    });
+  assert.equal(approveBody.request.status, 'approved');
   await text(portal, 'Report approved', 'main');
 
   await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
