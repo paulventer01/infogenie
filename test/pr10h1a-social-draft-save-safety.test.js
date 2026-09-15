@@ -3,6 +3,7 @@
 
 const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const express = require('express');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -15,6 +16,16 @@ const { socialDraftGateText } = require('../services/ai_governance/content_schem
 
 const PROHIBITED = 'guaranteed 100% returns with zero risk';
 const SAFE_TEXT = 'Schedule a demo to learn how our platform helps marketing teams.';
+const LEGACY_CAPTION_LIMIT = 10_000;
+const LEGACY_ALT_LIMIT = 2_000;
+
+function captionWithProhibitedSuffix() {
+  return `${'x'.repeat(LEGACY_CAPTION_LIMIT + 1)}${PROHIBITED}`;
+}
+
+function altWithProhibitedSuffix() {
+  return `${'a'.repeat(LEGACY_ALT_LIMIT + 1)}${PROHIBITED}`;
+}
 
 const db = require('../db');
 db.hasDb = () => false;
@@ -46,13 +57,14 @@ function listen(app) {
   });
 }
 
-async function jsonFetch(server, method, path, { tid = 11, body } = {}) {
+async function jsonFetch(server, method, path, { tid = 11, body, headers = {} } = {}) {
   const port = server.address().port;
   const res = await fetch(`http://127.0.0.1:${port}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
       'x-test-tid': String(tid),
+      ...headers,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -71,6 +83,10 @@ describe('PR-1a scope — social draft save gate (Step 6 partial)', () => {
     assert.match(src, /content_safety_warnings/);
     assert.match(src, /createRateLimiter/);
     assert.match(src, /socialDraftWriteLimiter/);
+    assert.match(src, /socialDraftScanSizeError/);
+    assert.match(src, /_insertDraftsBulk/);
+    assert.match(src, /BEGIN/);
+    assert.match(src, /ROLLBACK/);
   });
 
   it('does not claim whole-Step-6 completion', () => {
@@ -276,6 +292,123 @@ describe('PR-1a social draft bulk gate (CR-056)', () => {
     const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
     assert.equal(listed.body.drafts.length, 0);
   });
+
+  it('rolls back memory bulk inserts when a later item fails to persist', async () => {
+    const r = await jsonFetch(server, 'POST', '/api/social-drafts/bulk', {
+      headers: { 'x-test-bulk-fail-after-index': '1' },
+      body: {
+        profileId: 'p1',
+        items: [
+          { caption: SAFE_TEXT, platforms: ['instagram'] },
+          { caption: 'Second item', platforms: ['linkedin'] },
+        ],
+      },
+    });
+    assert.equal(r.status, 500);
+    assert.equal(r.body.error, 'bulk_insert_failed');
+    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
+    assert.equal(listed.body.drafts.length, 0);
+  });
+});
+
+describe('PR-1a scan coverage beyond legacy truncation limits', () => {
+  let server;
+  let draftsRouter;
+
+  before(async () => {
+    const { app, draftsRouter: router } = mountApp();
+    draftsRouter = router;
+    server = await listen(app);
+  });
+
+  after(async () => {
+    if (server) await new Promise((r) => server.close(r));
+  });
+
+  beforeEach(() => {
+    if (typeof draftsRouter._resetMem === 'function') draftsRouter._resetMem();
+  });
+
+  it('blocks create when prohibited copy sits beyond the legacy caption truncation point', async () => {
+    const r = await jsonFetch(server, 'POST', '/api/social-drafts', {
+      body: { profileId: 'p1', text: captionWithProhibitedSuffix(), platforms: ['instagram'] },
+    });
+    assert.equal(r.status, 403);
+    assert.ok(r.body.error === 'content_safety_blocked' || r.body.error === 'content_safety_block');
+    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
+    assert.equal(listed.body.drafts.length, 0);
+  });
+
+  it('blocks create when prohibited copy sits beyond the legacy alt truncation point', async () => {
+    const r = await jsonFetch(server, 'POST', '/api/social-drafts', {
+      body: {
+        profileId: 'p1',
+        text: SAFE_TEXT,
+        platforms: ['instagram'],
+        meta: { alt_text: altWithProhibitedSuffix() },
+      },
+    });
+    assert.equal(r.status, 403);
+    assert.ok(r.body.error === 'content_safety_blocked' || r.body.error === 'content_safety_block');
+    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
+    assert.equal(listed.body.drafts.length, 0);
+  });
+
+  it('blocks bulk when prohibited caption suffix sits beyond legacy truncation', async () => {
+    const r = await jsonFetch(server, 'POST', '/api/social-drafts/bulk', {
+      body: {
+        profileId: 'p1',
+        items: [
+          { caption: SAFE_TEXT, platforms: ['instagram'] },
+          { caption: captionWithProhibitedSuffix(), platforms: ['linkedin'] },
+        ],
+      },
+    });
+    assert.equal(r.status, 403);
+    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
+    assert.equal(listed.body.drafts.length, 0);
+  });
+
+  it('blocks bulk when prohibited alt suffix sits beyond legacy truncation', async () => {
+    const r = await jsonFetch(server, 'POST', '/api/social-drafts/bulk', {
+      body: {
+        profileId: 'p1',
+        items: [
+          { caption: SAFE_TEXT, platforms: ['instagram'] },
+          { caption: 'Alt gated item', alt_text: altWithProhibitedSuffix(), platforms: ['linkedin'] },
+        ],
+      },
+    });
+    assert.equal(r.status, 403);
+    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
+    assert.equal(listed.body.drafts.length, 0);
+  });
+
+  it('blocks merged PATCH when prohibited caption suffix sits beyond legacy truncation', async () => {
+    const created = await jsonFetch(server, 'POST', '/api/social-drafts', {
+      body: { profileId: 'p1', text: SAFE_TEXT, platforms: ['instagram'] },
+    });
+    const id = created.body.draft.id;
+    const patched = await jsonFetch(server, 'PATCH', `/api/social-drafts/${id}`, {
+      body: { text: captionWithProhibitedSuffix() },
+    });
+    assert.equal(patched.status, 403);
+    const got = await jsonFetch(server, 'GET', `/api/social-drafts/${id}`);
+    assert.equal(got.body.draft.text, SAFE_TEXT);
+  });
+
+  it('blocks merged PATCH when prohibited alt suffix sits beyond legacy truncation', async () => {
+    const created = await jsonFetch(server, 'POST', '/api/social-drafts', {
+      body: { profileId: 'p1', text: SAFE_TEXT, platforms: ['instagram'] },
+    });
+    const id = created.body.draft.id;
+    const patched = await jsonFetch(server, 'PATCH', `/api/social-drafts/${id}`, {
+      body: { meta: { alt_text: altWithProhibitedSuffix() } },
+    });
+    assert.equal(patched.status, 403);
+    const got = await jsonFetch(server, 'GET', `/api/social-drafts/${id}`);
+    assert.equal(got.body.draft.meta?.alt_text, undefined);
+  });
 });
 
 describe('PR-1a blocked responses omit usable copy', () => {
@@ -333,6 +466,87 @@ describe('PR-1a UI coverage notes', () => {
     assert.match(rendered, /switching drafts clears the prior save alert/);
     assert.match(rendered, /preserves edits made while a save is in flight/);
     assert.match(rendered, /ignores a late blocked save response/);
+  });
+});
+
+const PG_URL = process.env.DATABASE_URL || '';
+const PG_REQUIRED = process.env.PR10H1_REQUIRE_INTEGRATION === '1';
+const pgSkip = !PG_URL ? (PG_REQUIRED ? false : 'no DATABASE_URL') : false;
+
+describe('PR-1a social draft bulk postgres', { skip: pgSkip }, () => {
+  let db;
+  let ensureTenantSchema;
+  let ensureSocialDraftsSchema;
+  let server;
+  let tenantId;
+  let realGate;
+  const fixtureTag = `pr10h1a-bulk-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  const profileId = `bulk-${fixtureTag}`;
+
+  before(async () => {
+    assert.ok(PG_URL, 'DATABASE_URL is required when PR10H1_REQUIRE_INTEGRATION=1');
+    for (const mod of [
+      '../db',
+      '../services/tenants/schema',
+      '../services/social_drafts/schema',
+      '../services/social_drafts/api',
+      '../services/tenants/context',
+    ]) {
+      delete require.cache[require.resolve(mod)];
+    }
+    db = require('../db');
+    ({ ensureTenantSchema } = require('../services/tenants/schema'));
+    ({ ensureSocialDraftsSchema } = require('../services/social_drafts/schema'));
+    await ensureTenantSchema();
+    await ensureSocialDraftsSchema();
+    const p = db.getPool();
+    tenantId = (await p.query(
+      `INSERT INTO tenants (name, slug, status) VALUES ($1, $2, 'active') RETURNING id`,
+      [`PR10H1A bulk ${fixtureTag}`, fixtureTag],
+    )).rows[0].id;
+    const routeGate = require('../services/ai_governance/route_gate');
+    realGate = routeGate.gateRouteText;
+    routeGate.gateRouteText = async () => ({ ok: true, warnings: [] });
+    const tenantCtx = require('../services/tenants/context');
+    tenantCtx.resolveTenantId = async (req) => Number(req.headers['x-test-tid'] || tenantId);
+    const { app } = mountApp();
+    server = await listen(app);
+  });
+
+  after(async () => {
+    if (realGate) require('../services/ai_governance/route_gate').gateRouteText = realGate;
+    if (server) await new Promise((r) => server.close(r));
+    delete require.cache[require.resolve('../services/social_drafts/api')];
+    if (!PG_URL || !tenantId) return;
+    const p = db.getPool();
+    await p.query('DELETE FROM social_post_drafts WHERE tenant_id = $1', [tenantId]).catch(() => {});
+    await p.query('DELETE FROM tenants WHERE id = $1', [tenantId]).catch(() => {});
+  });
+
+  it('rolls back all bulk inserts when a later row fails', async () => {
+    const p = db.getPool();
+    const before = (await p.query(
+      `SELECT count(*)::int AS c FROM social_post_drafts WHERE tenant_id = $1 AND profile_id = $2`,
+      [tenantId, profileId],
+    )).rows[0].c;
+    const r = await jsonFetch(server, 'POST', '/api/social-drafts/bulk', {
+      tid: tenantId,
+      headers: { 'x-test-bulk-fail-after-index': '1' },
+      body: {
+        profileId,
+        items: [
+          { caption: SAFE_TEXT, platforms: ['instagram'] },
+          { caption: 'Second bulk row', platforms: ['linkedin'] },
+        ],
+      },
+    });
+    assert.equal(r.status, 500);
+    assert.equal(r.body.error, 'bulk_insert_failed');
+    const after = (await p.query(
+      `SELECT count(*)::int AS c FROM social_post_drafts WHERE tenant_id = $1 AND profile_id = $2`,
+      [tenantId, profileId],
+    )).rows[0].c;
+    assert.equal(after, before);
   });
 });
 
