@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const _publishApproval = require('./publish_approval');
 
 const STATUSES = ['draft', 'pending_approval', 'approved', 'scheduled', 'published', 'failed', 'delivery_unknown'];
 const PLATFORMS = [
@@ -564,6 +565,9 @@ router.patch('/:id', _safeAsync(async (req, res) => {
   }
   if (body.status != null && STATUSES.includes(body.status)) patch.status = body.status;
   if (body.meta != null && typeof body.meta === 'object') patch.meta = body.meta;
+  if (_publishApproval.patchInvalidatesApproval(existing, patch)) {
+    Object.assign(patch, _publishApproval.invalidateApprovalPatch(existing));
+  }
   const draft = await _updateDraft(tid, req.params.id, patch);
   res.json({ ok: true, draft });
 }));
@@ -795,6 +799,21 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
   const draft = await _getDraft(tid, draftId);
   if (!draft) return { ok: false, error: 'not found' };
 
+  const settings = await _getSettings(tid);
+  const authz = _publishApproval.evaluatePublishAuthorization({
+    requireApproval: !!settings.require_approval,
+    draft,
+    mode,
+  });
+  if (!authz.ok) {
+    return {
+      ok: false,
+      error: authz.error,
+      hint: authz.hint,
+      draft,
+    };
+  }
+
   if (_isDeliveryUnknown(draft)) {
     return { ok: false, error: 'delivery_unknown', draft };
   }
@@ -827,8 +846,7 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
         status: 'approved',
         meta: {
           ...(draft.meta || {}),
-          approved_at: new Date().toISOString(),
-          reviewer_notes: opts.notes || null,
+          ..._publishApproval.recordApprovalMeta(draft, opts.notes || null),
         },
       });
     }
@@ -855,8 +873,7 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
       publishing_claim_at: claim.draft.meta?.publishing_claim_at || new Date().toISOString(),
     };
     if (mode === 'approval') {
-      approvedMeta.approved_at = new Date().toISOString();
-      approvedMeta.reviewer_notes = opts.notes || null;
+      Object.assign(approvedMeta, _publishApproval.recordApprovalMeta(claim.draft, opts.notes || null));
     }
     let fresh = await updateDraft(tid, draftId, {
       status: mode === 'approval' ? 'approved' : claim.draft.status,
@@ -995,5 +1012,6 @@ router._getDraft = _getDraft;
 router._insertDraft = _insertDraft;
 router._updateDraft = _updateDraft;
 router._getSettings = _getSettings;
+router._setSettings = _setSettings;
 
 module.exports = router;

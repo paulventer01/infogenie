@@ -188,35 +188,37 @@ async function _onSocialPublished(tid, draft) {
     });
 
     let published = false;
-    if (pref.auto_publish && typeof draftsApi._approveAndPublish !== 'function') {
-      // auto publish via draft publish path — set status and call publish helper
-    }
+    let autoPublishBlocked = null;
     if (pref.auto_publish) {
       try {
-        // Direct publish without approval gate for workflow children
-        const pub = require('../social_drafts/api');
-        // Use internal publish by temporarily ensuring not pending
-        const httpsPub = await (async () => {
-          // Call router path logic: update then publish via exported helpers
-          const result = await pub._updateDraft(tid, child.id, { status: 'draft' });
-          void result;
-          // Manual zernio via publish endpoint simulation — leave as scheduled draft for safety
-          return { ok: true, scheduled: true };
-        })();
-        published = !!httpsPub.ok;
-        await draftsApi._updateDraft(tid, child.id, {
-          status: 'scheduled',
-          meta: { ...(child.meta || {}), auto_scheduled: true },
-        });
-      } catch (_) {}
+        const settings = typeof draftsApi._getSettings === 'function'
+          ? await draftsApi._getSettings(tid)
+          : { require_approval: false };
+        if (settings.require_approval) {
+          autoPublishBlocked = {
+            error: 'approval_required',
+            hint: 'Auto-publish is blocked while require_approval is enabled. Child draft was created — submit via /api/social-drafts/:id/submit-approval.',
+          };
+        } else if (typeof draftsApi._executePublishDraft === 'function') {
+          const result = await draftsApi._executePublishDraft(tid, child.id, { mode: 'direct' });
+          published = !!(result.ok && result.published);
+          if (!result.ok) autoPublishBlocked = { error: result.error, hint: result.hint || null };
+        }
+      } catch (e) {
+        autoPublishBlocked = { error: 'auto_publish_failed', hint: e.message };
+      }
     }
 
     await _logRun(tid, {
       preset_id: preset.id,
       source_draft_id: draft.id,
       child_draft_id: child.id,
-      status: published ? 'scheduled' : 'draft_created',
-      detail: { target: preset.target_platforms, scheduled_for: when },
+      status: published ? 'scheduled' : (autoPublishBlocked ? 'approval_blocked' : 'draft_created'),
+      detail: {
+        target: preset.target_platforms,
+        scheduled_for: when,
+        auto_publish_blocked: autoPublishBlocked,
+      },
     });
     created.push(child);
   }
