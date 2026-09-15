@@ -2,233 +2,355 @@
 
 **Status:** Partial  
 **Audited from:** `main` @ `9c916358` (2026-09-15)  
+**Last updated:** PR #190 revision — adds Email Designer, Site Builder, LinkedIn Outreach, RCS; field-scan review; per-route expansion.  
 **Scope:** Content-generation, regeneration, save/edit, approval, and publishing routes that produce or move marketing copy toward external delivery.
 
-This document inventories every in-scope route traced through shared helpers and handler execution order — not function-name grep alone. Routes are classified **covered**, **gap**, or **out of scope** with justification.
+This document inventories every in-scope route traced through shared helpers and handler execution order — not function-name grep alone. Routes are classified **covered**, **partial**, **gap**, or **out of scope** with justification.
 
 ---
 
 ## Executive summary
 
-Step 6 (PR10H) enforces deterministic brand/compliance + PII checks on generated marketing text **before** it is returned, persisted, or externally published. The platform default is **enforce**; tenants may opt into **warning-only** via AI Governance policy (`content_safety_mode`).
+Step 6 (PR10H) enforces deterministic brand/compliance + PII checks on generated marketing text **before** it is returned, persisted, or externally published. Default is **enforce**; tenants may opt into **warning-only** via AI Governance policy.
 
-**What is done:** Fifteen service modules wire `gateRouteText` / `gateGeneratedContent` on primary creation surfaces (campaign composer, ad/press/cold/video/carousel, review-reply generate, launch proofread, market_signals publishable copy, safe-agent propose, `ai_content` generation suite, marketing brief). Normalizers in `services/ai_governance/content_schemas.js` strip unexpected LLM fields before scanning.
+### Unique route counts (method + path)
 
-**What remains:** External publish paths (social drafts, WordPress `/api/wordpress/publish`), approve-without-rescan on two modules, user-authored save without gate, seven additional `market_signals` AI copy routes, and ~20 tier-2 `/generate` endpoints. Social drafts use a separate heuristic self-heal loop — not the Step 6 orchestrator gate.
+| Classification | Count | Notes |
+|----------------|------:|-------|
+| **Covered** (full) | 41 | Gate before persist/return/action; field scan complete per normalizer |
+| **Partial** | 8 | Gate present but incomplete field scan, timing, status code, or warning persistence |
+| **Gap** | 52 | No Step 6 gate on an in-scope lifecycle step |
+| **Out of scope** | 34 | Read-only, audit-only, non-copy, or operator-channel deferrals |
+| **Total inventoried** | 135 | Each row appears once |
 
-**Step 6 is not complete.** Do not mark Done until the acceptance criteria at the end of this document are met.
+**Step 6 is not complete.**
 
 ---
 
 ## Shared gate architecture
 
-Execution path for HTTP handlers using `gateRouteText`:
-
 ```
 HTTP handler
   → gateRouteText (route_gate.js)
     → gateGeneratedContent (hooks.js)
-      → outputGate.scanOutput (deterministic PII, brand/compliance, claim citation)
+      → outputGate.scanOutput (PII, brand/compliance, claim citation)
       → governContent → orchestrator.govern (fail-closed for content_generation)
 ```
 
-| Helper | File | Behaviour |
-|--------|------|-----------|
-| `gateRouteText` | `services/ai_governance/route_gate.js` | HTTP wrapper; returns `{ ok, warnings, content_safety_warnings }` or block/unavailable |
-| `gateGeneratedContent` | `services/ai_governance/hooks.js` | Scan + govern; blocked text never returned as usable output |
-| `governContent` | `services/ai_governance/hooks.js` | Fail-closed orchestrator path for content surfaces |
-| `governSafe` | `services/ai_governance/hooks.js` | **Audit-only; fails open** — not a Step 6 execution gate |
-| `content_schemas.*` | `services/ai_governance/content_schemas.js` | Normalize LLM JSON → gate text; strip extra fields |
+| Helper | File | Role |
+|--------|------|------|
+| `gateRouteText` | `services/ai_governance/route_gate.js` | HTTP wrapper |
+| `gateGeneratedContent` | `services/ai_governance/hooks.js` | Scan + govern; blocked text not returned |
+| `governContent` | `services/ai_governance/hooks.js` | Fail-closed orchestrator |
+| `governSafe` | `services/ai_governance/hooks.js` | **Audit-only; fails open** |
+| `content_schemas.*` | `services/ai_governance/content_schemas.js` | Normalize → gate text |
 
-**Warning-only mode:** `gateRouteText` returns `ok: true` with `content_safety_warnings` populated; enforce mode returns 403/503 and omits generated payload fields (`contentSafetyHttpBody`).
+**Indirect:** `chat_router.chatForCategory` gates via `gateGeneratedContent`; used by `social_drafts/self_heal.js` (heuristic + rewrite — not equivalent to full lifecycle gate).
 
-**Indirect coverage:** `services/ai/chat_router.js` `chatForCategory` gates LLM output via `gateGeneratedContent` before return. Used by `social_drafts/self_heal.js` AI rewrites (heuristic scan + optional chat rewrite — not equivalent to Step 6 gate on create/edit/publish).
+---
+
+## Field-scan completeness review (covered routes)
+
+Traced normalizers in `content_schemas.js` and per-route `_respondGatedJson` scan strings. Goal: all publishable text fields reach `scanOutput`, including secondary JSON fields and delimiter-separated segments.
+
+| Route / normalizer | Fields scanned | Delimiter / encoding | Test evidence | Scan gaps |
+|--------------------|----------------|----------------------|---------------|-----------|
+| `composerDraftGateText` | name, audience, subject, body, send time, rationale; condition type/op/field/event/metric/source/value | `\n` between sections; conditions joined with spaces | `pr10h5` (value, type, op); `pr10h5-content-schemas` | None known |
+| `redditReplyGateText` | `reply`, `tone_note` | `\n` | `pr10h5`, `pr10h7`, `pr10h5-content-schemas` | None known |
+| `pressReleaseGateText` | headline, subhead, dateline, body, quote, attribution, boilerplate, contact | `\n` | `pr10h8` | None known |
+| `coldEmailGateText` | subject, preview, body, cta, why_this_works per email | `\n` | `pr10h7` | None known |
+| `videoScriptGateText` | hook, body line/onscreen_text/cue, cta, viral_pattern, hashtags | `\t` within body lines; `\n` between scripts | `pr10h12` | Literal `\n`/`\t` **inside** a single `line` value scanned as part of field (not split across fields) |
+| `carouselGateText` | role, headline, body, visualHint per slide | `\t` within slide; `\n` between slides | `pr10h13` | Same as video script for embedded escapes in one field |
+| `channelAdGateText` | headline, body, cta, hashtags | `\n` | `pr10h5` | None known |
+| `redditStudioGateText` | persona, titles[] | `\n` | `pr10h5` | None known |
+| `contentClusterGateText` | whole cluster object | `JSON.stringify` | `pr10h5` | **Partial:** stringify emits escaped `\n`/`\t` as two-char sequences; phrases split across JSON key boundaries may evade line-oriented heuristics |
+| `proofreadGateText` | summary, improved_copy, issue texts | `\n` | `pr10h5` | None known |
+| `adCopyGateText` | all leaf values in normalized score/UGC/packages | `\n` | `pr10h9` | None known |
+| `reviewReplyGateText` | `reply` only | n/a | `pr10h7` | None known |
+| `marketing_brief` `generateBrief` | `JSON.stringify({ headline, greeting, sections, actions })` | JSON | `content-safety-enforcement` | Same JSON.stringify caveat as clusters |
+| `ad_creative/generate` | full DALL-E prompt built from headline, body, brand, cta, extra_context | space-joined prompt | `pr10h9` | Image pixels not scanned (copy path only — intentional) |
+| `ai_content` `_respondGatedJson` routes | per-route scan string (see §A1 table) | varies | — | See partial rows below |
+| `safe_agent/propose` | `JSON.stringify({ proposal, simulation, title })` | JSON | `pr10h4` | JSON.stringify caveat |
+
+**Recommendation (PR-8c):** Add regression tests that place prohibited phrases (a) only in `tone_note`-style secondary fields, (b) only in JSON-escaped `\n`/`\t` sequences, and (c) split across `JSON.stringify` key boundaries — extend normalizers to decode or flatten before scan where needed.
 
 ---
 
 ## Route inventory
 
-Legend:
-
 | Column | Meaning |
 |--------|---------|
-| **Gate** | Helper used (`gateRouteText`, `gateGeneratedContent`, `governSafe`, `heuristic`, `none`) |
-| **Timing** | `before-persist`, `before-return`, `before-action`, `after-action`, `audit-only`, `n/a` |
-| **Warnings** | How `content_safety_warnings` are handled |
-| **Tests** | Automated evidence (empty = no dedicated Step 6 test) |
-| **Class** | `covered` · `gap` · `out of scope` |
+| **Gate** | `gateRouteText`, `gateGeneratedContent`, `governSafe`, `heuristic`, `none` |
+| **Timing** | When gate runs relative to persist / return / external action |
+| **Warnings** | `content_safety_warnings` handling |
+| **Class** | `covered` · `partial` · `gap` · `out of scope` |
 
-### A. Content generation (AI produces new copy)
+---
 
-#### A1 — Covered generation routes
+### A. Content generation
 
-| Method | Path | Module | Gate | Timing | Warnings | Tests | Class |
-|--------|------|--------|------|--------|----------|-------|-------|
-| POST | `/api/campaign-composer/generate` | `campaign_composer/api.js` | `gateRouteText` via `_gateDraft` + `composerDraftGateText` | before-persist | DB column + response attach | `pr10h5`, `pr10h10` | covered |
-| POST | `/api/ad-creative/score` | `ad_creative/api.js` | `gateRouteText` via `_sendGatedCopy` | before-return | response attach | `pr10h8`, `pr10h9` | covered |
-| POST | `/api/ad-creative/ugc-script` | `ad_creative/api.js` | same | before-return | response attach | `pr10h9` | covered |
-| POST | `/api/ad-creative/from-landing-page` | `ad_creative/api.js` | same | before-return | response attach | `pr10h9` | covered |
-| POST | `/api/ad-creative/generate` | `ad_creative/api.js` | `gateRouteText` on copy before DALL-E | before-persist | DB + attach | `pr10h8`, `pr10h9` | covered |
-| POST | `/api/press-release/generate` | `press_release/api.js` | `gateRouteText` + `pressReleaseGateText` | before-return | response attach | `pr10h8` | covered |
-| POST | `/api/cold-email/generate` | `cold_email/api.js` | `gateRouteText` via `_gateEmails` | before-persist | DB + attach | `pr10h7` | covered |
-| POST | `/api/video-script/generate` | `video_script/api.js` | `gateRouteText` via `_gateScripts` | before-return | response attach | `pr10h12` | covered |
-| POST | `/api/carousel/generate` | `carousel/api.js` | `gateRouteText` via `_gateSlides` | before-persist | `meta.content_safety_warnings` + attach | `pr10h13` | covered |
-| POST | `/api/review-monitor/replies/generate` | `review_monitor/reply_api.js` | `gateRouteText` via `_gateReply` | before-persist | DB + attach | `pr10h7` | covered |
-| POST | `/api/launch-compliance/checklists/:id/proofread` | `launch_compliance/api.js` | `gateRouteText` via `_gateFeedback` | before-persist | DB + attach | `pr10h5` | covered |
-| POST | `/api/reddit-reply` | `market_signals/routes.js` | `gateRouteText` + `redditReplyGateText` | before-return | response attach | `pr10h5`, `pr10h7` | covered |
-| POST | `/api/reddit-studio-suggest` | `market_signals/routes.js` | `gateRouteText` + `redditStudioGateText` | before-return | response attach | `pr10h5` | covered |
-| POST | `/api/ai-channel-ad` | `market_signals/routes.js` | `gateRouteText` + `channelAdGateText` (incl. template fallback) | before-return | response attach | `pr10h5` | covered |
-| POST | `/api/ai-content-clusters` | `market_signals/routes.js` | `gateRouteText` + `contentClusterGateText` | before-return | response attach | `pr10h5` | covered |
-| POST | `/api/reddit-monitor` | `market_signals/routes.js` | Partial: AI `posts` field gated; HN/scoring ungated | before-return (AI strip) | attach on gated payload | `pr10h5` | covered (partial) |
-| POST | `/api/safe-agent/propose` | `safe_agent/api.js` | `gateRouteText` on proposal JSON | before-persist | DB + response | `pr10h4` | covered |
-| GET | `/api/marketing-brief/today` | `marketing_brief/api.js` → `generator.js` | `gateGeneratedContent` in `generateBrief` | before-persist | DB column | `content-safety-enforcement` | covered |
-| POST | `/api/marketing-brief/generate` | same | same | before-persist | DB column | `content-safety-enforcement` | covered |
-| POST | `/api/ai-visibility-audit` | `ai_content/routes.js` | `_respondGatedJson` → `gateRouteText` | before-return | attach | — | covered |
-| POST | `/api/ai-brand-monitor` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/ai-build-content` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/ai-content-brief` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/ai-social-caption` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/agency-report` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/reengage-copy` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/ai-creative` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/ai-campaign-brief` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/landing-page` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/generate-seo-article` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/generate-article-topics` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/backlink-opportunities` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/keyword-research` | `ai_content/routes.js` | same | before-return | attach | — | covered |
-| POST | `/api/ai-attack-plan` | `ai_content/routes.js` | `_gateRoutePayload` before `_tryPersistAttackPlan` | before-persist | response only (not on stored plan) | — | covered (warning gap) |
+#### A1 — Covered (full)
 
-**Library (non-HTTP):** `services/ai/chat_router.js` `chatForCategory` — `gateGeneratedContent` before return (`content-safety-enforcement.test.js`).
+| Method | Path | Module | Gate | Timing | Warnings | Tests |
+|--------|------|--------|------|--------|----------|-------|
+| POST | `/api/campaign-composer/generate` | `campaign_composer/api.js` | `gateRouteText` + `composerDraftGateText` | before-persist | DB + attach | `pr10h5`, `pr10h10` |
+| POST | `/api/ad-creative/score` | `ad_creative/api.js` | `gateRouteText` + `adCopyGateText` | before-return | attach | `pr10h8`, `pr10h9` |
+| POST | `/api/ad-creative/ugc-script` | `ad_creative/api.js` | same | before-return | attach | `pr10h9` |
+| POST | `/api/ad-creative/from-landing-page` | `ad_creative/api.js` | same | before-return | attach | `pr10h9` |
+| POST | `/api/ad-creative/generate` | `ad_creative/api.js` | `gateRouteText` on built prompt | before DALL-E + persist | DB + attach | `pr10h8`, `pr10h9` |
+| POST | `/api/press-release/generate` | `press_release/api.js` | `gateRouteText` + `pressReleaseGateText` | before-return | attach | `pr10h8` |
+| POST | `/api/cold-email/generate` | `cold_email/api.js` | `gateRouteText` + `coldEmailGateText` | before-persist | DB + attach | `pr10h7` |
+| POST | `/api/video-script/generate` | `video_script/api.js` | `gateRouteText` + `videoScriptGateText` | before-return | attach | `pr10h12` |
+| POST | `/api/carousel/generate` | `carousel/api.js` | `gateRouteText` + `carouselGateText` | before-persist | meta + attach | `pr10h13` |
+| POST | `/api/review-monitor/replies/generate` | `review_monitor/reply_api.js` | `gateRouteText` + `reviewReplyGateText` | before-persist | DB + attach | `pr10h7` |
+| POST | `/api/launch-compliance/checklists/:id/proofread` | `launch_compliance/api.js` | `gateRouteText` + `proofreadGateText` | before-persist | DB + attach | `pr10h5` |
+| POST | `/api/reddit-reply` | `market_signals/routes.js` | `gateRouteText` + `redditReplyGateText` | before-return | attach | `pr10h5`, `pr10h7` |
+| POST | `/api/reddit-studio-suggest` | `market_signals/routes.js` | `gateRouteText` + `redditStudioGateText` | before-return | attach | `pr10h5` |
+| POST | `/api/ai-channel-ad` | `market_signals/routes.js` | `gateRouteText` + `channelAdGateText` (+ template fallback) | before-return | attach | `pr10h5` |
+| POST | `/api/ai-content-clusters` | `market_signals/routes.js` | `gateRouteText` + `contentClusterGateText` | before-return | attach | `pr10h5` |
+| POST | `/api/safe-agent/propose` | `safe_agent/api.js` | `gateRouteText` on proposal JSON | before-persist | DB + response | `pr10h4` |
+| GET | `/api/marketing-brief/today` | `marketing_brief/generator.js` | `gateGeneratedContent` in `generateBrief` | before-persist | DB column | `content-safety-enforcement` |
+| POST | `/api/marketing-brief/generate` | `marketing_brief/api.js` | same | before-persist | DB column | `content-safety-enforcement` |
+| POST | `/api/ai-visibility-audit` | `ai_content/routes.js` | `_respondGatedJson` (audit text) | before-return | attach | — |
+| POST | `/api/ai-brand-monitor` | `ai_content/routes.js` | `_respondGatedJson` (report text) | before-return | attach | — |
+| POST | `/api/ai-build-content` | `ai_content/routes.js` | `_respondGatedJson` (scanText) | before-return | attach | — |
+| POST | `/api/ai-content-brief` | `ai_content/routes.js` | `_respondGatedJson` (brief) | before-return | attach | — |
+| POST | `/api/ai-social-caption` | `ai_content/routes.js` | `_respondGatedJson` (caption) | before-return | attach | — |
+| POST | `/api/agency-report` | `ai_content/routes.js` | `_respondGatedJson` (`JSON.stringify` payload) | before-return | attach | — |
+| POST | `/api/reengage-copy` | `ai_content/routes.js` | `_respondGatedJson` (counter or scanText) | before-return | attach | — |
+| POST | `/api/ai-creative` | `ai_content/routes.js` | `_respondGatedJson` (`JSON.stringify` payload) | before-return | attach | — |
+| POST | `/api/ai-campaign-brief` | `ai_content/routes.js` | `_respondGatedJson` (`JSON.stringify` payload) | before-return | attach | — |
+| POST | `/api/generate-article-topics` | `ai_content/routes.js` | `_respondGatedJson` (`JSON.stringify` payload) | before-return | attach | — |
+| POST | `/api/backlink-opportunities` | `ai_content/routes.js` | `_respondGatedJson` (`JSON.stringify` payload) | before-return | attach | — |
+| POST | `/api/keyword-research` | `ai_content/routes.js` | `_respondGatedJson` (`JSON.stringify` payload) | before-return | attach | — |
 
-#### A2 — Generation gaps (AI copy, no Step 6 gate)
+**Library:** `services/ai/chat_router.js` `chatForCategory` — `gateGeneratedContent` before return.
 
-| Method | Path | Module | Gate | Timing | Warnings | Tests | Class / justification |
-|--------|------|--------|------|--------|----------|-------|----------------------|
-| POST | `/api/reddit-autofill` | `market_signals/routes.js` | none | n/a | none | — | **gap** — AI persona/copy for Reddit posts |
-| POST | `/api/seed-topic-suggest` | `market_signals/routes.js` | none | n/a | none | — | **gap** — publishable topic titles |
-| POST | `/api/templates/recommend` | `market_signals/routes.js` | none | n/a | none | — | **gap** — ad template copy recommendations |
-| POST | `/api/intent-map` | `market_signals/routes.js` | none | n/a | none | — | **gap** — content angle copy |
-| POST | `/api/keyword-page-map` | `market_signals/routes.js` | none | n/a | none | — | **gap** — page/copy mapping |
-| POST | `/api/icp-draft` | `market_signals/routes.js` | none | n/a | none | — | **gap** — ICP narrative copy |
-| POST | `/api/icp-voc` | `market_signals/routes.js` | none | n/a | none | — | **gap** — voice-of-customer copy |
-| POST | `/api/reengage/generate` | `growth_ops/routes.js` | none | n/a | none | — | **gap** — duplicates gated `/api/reengage-copy` domain |
-| POST | `/api/wireframe/generate` | `wireframe/api.js` | none | n/a | none | — | **gap** — landing wireframe copy |
-| POST | `/api/content-brief/generate` | `content_brief/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/content-calendar/generate` | `content_calendar/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/content-modes/generate` | `content_modes/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/landing-pages/generate` | `landing_pages/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/pitch-deck/generate` | `pitch_deck/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/battle-cards/generate` | `battle_cards/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/chatbot-builder/generate` | `chatbot_builder/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/brand-dna/generate` | `brand_dna/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/ab-designer/generate` | `ab_designer/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/infographics/generate` | `infographics/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/llm-kb/generate` | `llm_kb/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/reddit-pulse/generate-reply` | `reddit_pulse/api.js` | none | n/a | none | — | **gap** — parallel to gated review/reddit reply |
-| POST | `/api/reply-assistant/draft` | `reply_assistant/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/seo-autopilot/reddit-aeo/draft-reply` | `seo_autopilot/api.js` | none | n/a | none | — | **gap** |
-| POST | `/api/creator-studio/*/generate` | `creator_studio/api.js` | none | n/a | none | — | **gap** — presentation/signature/case-study |
+#### A2 — Partial coverage (gate present, incomplete)
 
-#### A3 — Generation out of scope
+| Method | Path | Issue | Tests | Class |
+|--------|------|-------|-------|-------|
+| POST | `/api/reddit-monitor` | Only AI `posts` text gated; HN feed and scoring paths ungated; blocked AI stripped from payload | `pr10h5` | **partial** |
+| POST | `/api/ai-attack-plan` | Gate before persist, but `content_safety_warnings` not stored on saved plan entry | — | **partial** |
+| POST | `/api/landing-page` | Gates `html` only; response includes unscanned `campName`, `domain` (user inputs echoed) | — | **partial** |
+| POST | `/api/generate-seo-article` | Gates generated `content` only; response echoes request `title` without separate scan | — | **partial** |
+| POST | `/api/publish-to-wordpress` | Gates `content` only — **`title` not scanned**; blocked path always **403** (never 503 for `content_safety_unavailable` unlike `_respondGatedJson`); success omits `content_safety_warnings` in warning-only mode | — | **partial** |
+| GET | `/api/marketing-brief/merged` | `generateBrief` gate errors swallowed (`catch { /* keep stale */ }`) | — | **partial** |
+| POST | `/api/ai-content-clusters` | `contentClusterGateText` uses `JSON.stringify` — see field-scan table | `pr10h5` | **partial** (normalizer) |
+| POST | `/api/agency-report` | `JSON.stringify` scan — see field-scan table | — | **partial** (normalizer) |
+
+#### A3 — Generation gaps (no Step 6 gate)
+
+| Method | Path | Module | Notes |
+|--------|------|--------|-------|
+| POST | `/api/reddit-autofill` | `market_signals/routes.js` | AI persona/copy |
+| POST | `/api/seed-topic-suggest` | `market_signals/routes.js` | Topic titles |
+| POST | `/api/templates/recommend` | `market_signals/routes.js` | Template copy |
+| POST | `/api/intent-map` | `market_signals/routes.js` | Content angles |
+| POST | `/api/keyword-page-map` | `market_signals/routes.js` | Page/copy mapping |
+| POST | `/api/icp-draft` | `market_signals/routes.js` | ICP narrative |
+| POST | `/api/icp-voc` | `market_signals/routes.js` | VOC copy |
+| POST | `/api/reengage/generate` | `growth_ops/routes.js` | Duplicate of gated `/api/reengage-copy` |
+| POST | `/api/wireframe/generate` | `wireframe/api.js` | Landing wireframe copy |
+| POST | `/api/content-brief/generate` | `content_brief/api.js` | Brief copy |
+| POST | `/api/content-calendar/generate` | `content_calendar/api.js` | Calendar copy |
+| POST | `/api/content-modes/generate` | `content_modes/api.js` | Mode copy |
+| POST | `/api/landing-pages/generate` | `landing_pages/api.js` | Page HTML |
+| POST | `/api/pitch-deck/generate` | `pitch_deck/api.js` | Slide copy |
+| POST | `/api/battle-cards/generate` | `battle_cards/api.js` | Battle card copy |
+| POST | `/api/chatbot-builder/generate` | `chatbot_builder/api.js` | Bot scripts |
+| POST | `/api/brand-dna/generate` | `brand_dna/api.js` | Brand narrative |
+| POST | `/api/ab-designer/generate` | `ab_designer/api.js` | Variant copy |
+| POST | `/api/infographics/generate` | `infographics/api.js` | Infographic text |
+| POST | `/api/llm-kb/generate` | `llm_kb/api.js` | KB article |
+| POST | `/api/reddit-pulse/generate-reply` | `reddit_pulse/api.js` | Reply draft |
+| POST | `/api/reply-assistant/draft` | `reply_assistant/api.js` | Mention reply |
+| POST | `/api/seo-autopilot/reddit-aeo/draft-reply` | `seo_autopilot/api.js` | Reddit AEO reply |
+| POST | `/api/creator-studio/presentation/generate` | `creator_studio/api.js` | Deck copy |
+| POST | `/api/creator-studio/signature/generate` | `creator_studio/api.js` | Email signature HTML |
+| POST | `/api/creator-studio/case-study/generate` | `creator_studio/api.js` | Case study HTML |
+| POST | `/api/email-designer/ai-generate` | `email_designer/api.js` | Block-based email (return only, not persisted) |
+| POST | `/api/site-builder/ai-generate` | `site_builder/api.js` | Landing page blocks; **persists to kv before return** |
+| POST | `/api/linkedin-outreach/sequences/:id/ai-generate` | `linkedin_outreach/api.js` | 4 messages + angles; **auto-saves to sequence** |
+| POST | `/api/rcs/campaigns/:id/ai-generate` | `rcs/api.js` | RCS/Apple message body, rich card, CTAs (return only) |
+
+#### A4 — Generation out of scope
 
 | Method | Path | Justification |
 |--------|------|---------------|
-| POST | `/api/voiceover/generate` | TTS of user-supplied text; no generative marketing copy |
+| POST | `/api/voiceover/generate` | TTS of user-supplied text |
 | POST | `/api/audio-summary/generate` | Spoken summary of supplied text |
-| POST | `/api/schema-generator/generate` | Structured data / JSON-LD, not publishable prose |
-| POST | `/api/dataset-market/generate` | Synthetic dataset samples for analytics tooling |
-| POST | `/api/investor-mode/generate` | Internal investor narrative; not customer-facing publish path (defer unless product declares in-scope) |
-| POST | `/api/competitor-news`, `/api/trends`, `/api/reddit-signals` | Research/signal aggregation; not direct publishable copy |
-| POST | `/api/launch-compliance/checklists/:id/brand-check` | `governSafe` audit-only by design; does not return gated copy for publish |
+| POST | `/api/schema-generator/generate` | Structured data / JSON-LD |
+| POST | `/api/dataset-market/generate` | Synthetic analytics samples |
+| POST | `/api/competitor-news` | Research aggregation |
+| POST | `/api/trends` | Research aggregation |
+| POST | `/api/reddit-signals` | Signal aggregation |
+| POST | `/api/launch-compliance/checklists/:id/brand-check` | `governSafe` audit-only |
 
 ---
 
 ### B. Regeneration
 
-No dedicated `/regenerate` endpoints exist. Regeneration is modelled as re-invoking generate routes or force-refresh:
-
-| Flow | Route | Gate on regen? | Class |
-|------|-------|----------------|-------|
-| Campaign composer re-prompt | `POST /api/campaign-composer/generate` | yes (same as generate) | covered |
-| Marketing brief force refresh | `POST /api/marketing-brief/generate`, `GET /today?force=1` | yes via `generateBrief` | covered |
-| Marketing brief merged auto-refresh | `GET /api/marketing-brief/merged` | yes when `generateBrief` runs; **errors swallowed** (`catch { /* keep stale */ }`) | **gap** (silent stale on block) |
-| Social self-heal rewrite | `POST /api/social-drafts/:id/self-heal` | heuristic + `chatForCategory` indirect gate on rewrite only | **gap** (not Step 6 on full draft lifecycle) |
-| Ungated `/generate` routes (A2) | various | no | gap |
-
----
-
-### C. Save / edit (user or API persists copy without new LLM call)
-
-| Method | Path | Gate | Timing | Warnings | Tests | Class |
-|--------|------|------|--------|----------|-------|-------|
-| PUT | `/api/campaign-composer/drafts/:id` | `gateRouteText` via `_gateDraft` | before-persist | DB + attach | `pr10h10` | covered |
-| POST | `/api/launch-compliance/checklists` | none | n/a | none | — | **gap** — `ad_copy` saved ungated |
-| PUT | `/api/launch-compliance/items/:itemId` | none | n/a | n/a | — | out of scope — checklist status only, not copy |
-| POST | `/api/social-drafts/` | none | n/a | none | `pr10h6` (approval only) | **gap** |
-| POST | `/api/social-drafts/bulk` | none | n/a | none | — | **gap** |
-| PATCH | `/api/social-drafts/:id` | none | n/a | none | `pr10h6` | **gap** |
-| POST | `/api/review-monitor/request-rules` | none | n/a | none | — | **gap** — `message_template` persisted |
-| PUT | `/api/review-monitor/request-rules/:id` | none | n/a | none | — | **gap** |
-| POST | `/api/brand-foundation/save` | none | n/a | n/a | — | out of scope — brand config, not campaign copy |
-| POST | `/api/schema-generator/save` | none | n/a | n/a | — | out of scope — structured schema blocks |
+| Method | Path | Gate on regen? | Class |
+|--------|------|----------------|-------|
+| POST | `/api/campaign-composer/generate` | yes | covered |
+| POST | `/api/marketing-brief/generate` | yes | covered |
+| GET | `/api/marketing-brief/today?force=1` | yes | covered |
+| GET | `/api/marketing-brief/merged` | yes when regen runs; errors swallowed | **partial** |
+| POST | `/api/social-drafts/:id/self-heal` | heuristic + indirect `chatForCategory` gate on rewrite text only | **gap** |
+| POST | `/api/email-designer/:id/versions/:vid/restore` | none | **gap** |
+| All A3 generation gaps | — | no | **gap** |
 
 ---
 
-### D. Approval (human or workflow promotes copy toward delivery)
+### C. Save / edit
 
-| Method | Path | Gate | Timing | Warnings | Tests | Class |
-|--------|------|------|--------|----------|-------|-------|
-| POST | `/api/campaign-composer/drafts/:id/approve` | `gateRouteText` re-scan via `_gateDraft` | before-segment-create + status update | DB + attach | `pr10h11`, `pr10h5` | covered |
-| POST | `/api/campaign-composer/drafts/:id/approve` | `governSafe` | after-commit | audit-only | `pr10h5`, `pr10h11` | out of scope (audit) |
-| POST | `/api/review-monitor/replies/:id/approve` | none | n/a | none | — | **gap** — no re-gate (composer pattern not followed) |
-| POST | `/api/safe-agent/approve/:id` | none (`governSafe` after) | before-execute | none | `pr10h4` (propose only) | **gap** — executes stored proposal without re-scan |
-| POST | `/api/social-drafts/:id/submit-approval` | heuristic `selfHealDraft` only | before status change | in `meta.self_heal` | `pr10h6` | **gap** — not `gateRouteText` |
-| POST | `/api/social-drafts/:id/approve` | none | before publish | none | `pr10h6` | **gap** |
-| POST | `/api/approval-workflows/approve/:id` | none | workflow state | n/a | — | out of scope — generic workflow shell; content varies |
-| POST | `/api/agent-orchestrator/**/approve*` | orchestrator tier | action-tier | n/a | — | out of scope — PR10H action-tier (`default_mode: shadow`); separate from Step 6 content gate |
-
----
-
-### E. Publishing (external delivery)
-
-| Method | Path | Gate | Timing | Warnings | Tests | Class |
-|--------|------|------|--------|----------|-------|-------|
-| POST | `/api/publish-to-wordpress` | `gateRouteText` on `content` | before WP API call | block body only; **success omits warnings** | — | covered (warning gap) |
-| POST | `/api/wordpress/publish` | none | n/a | none | — | **gap** — second publish path, no scan |
-| POST | `/api/social-drafts/:id/publish` | approval authz only | before Zernio | none | `pr10h6` | **gap** |
-| POST | `/api/social-publisher/post` | approval block only | before Zernio | none | `pr10h6` | **gap** |
-| POST | `/api/marketing-brief/:id/deliver` | none | sends stored brief | n/a | — | **gap** — outbound Slack/email of stored copy without re-gate |
-| POST | `/api/whatsapp-channel/send` | none | n/a | n/a | — | out of scope — operator-initiated channel send with user body; defer to channel-specific tranche |
+| Method | Path | Gate | Timing | Class |
+|--------|------|------|--------|-------|
+| PUT | `/api/campaign-composer/drafts/:id` | `gateRouteText` | before-persist | covered |
+| POST | `/api/launch-compliance/checklists` | none | n/a | **gap** (`ad_copy`) |
+| POST | `/api/social-drafts/` | none | n/a | **gap** |
+| POST | `/api/social-drafts/bulk` | none | n/a | **gap** |
+| PATCH | `/api/social-drafts/:id` | none | n/a | **gap** |
+| POST | `/api/review-monitor/request-rules` | none | n/a | **gap** (`message_template`) |
+| PUT | `/api/review-monitor/request-rules/:id` | none | n/a | **gap** |
+| POST | `/api/email-designer/` | none | n/a | **gap** (blocks, subject → `rendered_html`) |
+| PUT | `/api/email-designer/:id` | none | n/a | **gap** |
+| POST | `/api/email-designer/:id/versions/:vid/restore` | none | n/a | **gap** |
+| POST | `/api/site-builder/page/:slug` | none | before kv persist | **gap** (all block copy) |
+| POST | `/api/linkedin-outreach/sequences` | none | n/a | **gap** (connection + follow-up messages) |
+| PUT | `/api/linkedin-outreach/sequences/:id` | none | n/a | **gap** |
+| POST | `/api/rcs/campaigns/create` | none | n/a | **gap** (`message_body`, rich_card, cta_buttons) |
+| PUT | `/api/launch-compliance/items/:itemId` | none | n/a | out of scope (checklist status) |
+| POST | `/api/brand-foundation/save` | none | n/a | out of scope (brand config) |
 
 ---
 
-## Coverage statistics (in-scope routes)
+### D. Approval
 
-| Class | Count (approx.) | Notes |
-|-------|-----------------|-------|
-| **covered** | 44 | Includes partial `reddit-monitor` and `ai-attack-plan` warning persistence gap |
-| **gap** | 38 | Publish path, ungated generate, save-without-gate, approve-without-rescan |
-| **out of scope** | 12 | Audit-only, TTS, research signals, orchestrator action-tier |
+| Method | Path | Gate | Class |
+|--------|------|------|-------|
+| POST | `/api/campaign-composer/drafts/:id/approve` | `gateRouteText` re-scan | covered |
+| POST | `/api/campaign-composer/drafts/:id/approve` | `governSafe` after commit | out of scope (audit) |
+| POST | `/api/review-monitor/replies/:id/approve` | none | **gap** |
+| POST | `/api/safe-agent/approve/:id` | none (`governSafe` after) | **gap** |
+| POST | `/api/social-drafts/:id/submit-approval` | heuristic `selfHealDraft` only | **gap** |
+| POST | `/api/social-drafts/:id/approve` | none | **gap** |
+| POST | `/api/approval-workflows/approve/:id` | none | out of scope (generic workflow) |
+| POST | `/api/agent-orchestrator/**/approve*` | orchestrator action-tier | out of scope (PR10H action tier) |
 
 ---
 
-## Confirmed gaps → bounded implementation PRs
+### E. Publishing / delivery
 
-Ordered by **risk** (external exposure × bypass likelihood). Each PR should stay ≤ 1,500 additions + deletions.
+| Method | Path | Gate | Timing | Class |
+|--------|------|------|--------|-------|
+| POST | `/api/publish-to-wordpress` | `gateRouteText` on `content` only | before WP POST | **partial** (see A2) |
+| POST | `/api/wordpress/publish` | none | n/a | **gap** |
+| POST | `/api/social-drafts/:id/publish` | approval authz only | before Zernio | **gap** |
+| POST | `/api/social-publisher/post` | approval block only | before Zernio | **gap** |
+| POST | `/api/marketing-brief/:id/deliver` | none | sends stored brief | **gap** |
+| POST | `/api/rcs/campaigns/:id/send` | none | before message queue insert | **gap** |
+| POST | `/api/email-designer/:id/preview` | none | returns stored HTML | **gap** (delivery preview) |
+| POST | `/api/email-designer/render` | none | returns live HTML | **gap** (live preview) |
+| GET | `/api/site-builder/render/:slug` | none | public HTML response | **gap** (public delivery) |
+| PUT | `/api/linkedin-outreach/contacts/:id/status` | none | status tracking only | out of scope (human sends on LinkedIn; no API copy dispatch) |
+| POST | `/api/whatsapp-channel/send` | none | n/a | out of scope (operator channel; defer) |
+| GET | `/lp/:id` | none | legacy `landing_pages` table serve | out of scope (separate from site-builder kv pages; covered under `landing_pages/generate` gap) |
 
-### PR-1 — Social publish path (highest risk)
+**Email Designer delivery note:** No first-party `/send` route. Templates persist for drip/campaign export (UI copy: “export to drip campaigns”). In-scope gaps are **save**, **ai-generate**, and **preview/render** paths that materialize HTML without gate.
 
-**Routes:** `POST/PATCH /api/social-drafts/*`, `POST /api/social-drafts/:id/{submit-approval,approve,publish}`, `POST /api/social-publisher/post`
+**Site Builder delivery note:** Public pages live at `kv_store` key `lp:<slug>`. `GET /api/site-builder/render/:slug` serves HTML from stored blocks without re-scan.
 
-**Work:**
-- Add `gateRouteText` on create, patch, approve, and publish (scan `text` + normalized platforms).
-- Persist `content_safety_warnings` on draft row / `meta`.
-- Replace or augment heuristic-only `selfHealDraft` submission gate with orchestrator-aligned scan.
-- Wire `ContentSafetyWarnings` in social draft UI panels.
-- Tests: `test/pr10h14-social-draft-safety.test.js` + UI harness; extend `content-safety-enforcement.yml`.
+**LinkedIn Outreach delivery note:** Copy is stored on sequences for operator manual send; no automated LinkedIn API dispatch. Save and AI-generate paths are in-scope gaps.
 
-**Risk:** User/composer/AI copy reaches external social networks without deterministic Step 6 gate today.
+**RCS delivery note:** `POST .../send` queues `message_body` / rich card to recipients without gate.
+
+---
+
+## Module trace summaries (new in this revision)
+
+### Email Designer (`/api/email-designer`)
+
+| Lifecycle | Routes | Gate today | Class |
+|-----------|--------|------------|-------|
+| Generate | `POST /ai-generate` | none | **gap** |
+| Save | `POST /`, `PUT /:id`, `POST /:id/versions/:vid/restore` | none | **gap** |
+| Deliver | `POST /:id/preview`, `POST /render` | none | **gap** |
+| Read / admin | `GET /`, `GET /:id`, `DELETE /:id`, `GET /:id/versions`, `POST /:id/spam-check` | spam-check uses local heuristics | out of scope |
+
+Execution: `ai-generate` → OpenAI JSON → `res.json({ subject, blocks, global_styles })` with no `gateRouteText`. Save paths call `renderHtml(blocks)` then INSERT/UPDATE without scan.
+
+### Site Builder (`/api/site-builder`)
+
+| Lifecycle | Routes | Gate today | Class |
+|-----------|--------|------------|-------|
+| Generate | `POST /ai-generate` | none; persists via `kvSet` before return | **gap** |
+| Save | `POST /page/:slug` | none | **gap** |
+| Deliver | `GET /render/:slug` | none | **gap** |
+| Read | `GET /pages`, `GET /page/:slug` | n/a | out of scope |
+
+Execution: `ai-generate` → OpenAI page JSON → `kvSet('lp:'+slug)` → response. All block text (hero, features, FAQ, CTA, etc.) ungated.
+
+### LinkedIn Outreach (`/api/linkedin-outreach`)
+
+| Lifecycle | Routes | Gate today | Class |
+|-----------|--------|------------|-------|
+| Generate | `POST /sequences/:id/ai-generate` | none; UPDATE sequence messages after LLM | **gap** |
+| Save | `POST /sequences`, `PUT /sequences/:id` | none | **gap** |
+| Deliver | `PUT /contacts/:id/status` | n/a (tracking) | out of scope |
+| Read / CRM | `GET /config`, `GET /sequences`, `GET /contacts/:sequence_id`, `POST /contacts`, `DELETE /contacts/:id` | n/a | out of scope |
+
+Execution: `ai-generate` parses `connection_message`, three follow-ups, `subject_angles`, `tips` → UPDATE `linkedin_sequences` without gate.
+
+### RCS (`/api/rcs`)
+
+| Lifecycle | Routes | Gate today | Class |
+|-----------|--------|------------|-------|
+| Generate | `POST /campaigns/:id/ai-generate` | none; returns JSON only | **gap** |
+| Save | `POST /campaigns/create` | none | **gap** |
+| Deliver | `POST /campaigns/:id/send` | none | **gap** |
+| Read | `GET /config`, `GET /campaigns`, `GET /stats/:id` | n/a | out of scope |
+
+Execution: `ai-generate` produces `message_body`, `rich_card`, `cta_buttons`, `suggested_replies` → `res.json({ generated })`. `send` INSERTs `rcs_messages` rows without scan.
+
+---
+
+## Implementation PR batches
+
+Each batch ≤ 1,500 additions + deletions. Ordered by risk. Every batch lists **acceptance criteria**.
+
+### PR-1a — Social drafts: create and edit gate
+
+**Routes:** `POST /api/social-drafts/`, `POST /api/social-drafts/bulk`, `PATCH /api/social-drafts/:id`
+
+**Acceptance:**
+- `gateRouteText` on `text` (and media alt text if present) before INSERT/UPDATE
+- `content_safety_warnings` persisted on draft row / `meta`
+- 403/503 block without draft body in response; warning-only returns warnings
+- Tests: `test/pr10h14a-social-draft-save-safety.test.js`
+
+---
+
+### PR-1b — Social drafts: approval and publish gate
+
+**Routes:** `POST /api/social-drafts/:id/submit-approval`, `POST /api/social-drafts/:id/approve`, `POST /api/social-drafts/:id/publish`
+
+**Acceptance:**
+- Re-scan at submit, approve, and publish (composer approve pattern)
+- Self-heal may remain but must not bypass final `gateRouteText` before external delivery
+- Tests: `test/pr10h14b-social-draft-publish-safety.test.js`; extend `pr10h6` only for authz — not safety
+
+---
+
+### PR-1c — Social publisher direct post gate
+
+**Routes:** `POST /api/social-publisher/post`
+
+**Acceptance:**
+- Gate post `text` before Zernio call when approval not required
+- When approval required, behaviour unchanged (blocked with hint)
+- Tests: `test/pr10h14c-social-publisher-safety.test.js`
 
 ---
 
@@ -236,134 +358,217 @@ Ordered by **risk** (external exposure × bypass likelihood). Each PR should sta
 
 **Routes:** `POST /api/wordpress/publish`
 
-**Work:**
-- Gate `title` + `content` + `excerpt` via `gateRouteText` before `_wpRequest`, matching `/api/publish-to-wordpress` behaviour.
-- Fail closed on `content_safety_unavailable`.
+**Acceptance:**
+- Gate `title` + `content` + `excerpt` before `_wpRequest`
+- 503 on `content_safety_unavailable`; attach warnings on success
 - Tests: `test/pr10h14-wordpress-publish-safety.test.js`
 
-**Risk:** Ungated duplicate publish path bypasses gated `ai_content` route.
+---
+
+### PR-3a — Review reply approve rescan
+
+**Routes:** `POST /api/review-monitor/replies/:id/approve`
+
+**Acceptance:**
+- `gateRouteText` on stored `ai_draft_reply` before status flip
+- Tests: extend `pr10h7`
 
 ---
 
-### PR-3 — Approve-without-rescan
+### PR-3b — Safe Agent approve rescan
 
-**Routes:**
-- `POST /api/review-monitor/replies/:id/approve`
-- `POST /api/safe-agent/approve/:id`
+**Routes:** `POST /api/safe-agent/approve/:id`
 
-**Work:**
-- Re-scan stored copy at approve time (mirror `campaign_composer` `_gateDraft` pattern).
-- Block 403/503 before status flip / execution.
-- Tests: extend `pr10h7`, `pr10h4`.
-
-**Risk:** Stale or hand-edited DB rows bypass generation-time gate.
+**Acceptance:**
+- Re-scan proposal JSON before execution
+- Tests: extend `pr10h4`
 
 ---
 
-### PR-4 — User save without gate
+### PR-4a — Launch compliance checklist create gate
 
-**Routes:**
-- `POST /api/launch-compliance/checklists` (`ad_copy`)
-- `POST/PUT /api/review-monitor/request-rules` (`message_template`)
+**Routes:** `POST /api/launch-compliance/checklists`
 
-**Work:**
-- Gate on create/update before INSERT/UPDATE.
-- Persist warnings on checklist / rules row.
-
-**Risk:** Prohibited copy enters DB and later surfaces in proofread/publish flows.
+**Acceptance:**
+- Gate `ad_copy` before INSERT
+- Persist warnings on checklist row
 
 ---
 
-### PR-5 — `market_signals` remaining AI copy routes
+### PR-4b — Review request-rules gate
+
+**Routes:** `POST /api/review-monitor/request-rules`, `PUT /api/review-monitor/request-rules/:id`
+
+**Acceptance:**
+- Gate `message_template` before persist
+
+---
+
+### PR-5 — Market Signals remaining AI copy (7 routes)
 
 **Routes:** `/api/reddit-autofill`, `/api/seed-topic-suggest`, `/api/templates/recommend`, `/api/intent-map`, `/api/keyword-page-map`, `/api/icp-draft`, `/api/icp-voc`
 
-**Work:**
-- Add normalizers to `content_schemas.js` where missing.
-- Wire `_gateMarketText` before return (same pattern as `reddit-reply`).
+**Acceptance:**
+- Normalizers in `content_schemas.js` where needed
+- `_gateMarketText` before return on each route
 - Tests: `test/pr10h14-market-signals-safety.test.js`
 
-**Risk:** Market Signals panel generates publishable copy outside gated subset.
+---
+
+### PR-6a — Email Designer lifecycle
+
+**Routes:** `POST /api/email-designer/ai-generate`, `POST /`, `PUT /:id`, `POST /:id/versions/:vid/restore`, `POST /:id/preview`, `POST /render`
+
+**Acceptance:**
+- `emailDesignerGateText(blocks, subject)` normalizer flattening all block `content`, button labels, column text
+- Gate before return (ai-generate, render) and before persist (save, restore, preview if serving stored)
+- UI: `ContentSafetyWarnings` in `EmailDesigner.tsx`
+- Tests: `test/pr10h14-email-designer-safety.test.js`
 
 ---
 
-### PR-6 — Tier-2 `/generate` surfaces
+### PR-6b — Site Builder lifecycle
 
-**Routes:** `content_brief`, `content_calendar`, `content_modes`, `landing_pages`, `pitch_deck`, `battle_cards`, `wireframe`, `growth_ops/reengage`, `reddit_pulse`, `reply_assistant`, `seo_autopilot/reddit-aeo`, `creator_studio` generators, `chatbot_builder`, `brand_dna`, `ab_designer`, `infographics`, `llm_kb`
+**Routes:** `POST /api/site-builder/ai-generate`, `POST /api/site-builder/page/:slug`, `GET /api/site-builder/render/:slug`
 
-**Work:** Batch by product tier (see `docs/tiers.md`). Shared helper extraction per module; one tier per PR if needed for size cap.
-
-**Risk:** Medium — internal drafts; lower immediate external exposure than PR-1–3.
+**Acceptance:**
+- `siteBuilderGateText(page)` across all block types
+- Gate before `kvSet` and before public HTML render
+- Tests: `test/pr10h14-site-builder-safety.test.js`
 
 ---
 
-### PR-7 — Consistency and warning persistence
+### PR-6c — LinkedIn Outreach lifecycle
 
-**Items:**
-- `POST /api/publish-to-wordpress` — attach `content_safety_warnings` on success in warning-only mode.
-- `POST /api/ai-attack-plan` — persist warnings on saved plan entry.
-- `GET /api/marketing-brief/merged` — surface `content_safety_blocked` / `unavailable` instead of silently keeping stale brief.
+**Routes:** `POST /api/linkedin-outreach/sequences`, `PUT /api/linkedin-outreach/sequences/:id`, `POST /api/linkedin-outreach/sequences/:id/ai-generate`
 
-**Risk:** Low — enforcement works; operator visibility and data hygiene only.
+**Acceptance:**
+- `linkedinSequenceGateText` on all message fields + angles
+- Gate before UPDATE in ai-generate and before sequence INSERT/UPDATE
+- Tests: `test/pr10h14-linkedin-outreach-safety.test.js`
+
+---
+
+### PR-6d — RCS lifecycle
+
+**Routes:** `POST /api/rcs/campaigns/create`, `POST /api/rcs/campaigns/:id/ai-generate`, `POST /api/rcs/campaigns/:id/send`
+
+**Acceptance:**
+- `rcsCampaignGateText` on message_body, rich_card, cta_buttons, suggested_replies
+- Gate before persist, before ai-generate return, and before send
+- Tests: `test/pr10h14-rcs-safety.test.js`
+
+---
+
+### PR-7a — Tier-2 generate: content planning
+
+**Routes:** `POST /api/content-brief/generate`, `POST /api/content-calendar/generate`, `POST /api/content-modes/generate`
+
+**Acceptance:** Shared pattern; one normalizer per module; gate before return/persist; module tests.
+
+---
+
+### PR-7b — Tier-2 generate: pages and decks
+
+**Routes:** `POST /api/landing-pages/generate`, `POST /api/wireframe/generate`, `POST /api/pitch-deck/generate`
+
+**Acceptance:** Gate HTML/copy before persist; tests per module.
+
+---
+
+### PR-7c — Tier-2 generate: outreach and replies
+
+**Routes:** `POST /api/reengage/generate`, `POST /api/reddit-pulse/generate-reply`, `POST /api/reply-assistant/draft`, `POST /api/seo-autopilot/reddit-aeo/draft-reply`, `POST /api/battle-cards/generate`
+
+**Acceptance:** Align with gated cousins (`reengage-copy`, `review-monitor`).
+
+---
+
+### PR-7d — Tier-2 generate: creator studio copy
+
+**Routes:** `POST /api/creator-studio/presentation/generate`, `POST /api/creator-studio/signature/generate`, `POST /api/creator-studio/case-study/generate`
+
+**Acceptance:** Gate slide/signature/case-study text before persist/return.
+
+---
+
+### PR-7e — Tier-2 generate: remaining
+
+**Routes:** `POST /api/chatbot-builder/generate`, `POST /api/brand-dna/generate`, `POST /api/ab-designer/generate`, `POST /api/infographics/generate`, `POST /api/llm-kb/generate`
+
+**Acceptance:** Gate before return/persist per module.
+
+---
+
+### PR-8a — `publish-to-wordpress` hardening
+
+**Routes:** `POST /api/publish-to-wordpress`
+
+**Acceptance:**
+- Scan `title` + `content` (and `excerpt` if added to API)
+- Return **503** when `gated.error === 'content_safety_unavailable'`
+- Attach `content_safety_warnings` on success in warning-only mode
+- Tests: `test/pr10h14-publish-to-wordpress-safety.test.js`
+
+---
+
+### PR-8b — Warning persistence and stale-brief surfacing
+
+**Items:** `POST /api/ai-attack-plan` warning persist; `GET /api/marketing-brief/merged` error surfacing
+
+**Acceptance:** Warnings stored on attack-plan kv entry; merged endpoint returns explicit safety error instead of silent stale.
+
+---
+
+### PR-8c — JSON gate-text normalization
+
+**Items:** `contentClusterGateText`, agency-report / ai-creative stringify paths, marketing brief stringify
+
+**Acceptance:**
+- Flatten or decode JSON-safe escapes before `scanOutput`
+- Tests with prohibited text in (1) secondary fields, (2) literal `\n`/`\t` in JSON strings, (3) split across keys
 
 ---
 
 ## Test evidence index
 
-| Test file | What it proves |
-|-----------|----------------|
-| `test/content-safety-enforcement.test.js` | `gateGeneratedContent`, `governContent`, marketing brief gate |
-| `test/pr10h4-content-safety-approval.test.js` | `route_gate`, safe-agent propose, warning-only mode |
-| `test/pr10h5-step6-content-gates.test.js` | Composer generate, launch proofread, market_signals gated paths; documents **partial** Step 6 |
-| `test/pr10h5-content-schemas.test.js` | Normalizer / gate-text helpers |
-| `test/pr10h6-social-publish-approval.test.js` | Approval **workflow** only — not content-safety gates |
-| `test/pr10h7-cold-email-review-reply-safety.test.js` | Cold email + review reply generate |
-| `test/pr10h8-press-ad-safety.test.js` | Press release + ad creative |
-| `test/pr10h9-ad-copy-safety.test.js` | Ad copy paths + persistence |
-| `test/pr10h10-composer-draft-save-safety.test.js` | Composer PUT save |
-| `test/pr10h11-composer-draft-approve-safety.test.js` | Composer approve + Postgres integration |
-| `test/pr10h12-video-script-safety.test.js` | Video script generate |
-| `test/pr10h13-carousel-safety.test.js` | Carousel generate + reload |
-| `test/pr10h*-ui.test.js` | React `ContentSafetyWarnings` wiring |
-| `test/ai-governance.test.js` | `governSafe` fail-open |
-| `test/ai-governance-policy-permissions.test.js` | Policy CSRF, warning-only opt-in |
-| `test/browser/content-safety-governance.test.js` | AI Governance Hub browser journey |
+| File | Covers |
+|------|--------|
+| `test/content-safety-enforcement.test.js` | `gateGeneratedContent`, marketing brief |
+| `test/pr10h4-content-safety-approval.test.js` | safe-agent propose |
+| `test/pr10h5-step6-content-gates.test.js` | composer, proofread, market_signals; **documents partial Step 6** |
+| `test/pr10h5-content-schemas.test.js` | Normalizers, tone_note, audience_rules |
+| `test/pr10h6-social-publish-approval.test.js` | Approval workflow only — **not** content-safety |
+| `test/pr10h7-cold-email-review-reply-safety.test.js` | cold email, review reply generate |
+| `test/pr10h8`–`pr10h13` | press/ad, composer save/approve, video, carousel |
+| `test/ai-governance*.test.js` | policy, `governSafe` fail-open |
+| `test/browser/content-safety-governance.test.js` | AI Governance Hub |
 
-**CI:** `.github/workflows/content-safety-enforcement.yml` runs pr10h8–h13 suites + core governance tests. Does **not** yet run `pr10h5`, `pr10h7`, or social paths.
+**CI gap:** `.github/workflows/content-safety-enforcement.yml` runs pr10h8–h13 but not pr10h5, pr10h7, or Email Designer / Site Builder / LinkedIn / RCS (ungated today).
 
 ---
 
 ## Acceptance criteria — marking Step 6 complete
 
-Step 6 may be marked **Done** only when **all** of the following hold:
+1. **Inventory closure** — All **gap** and **partial** rows in this document resolved or reclassified with product sign-off.
+2. **Gate before side effects** — Generate, save, approve, publish: gate runs before INSERT/UPDATE, response with copy, or external API.
+3. **Complete field scan** — All publishable fields in normalizers; JSON-escape regression tests pass (PR-8c).
+4. **Fail-closed unavailable** — 503 `content_safety_unavailable`; no prohibited template fallback.
+5. **Warning-only parity** — Warnings returned and persisted including publish success paths (`publish-to-wordpress` included).
+6. **Approve rescan** — Delivery transitions re-scan stored copy.
+7. **No duplicate ungated publish paths** — WordPress, social, RCS, email preview/render aligned.
+8. **New modules** — Email Designer, Site Builder, LinkedIn Outreach, RCS lifecycles covered (PR-6a–6d).
+9. **Tests + CI** — Per-module API tests; workflow runs full Step 6 suite with zero skips.
+10. **UI** — `ContentSafetyWarnings` on panels that show gated copy.
+11. **Documentation** — This file → **Status: Done**; remove partial assertions from `pr10h5-step6-content-gates.test.js` only after (1)–(10).
 
-1. **Inventory closure** — Every route in sections A–E classified `gap` above is either implemented (`covered`) or explicitly reclassified `out of scope` in this document with product sign-off.
-
-2. **Gate before side effects** — For every in-scope generate, save, approve, and publish route: `gateRouteText` or `gateGeneratedContent` runs **before** INSERT/UPDATE, HTTP response with generated fields, or external API delivery. Blocked responses omit usable copy (`contentSafetyHttpBody`).
-
-3. **Fail-closed unavailable** — Scanner/orchestrator throw → 503 `content_safety_unavailable`; no template fallback that returns prohibited text.
-
-4. **Warning-only parity** — `content_safety_warnings` returned on success and persisted where the route persists copy (including publish success paths).
-
-5. **Normalization** — LLM output passes through `content_schemas` (or equivalent) so gate text includes all publishable fields (nested JSON, secondary fields — see pr10h5 audience_rules / tone_note tests).
-
-6. **Approve rescan** — Any route that transitions copy toward external delivery re-scans at approve time (campaign_composer pattern).
-
-7. **No duplicate ungated publish paths** — Single gated path per destination (WordPress, social, email deliver).
-
-8. **Tests** — Each covered module has API tests proving block-before-persist, unavailable-without-leak, warning-only warnings, and reload persistence where applicable; `content-safety-enforcement.yml` runs the full Step 6 suite with zero skips.
-
-9. **UI** — Panels that display generated or stored copy render `ContentSafetyWarnings` when `content_safety_warnings` is non-empty.
-
-10. **Documentation** — This file updated to **Status: Done** with final route table and PR references; `test/pr10h5-step6-content-gates.test.js` partial-completion assertions removed only after (1)–(9) pass.
-
-Until then: **Step 6 remains Partial.**
+**Until then: Step 6 remains Partial.**
 
 ---
 
 ## Related documents
 
-- `docs/pr10h1-content-safety-enforcement.md` — PR10H.1 platform default and policy fields
-- `services/ai_governance/route_gate.js` — HTTP gate helpers
-- `services/ai_governance/content_schemas.js` — Allowed shapes and gate-text extractors
-- `.github/workflows/content-safety-enforcement.yml` — Focused CI for gated modules
+- `docs/pr10h1-content-safety-enforcement.md` — PR10H.1 platform default
+- `services/ai_governance/route_gate.js`
+- `services/ai_governance/content_schemas.js`
+- `.github/workflows/content-safety-enforcement.yml`
