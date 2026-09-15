@@ -6,11 +6,14 @@ on:
       - 'services/ai_governance/**'
       - 'services/press_release/**'
       - 'services/ad_creative/**'
+      - 'services/campaign_composer/**'
       - 'components/features/create/PressRelease.tsx'
       - 'components/features/create/AdCreative.tsx'
+      - 'components/features/reach/CampaignComposer.tsx'
       - 'components/layout/ContentSafetyWarnings.tsx'
       - 'test/pr10h8-*.test.js'
       - 'test/pr10h9-*.test.js'
+      - 'test/pr10h10-*.test.js'
       - 'components/features/grow/LandingPages.tsx'
       - 'services/ai/chat_router.js'
       - 'services/marketing_brief/**'
@@ -48,6 +51,8 @@ jobs:
         run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h8-press-ad-safety.test.js test/pr10h8-press-ad-safety-ui.test.js
       - name: Verify ad copy, scoring and UGC safety
         run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h9-ad-copy-safety.test.js test/pr10h9-ad-copy-safety-ui.test.js
+      - name: Verify campaign composer draft save safety
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h10-composer-draft-save-safety.test.js test/pr10h10-composer-draft-save-safety-ui.test.js
 
   integration-postgres:
     name: Policy permissions + audit redaction (zero skips)

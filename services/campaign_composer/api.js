@@ -187,17 +187,31 @@ router.put('/drafts/:id', async (req, res) => {
     const { draft } = req.body || {};
     if (!draft) return _err(res, 400, 'draft data required');
 
-    const normalized = normalizeComposerDraft(draft, draft.source || 'template');
     const p = _db.getPool();
+    const existing = await p.query(
+      `SELECT * FROM campaign_composer_drafts WHERE id = $1 AND tenant_id = $2 AND status = 'draft'`,
+      [id, tid]
+    );
+    if (!existing.rows.length) return _err(res, 404, 'draft not found or not editable');
+
+    const normalized = normalizeComposerDraft(draft, draft.source || 'template');
+    const gated = await _gateDraft(req, tid, normalized, 'campaign-composer:update');
+    if (!gated.ok) {
+      const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json(contentSafetyHttpBody(gated));
+    }
+
+    const warnings = gated.warnings || gated.content_safety_warnings || [];
     const result = await p.query(
-      `UPDATE campaign_composer_drafts SET draft = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3 AND status = 'draft' RETURNING *`,
-      [JSON.stringify(normalized), id, tid]
+      `UPDATE campaign_composer_drafts SET draft = $1, content_safety_warnings = $2, updated_at = now()
+       WHERE id = $3 AND tenant_id = $4 AND status = 'draft' RETURNING *`,
+      [JSON.stringify(normalized), JSON.stringify(warnings), id, tid]
     );
 
     if (!result.rows.length) return _err(res, 404, 'draft not found or not editable');
     const row = result.rows[0];
     row.content_safety_warnings = _parseWarnings(row.content_safety_warnings);
-    res.json({ ok: true, draft: row });
+    res.json(attachContentSafetyWarnings({ ok: true, draft: row }, warnings));
   } catch (err) { _err(res, 500, err.message); }
 });
 

@@ -53,6 +53,7 @@ export default function CampaignComposer() {
   const [history, setHistory] = useState<DraftRow[]>([]);
   const [activeDraft, setActiveDraft] = useState<DraftRow | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     loadHistory();
@@ -86,9 +87,19 @@ export default function CampaignComposer() {
     const d = await apiPut<GenerateResp>(`/api/campaign-composer/drafts/${activeDraft.id}`, { draft: activeDraft.draft });
     setSaving(false);
     if (d.ok) {
-      setActiveDraft(d.draft);
+      const warnings = d.content_safety_warnings || d.draft?.content_safety_warnings || [];
+      setSaveError(null);
+      setActiveDraft({
+        ...d.draft,
+        content_safety_warnings: warnings,
+      });
       loadHistory();
     } else {
+      const code = d.error || "";
+      if (code === "content_safety_blocked" || code === "content_safety_unavailable") {
+        setSaveError(String(d.userMessage || d.error || "Save blocked by content safety checks."));
+        return;
+      }
       alert(d.error || "Failed to save draft");
     }
   }
@@ -110,6 +121,7 @@ export default function CampaignComposer() {
 
   const updateDraftField = (field: keyof CampaignDraft, value: any) => {
     if (!activeDraft) return;
+    setSaveError(null);
     setActiveDraft({
       ...activeDraft,
       draft: { ...activeDraft.draft, [field]: value }
@@ -152,6 +164,22 @@ export default function CampaignComposer() {
           {activeDraft && (
             <div className="ig-card" style={{ borderLeft: `4px solid ${activeDraft.status === 'draft' ? '#f59e0b' : '#10b981'}` }}>
               <ContentSafetyWarnings warnings={activeDraft.content_safety_warnings} />
+              {saveError ? (
+                <div
+                  role="alert"
+                  style={{
+                    background: "#FEE2E2",
+                    border: "1px solid #FCA5A5",
+                    borderRadius: 8,
+                    padding: 12,
+                    marginBottom: 12,
+                    fontSize: "0.85rem",
+                    color: "#991B1B",
+                  }}
+                >
+                  {saveError}
+                </div>
+              ) : null}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <h3 style={{ fontSize: "1.1rem", margin: 0 }}>{activeDraft.draft.campaign_name}</h3>
                 <div style={{ display: "flex", gap: 8 }}>
