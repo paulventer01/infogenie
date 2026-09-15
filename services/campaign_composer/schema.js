@@ -20,6 +20,11 @@ async function ensureCampaignComposerSchema() {
     CREATE INDEX IF NOT EXISTS idx_campaign_composer_drafts_tenant ON campaign_composer_drafts(tenant_id);
   `);
 
+  await p.query(`
+    ALTER TABLE campaign_composer_drafts
+      ADD COLUMN IF NOT EXISTS content_safety_warnings JSONB NOT NULL DEFAULT '[]'::jsonb
+  `).catch(() => {});
+
   return true;
 }
 

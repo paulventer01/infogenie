@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
 interface ChecklistItem {
   id: number;
@@ -29,6 +30,7 @@ interface Checklist {
     _estimated?: boolean;
   } | null;
   overall_result: string | null;
+  content_safety_warnings?: string[];
   created_at: string;
   items?: ChecklistItem[];
   pass_count?: number;
@@ -129,16 +131,26 @@ export default function LaunchCompliance() {
     setSaving(true);
     setProofreadRunning(true);
     try {
-      const r = await apiPost<{ ok: boolean; error?: string; feedback?: Checklist["ai_feedback"] }>(
+      const r = await apiPost<{
+        ok: boolean;
+        error?: string;
+        userMessage?: string;
+        feedback?: Checklist["ai_feedback"];
+        content_safety_warnings?: string[];
+      }>(
         `/api/launch-compliance/checklists/${active.id}/proofread`,
         { ad_copy: active.ad_copy },
       );
       if (r?.ok) {
-        setActive((prev) => (prev ? { ...prev, ai_feedback: r.feedback ?? null } : null));
+        setActive((prev) => (prev ? {
+          ...prev,
+          ai_feedback: r.feedback ?? null,
+          content_safety_warnings: r.content_safety_warnings || [],
+        } : null));
         setCopyPreview(true);
         showToast("✅ AI proofreading complete!");
       } else {
-        showToast(r?.error || "Proofread failed.");
+        showToast(r?.userMessage || r?.error || "Proofread failed.");
       }
     } catch {
       showToast("Proofread request failed — check your connection and try again.");
@@ -491,6 +503,7 @@ export default function LaunchCompliance() {
 
               {infoPanel === "proofread" && (
                 <div style={{ fontSize: "0.85rem", color: "#334155", lineHeight: 1.55 }}>
+                  <ContentSafetyWarnings warnings={active.content_safety_warnings} />
                   <p style={{ margin: "0 0 10px" }}>
                     AI Proofread reviews your ad copy for grammar, clarity, compliance tone, and suggests an improved version.
                   </p>
@@ -614,6 +627,7 @@ export default function LaunchCompliance() {
               {/* AI Feedback panel for copy tab */}
               {catTab === "copy" && active.ai_feedback && (
                 <div style={{ ...card, background: "#FFFBEB", border: "1px solid #FDE68A", marginTop: 16 }}>
+                  <ContentSafetyWarnings warnings={active.content_safety_warnings} />
                   <div style={{ fontWeight: 800, color: "#92400E", fontSize: "0.88rem", marginBottom: 10 }}>
                     🤖 AI Proofreading Result{active.ai_feedback._estimated ? " (no AI key — template)" : active.ai_feedback.overall_score != null ? ` · Score ${active.ai_feedback.overall_score}/10` : ""}
                   </div>

@@ -63,6 +63,10 @@ async function ensureLaunchComplianceSchema() {
 
   // Migrations
   await p.query(`ALTER TABLE campaign_compliance_checklists ADD COLUMN IF NOT EXISTS overall_result TEXT`).catch(() => {});
+  await p.query(`
+    ALTER TABLE campaign_compliance_checklists
+      ADD COLUMN IF NOT EXISTS content_safety_warnings JSONB NOT NULL DEFAULT '[]'::jsonb
+  `).catch(() => {});
 
   // Child inherits tenant_id from campaign_compliance_checklists via checklist_id.
   // Fail-closed: never assign orphans to a default tenant.

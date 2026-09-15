@@ -2,11 +2,48 @@ const express = require('express');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { normalizeChatParams } = require('../ai_compat');
+const {
+  gateRouteText,
+  contentSafetyHttpBody,
+  attachContentSafetyWarnings,
+} = require('../ai_governance/route_gate');
+const {
+  normalizeComposerDraft,
+  composerDraftGateText,
+} = require('../ai_governance/content_schemas');
 
 const router = express.Router();
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
+
+function _parseWarnings(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
+  return [];
+}
+
+async function _gateDraft(req, tid, draft, label) {
+  try {
+    return await gateRouteText({
+      tenantId: tid,
+      userId: req.user?.id || null,
+      surface: 'campaign_composer',
+      action: 'generate_content',
+      text: composerDraftGateText(draft),
+      label,
+    });
+  } catch (_) {
+    return {
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: 'Content safety checks are temporarily unavailable. Generation was stopped to protect your brand.',
+      warnings: [],
+    };
+  }
+}
 
 function _callOpenAI(messages, opts = {}) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
@@ -70,7 +107,7 @@ The audience_rules MUST follow the services/audiences schema:
 Common types: trait, event, metric. Common ops: equals, not_equals, greater_than, less_than, contains, starts_with, ends_with, exists, not_exists.`;
 
 function _templateDraft(prompt) {
-  return {
+  return normalizeComposerDraft({
     campaign_name: "New Campaign from Prompt",
     audience_description: "Target audience based on your prompt",
     audience_rules: { match: "all", conditions: [] },
@@ -79,8 +116,8 @@ function _templateDraft(prompt) {
     body: "Hi there, we have something special for you based on your recent interest.",
     recommended_send_time: "Tuesday at 10:00 AM",
     rationale: "This is a generic template because AI integration is not configured.",
-    _estimated: true
-  };
+    _estimated: true,
+  }, 'template');
 }
 
 router.post('/generate', async (req, res) => {
@@ -100,20 +137,30 @@ router.post('/generate', async (req, res) => {
       try {
         const parsed = JSON.parse(raw);
         if (parsed.campaign_name) {
-          draft = parsed;
+          draft = normalizeComposerDraft(parsed, 'openai');
           source = 'openai';
         }
       } catch (e) {}
     }
     draft.source = source;
 
+    const gated = await _gateDraft(req, tid, draft, 'campaign-composer:generate');
+    if (!gated.ok) {
+      const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json(contentSafetyHttpBody(gated));
+    }
+
+    const warnings = gated.warnings || gated.content_safety_warnings || [];
     const p = _db.getPool();
     const result = await p.query(
-      `INSERT INTO campaign_composer_drafts (tenant_id, prompt, draft) VALUES ($1, $2, $3) RETURNING *`,
-      [tid, prompt, JSON.stringify(draft)]
+      `INSERT INTO campaign_composer_drafts (tenant_id, prompt, draft, content_safety_warnings)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [tid, prompt, JSON.stringify(draft), JSON.stringify(warnings)]
     );
 
-    res.json({ ok: true, draft: result.rows[0] });
+    const row = result.rows[0];
+    row.content_safety_warnings = _parseWarnings(row.content_safety_warnings);
+    res.json(attachContentSafetyWarnings({ ok: true, draft: row }, warnings));
   } catch (err) { _err(res, 500, err.message); }
 });
 
@@ -125,7 +172,11 @@ router.get('/drafts', async (req, res) => {
       `SELECT * FROM campaign_composer_drafts WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 50`,
       [tid]
     );
-    res.json({ ok: true, drafts: result.rows });
+    const drafts = result.rows.map((row) => ({
+      ...row,
+      content_safety_warnings: _parseWarnings(row.content_safety_warnings),
+    }));
+    res.json({ ok: true, drafts });
   } catch (err) { _err(res, 500, err.message); }
 });
 
@@ -136,14 +187,17 @@ router.put('/drafts/:id', async (req, res) => {
     const { draft } = req.body || {};
     if (!draft) return _err(res, 400, 'draft data required');
 
+    const normalized = normalizeComposerDraft(draft, draft.source || 'template');
     const p = _db.getPool();
     const result = await p.query(
       `UPDATE campaign_composer_drafts SET draft = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3 AND status = 'draft' RETURNING *`,
-      [JSON.stringify(draft), id, tid]
+      [JSON.stringify(normalized), id, tid]
     );
 
     if (!result.rows.length) return _err(res, 404, 'draft not found or not editable');
-    res.json({ ok: true, draft: result.rows[0] });
+    const row = result.rows[0];
+    row.content_safety_warnings = _parseWarnings(row.content_safety_warnings);
+    res.json({ ok: true, draft: row });
   } catch (err) { _err(res, 500, err.message); }
 });
 
@@ -162,20 +216,38 @@ router.post('/drafts/:id/approve', async (req, res) => {
     if (row.status !== 'draft') return _err(res, 400, 'already approved or launched');
 
     const draft = row.draft;
-    // Create audience segment
     const segResult = await p.query(
       `INSERT INTO audience_segments (tenant_id, name, description, rules) VALUES ($1, $2, $3, $4) RETURNING id`,
       [tid, draft.campaign_name || 'Composer Segment', draft.audience_description || '', JSON.stringify(draft.audience_rules || { match: 'all', conditions: [] })]
     );
     const segmentId = segResult.rows[0].id;
 
-    // Update draft status
     const updateResult = await p.query(
       `UPDATE campaign_composer_drafts SET status = 'approved', segment_id = $1, updated_at = now() WHERE id = $2 RETURNING *`,
       [segmentId, id]
     );
 
-    res.json({ ok: true, draft: updateResult.rows[0], segment_id: segmentId });
+    try {
+      const { governSafe } = require('../ai_governance/hooks');
+      await governSafe({
+        tenantId: tid,
+        userId: req.user?.id || null,
+        surface: 'campaign_composer',
+        action: 'launch_campaign',
+        payload: {
+          title: draft.campaign_name || 'Campaign composer draft',
+          preview: composerDraftGateText(draft).slice(0, 500),
+          draftId: id,
+          hasContext: true,
+        },
+      });
+    } catch (e) {
+      console.warn('[campaign-composer] governance audit failed open:', e.message);
+    }
+
+    const out = updateResult.rows[0];
+    out.content_safety_warnings = _parseWarnings(out.content_safety_warnings);
+    res.json({ ok: true, draft: out, segment_id: segmentId });
   } catch (err) { _err(res, 500, err.message); }
 });
 
