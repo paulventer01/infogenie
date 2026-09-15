@@ -120,7 +120,12 @@ export default function CampaignComposer() {
       if (!prev || prev.id !== activeId) return prev;
       const latest = d.drafts.find((row) => row.id === activeId);
       if (!latest) return prev;
-      return { ...latest, draft: prev.draft };
+      return {
+        ...prev,
+        status: latest.status,
+        segment_id: latest.segment_id,
+        updated_at: latest.updated_at,
+      };
     });
   }
 

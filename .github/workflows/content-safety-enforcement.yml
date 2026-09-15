@@ -123,6 +123,7 @@ jobs:
       - name: Verify campaign composer draft approve safety (PostgreSQL)
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/infogenie_content_safety
+          NODE_ENV: test
           PR10H1_REQUIRE_INTEGRATION: '1'
           CREDENTIAL_ENCRYPTION_KEY: Mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq=
           SESSION_SECRET: pr10h1-integration-session
