@@ -255,11 +255,11 @@ router.put('/drafts/:id', composerDraftUpdateLimiter, async (req, res) => {
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
 router.post('/drafts/:id/approve', composerDraftApproveLimiter, async (req, res) => {
-  const p = _db.getPool();
-  const client = await p.connect();
+  let client;
   try {
     const tid = await _tid(req, 'campaign-composer:approve');
     const id = parseInt(req.params.id, 10);
+    client = await _db.getPool().connect();
 
     await client.query('BEGIN');
     const locked = await client.query(
@@ -268,7 +268,7 @@ router.post('/drafts/:id/approve', composerDraftApproveLimiter, async (req, res)
     );
     if (!locked.rows.length) {
       await client.query('ROLLBACK');
-      const existing = await p.query(
+      const existing = await client.query(
         `SELECT * FROM campaign_composer_drafts WHERE id = $1 AND tenant_id = $2`,
         [id, tid]
       );
@@ -330,10 +330,12 @@ router.post('/drafts/:id/approve', composerDraftApproveLimiter, async (req, res)
     out.content_safety_warnings = _parseWarnings(out.content_safety_warnings);
     res.json(attachContentSafetyWarnings({ ok: true, draft: out, segment_id: segmentId }, warnings));
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
     _err(res, 500, err.message);
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 

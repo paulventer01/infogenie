@@ -42,6 +42,7 @@ interface DraftsResp {
 interface GenerateResp {
   ok: boolean;
   draft: DraftRow;
+  segment_id?: number;
   content_safety_warnings?: string[];
   error?: string;
   userMessage?: string;
@@ -93,7 +94,6 @@ export default function CampaignComposer() {
   function activateDraft(row: DraftRow | null) {
     if (activeDraft?.id != null) {
       invalidatePendingSave(activeDraft.id);
-      invalidatePendingApprove(activeDraft.id);
       clearSaveError(activeDraft.id);
       clearApproveError(activeDraft.id);
     }
@@ -195,35 +195,77 @@ export default function CampaignComposer() {
     const draftId = activeDraft.id;
     const reqSeq = (approveRequestRef.current.get(draftId) || 0) + 1;
     approveRequestRef.current.set(draftId, reqSeq);
+    const draftSnapshot = JSON.stringify(activeDraft.draft);
 
     setApproving(true);
     const d = await apiPost<GenerateResp>(`/api/campaign-composer/drafts/${draftId}/approve`, {});
 
     if (approveRequestRef.current.get(draftId) !== reqSeq) return;
-    const current = activeDraftRef.current;
-    if (!current || current.id !== draftId) return;
 
     setApproving(false);
+
+    const mergeApprovedDraft = (serverDraft: DraftRow, warnings: string[]) => {
+      const current = activeDraftRef.current;
+      const stillActive = current && current.id === draftId;
+      const approvedRow: DraftRow = {
+        ...(serverDraft || current || activeDraft!),
+        status: 'approved',
+        segment_id: serverDraft?.segment_id ?? d.segment_id ?? current?.segment_id ?? null,
+        content_safety_warnings: warnings,
+      };
+      setHistory((prev) => prev.map((row) => (
+        row.id === draftId
+          ? { ...approvedRow, draft: stillActive ? current!.draft : (serverDraft?.draft || row.draft) }
+          : row
+      )));
+      if (stillActive) {
+        const userEditedDuringApprove = JSON.stringify(current!.draft) !== draftSnapshot;
+        if (userEditedDuringApprove) {
+          setActiveDraft((prev) => (
+            prev && prev.id === draftId
+              ? {
+                ...prev,
+                status: 'approved',
+                segment_id: approvedRow.segment_id,
+                content_safety_warnings: warnings,
+                updated_at: serverDraft?.updated_at || prev.updated_at,
+              }
+              : prev
+          ));
+        } else {
+          setActiveDraft(approvedRow);
+        }
+        alert("Campaign approved and segment created!");
+      }
+    };
+
     if (d.ok) {
       clearApproveError(draftId);
       const warnings = d.content_safety_warnings || d.draft?.content_safety_warnings || [];
-      setActiveDraft({
-        ...d.draft,
-        content_safety_warnings: warnings,
-      });
-      loadHistory();
-      alert("Campaign approved and segment created!");
-    } else {
-      const code = d.error || "";
-      if (code === "content_safety_blocked" || code === "content_safety_unavailable") {
-        setApproveErrors((prev) => ({
-          ...prev,
-          [draftId]: String(d.userMessage || d.error || "Approval blocked by content safety checks."),
-        }));
-        return;
-      }
-      alert(d.userMessage || d.error || "Failed to approve campaign");
+      mergeApprovedDraft(d.draft, warnings);
+      await loadHistory();
+      return;
     }
+
+    const current = activeDraftRef.current;
+    if (!current || current.id !== draftId) return;
+
+    const code = d.error || "";
+    if (code === "already_approved" && d.draft) {
+      clearApproveError(draftId);
+      const warnings = d.draft.content_safety_warnings || [];
+      mergeApprovedDraft(d.draft, warnings);
+      await loadHistory();
+      return;
+    }
+    if (code === "content_safety_blocked" || code === "content_safety_unavailable") {
+      setApproveErrors((prev) => ({
+        ...prev,
+        [draftId]: String(d.userMessage || d.error || "Approval blocked by content safety checks."),
+      }));
+      return;
+    }
+    alert(d.userMessage || d.error || "Failed to approve campaign");
   }
 
   const updateDraftField = (field: keyof CampaignDraft, value: any) => {

@@ -154,6 +154,11 @@ async function composerHarness(t, opts = {}) {
             },
             segment_id: state.nextSegmentId,
           };
+        if (response.ok && response.draft) {
+          state.drafts = state.drafts.map((row) => (
+            row.id === draftId ? { ...response.draft } : row
+          ));
+        }
         const status = response.httpStatus || (response.ok ? 200 : response.error === 'content_safety_unavailable' ? 503 : 403);
         return json(response, status);
       }
@@ -523,4 +528,83 @@ test('CampaignComposer editing fields clears prior approve alert', async (t) => 
   });
   assert.equal(h.alerts().length, 0);
   assert.equal(h.bodyInput().value, 'Revised copy after blocked approve.');
+});
+
+test('CampaignComposer preserves edits made while approve is in flight', async (t) => {
+  let finish;
+  const h = await composerHarness(t, {
+    approveHandler: async ({ draftId }, state) => new Promise((resolve) => {
+      finish = () => resolve({
+        ok: true,
+        draft: {
+          ...state.drafts.find((d) => d.id === draftId),
+          status: 'approved',
+          segment_id: 902,
+          draft: { ...BASE_DRAFT, body: 'Server approved stale body.' },
+          content_safety_warnings: ['Approved warning.'],
+        },
+        segment_id: 902,
+        content_safety_warnings: ['Approved warning.'],
+      });
+    }),
+  });
+
+  await h.setBodyText('Initial approve body.');
+  await h.clickApprove();
+  await h.setBodyText('Edited again while approving.');
+  await act(async () => finish());
+  await act(async () => {
+    for (let i = 0; i < 20 && !h.text().includes('Approved warning.'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+
+  assert.equal(h.bodyInput().value, 'Edited again while approving.');
+  assert.match(h.text(), /Approved warning/);
+  assert.match(h.text(), /Audience segment created/);
+  assert.doesNotMatch(h.text(), /Server approved stale body/);
+});
+
+test('CampaignComposer late approve success updates history so re-selected draft shows approved', async (t) => {
+  let finish;
+  const h = await composerHarness(t, {
+    approveHandler: async ({ draftId }, state) => new Promise((resolve) => {
+      finish = () => {
+        const approved = {
+          ...state.drafts.find((d) => d.id === draftId),
+          status: 'approved',
+          segment_id: 903,
+          content_safety_warnings: [],
+        };
+        resolve({
+          ok: true,
+          draft: approved,
+          segment_id: 903,
+        });
+      };
+    }),
+  });
+
+  await h.clickApprove();
+  await h.selectDraft('Win-back offer');
+  await act(async () => {
+    for (let i = 0; i < 20 && !h.bodyInput().value.includes('Come back'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+
+  await act(async () => finish());
+  await act(async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 25));
+  });
+
+  await h.selectDraft('Onboarding nurture');
+  await act(async () => {
+    for (let i = 0; i < 40 && !h.text().includes('Audience segment created'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+
+  assert.match(h.text(), /Audience segment created \(ID: 903\)/);
+  assert.equal(h.bodyInput()?.disabled, true);
 });

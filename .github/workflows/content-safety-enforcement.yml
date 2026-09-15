@@ -120,6 +120,19 @@ jobs:
           grep -Eq '^# tests [1-9][0-9]*$' /tmp/pr10h1-integration.tap
           grep -Eq '^# fail 0$' /tmp/pr10h1-integration.tap
           grep -Eq '^# skipped 0$' /tmp/pr10h1-integration.tap
+      - name: Verify campaign composer draft approve safety (PostgreSQL)
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/infogenie_content_safety
+          PR10H1_REQUIRE_INTEGRATION: '1'
+          CREDENTIAL_ENCRYPTION_KEY: Mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq=
+          SESSION_SECRET: pr10h1-integration-session
+          INFOGENIE_API_KEY: pr10h1-integration-api-key
+        run: |
+          set -o pipefail
+          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h11-composer-draft-approve-safety.test.js | tee /tmp/pr10h11-postgres.tap
+          grep -Eq '^# tests [1-9][0-9]*$' /tmp/pr10h11-postgres.tap
+          grep -Eq '^# fail 0$' /tmp/pr10h11-postgres.tap
+          grep -Eq '^# skipped 0$' /tmp/pr10h11-postgres.tap
 
   browser-postgres:
     name: AI Governance Hub Chromium + PostgreSQL (zero skips)

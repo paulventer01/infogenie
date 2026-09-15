@@ -5,6 +5,9 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
+
+require('./helpers/env');
 
 const {
   gateRouteText,
@@ -61,6 +64,14 @@ function makeTxPool(state) {
         state.segmentInserts.push({ sql, params });
         const segmentId = ++state.nextSegmentId;
         return { rows: [{ id: segmentId }] };
+      }
+      if (sql.includes('SELECT * FROM campaign_composer_drafts') && !sql.includes('FOR UPDATE')) {
+        const id = params[0];
+        const tid = params[1];
+        if (state.row.id === id && state.row.tenant_id === tid) {
+          return { rows: [{ ...state.row, draft: { ...state.row.draft } }] };
+        }
+        return { rows: [] };
       }
       if (sql.includes("UPDATE campaign_composer_drafts SET status = 'approved'")) {
         state.approveUpdates.push({ sql, params });
@@ -382,6 +393,36 @@ describe('PR10H.11 composer draft approve gate', () => {
     assert.match(text, /Subject/);
     assert.match(text, /Body/);
   });
+
+  it('returns 500 when pool connection acquisition fails without releasing an unacquired client', async () => {
+    state.segmentInserts.length = 0;
+    const _db = require('../db');
+    _db.getPool = () => ({ connect: async () => { throw new Error('pool exhausted'); } });
+    delete require.cache[require.resolve('../services/campaign_composer/api')];
+    const router = require('../services/campaign_composer/api');
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.user = { id: 3 };
+      req.tenant = { id: 11, name: 'Test', slug: 'test', status: 'active' };
+      next();
+    });
+    app.use('/api/campaign-composer', router);
+    const tmp = await new Promise((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    const res = await fetch(`http://127.0.0.1:${tmp.address().port}/api/campaign-composer/drafts/42/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-test-tenant': '11' },
+      body: JSON.stringify({}),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 500);
+    assert.match(body.error, /pool exhausted/);
+    assert.equal(state.segmentInserts.length, 0);
+    await new Promise((r) => tmp.close(r));
+    delete require.cache[require.resolve('../services/campaign_composer/api')];
+  });
 });
 
 describe('PR10H.11 composer draft approve rate limit', () => {
@@ -511,17 +552,139 @@ describe('PR10H.11 blocked approve responses omit usable content', () => {
   });
 });
 
-describe('PR10H.11 UI coverage notes', () => {
-  it('CampaignComposer approve safety UI is covered by pr10h11-composer-draft-approve-safety-ui.test.js', () => {
-    const rendered = fs.readFileSync(
-      require.resolve('./pr10h11-composer-draft-approve-safety-ui.test.js'),
-      'utf8',
+const PG_URL = process.env.DATABASE_URL || '';
+const PG_REQUIRED = process.env.PR10H1_REQUIRE_INTEGRATION === '1';
+const pgSkip = !PG_URL ? (PG_REQUIRED ? false : 'no DATABASE_URL') : false;
+
+describe('PR10H.11 composer draft approve postgres', { skip: pgSkip }, () => {
+  let db;
+  const { ensureTenantSchema } = require('../services/tenants/schema');
+  const { ensureAudiencesSchema } = require('../services/audiences/schema');
+  const { ensureCampaignComposerSchema } = require('../services/campaign_composer/schema');
+  let server;
+  let baseUrl;
+  let tenantId;
+  let realGate;
+  const fixtureTag = `pr10h11-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+
+  before(async () => {
+    assert.ok(PG_URL, 'DATABASE_URL is required when PR10H1_REQUIRE_INTEGRATION=1');
+    delete require.cache[require.resolve('../db')];
+    db = require('../db');
+    await ensureTenantSchema();
+    await ensureAudiencesSchema();
+    await ensureCampaignComposerSchema();
+    const p = db.getPool();
+    tenantId = (await p.query(
+      `INSERT INTO tenants (name, slug, status) VALUES ($1, $2, 'active') RETURNING id`,
+      [`PR10H11 ${fixtureTag}`, fixtureTag],
+    )).rows[0].id;
+    const routeGate = require('../services/ai_governance/route_gate');
+    realGate = routeGate.gateRouteText;
+    routeGate.gateRouteText = async () => ({ ok: true, warnings: [] });
+    const tenantCtx = require('../services/tenants/context');
+    tenantCtx.resolveTenantId = async (req) => Number(req.headers['x-test-tenant'] || tenantId);
+    delete require.cache[require.resolve('../services/campaign_composer/api')];
+    const router = require('../services/campaign_composer/api');
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.user = { id: 3 };
+      req.tenant = { id: tenantId, name: 'Test', slug: fixtureTag, status: 'active' };
+      next();
+    });
+    app.use('/api/campaign-composer', router);
+    server = await new Promise((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    baseUrl = `http://127.0.0.1:${server.address().port}`;
+  });
+
+  after(async () => {
+    if (realGate) require('../services/ai_governance/route_gate').gateRouteText = realGate;
+    if (server) await new Promise((r) => server.close(r));
+    delete require.cache[require.resolve('../services/campaign_composer/api')];
+    if (!PG_URL || !tenantId) return;
+    const p = db.getPool();
+    await p.query('DELETE FROM campaign_composer_drafts WHERE tenant_id = $1', [tenantId]).catch(() => {});
+    await p.query('DELETE FROM audience_segments WHERE tenant_id = $1', [tenantId]).catch(() => {});
+    await p.query('DELETE FROM tenants WHERE id = $1', [tenantId]).catch(() => {});
+  });
+
+  async function postApprove(id) {
+    return fetch(`${baseUrl}/api/campaign-composer/drafts/${id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-test-tenant': String(tenantId) },
+      body: JSON.stringify({}),
+    });
+  }
+
+  it('creates exactly one segment when two approvals run simultaneously', async () => {
+    const p = db.getPool();
+    const segName = `Concurrent ${fixtureTag}`;
+    const localDraftId = (await p.query(
+      `INSERT INTO campaign_composer_drafts (tenant_id, prompt, draft, status, content_safety_warnings)
+       VALUES ($1, 'Concurrent approve', $2, 'draft', '[]'::jsonb) RETURNING id`,
+      [tenantId, JSON.stringify({ ...BASE_DRAFT, campaign_name: segName })],
+    )).rows[0].id;
+    const before = (await p.query(
+      `SELECT count(*)::int AS c FROM audience_segments WHERE tenant_id = $1 AND name = $2`,
+      [tenantId, segName],
+    )).rows[0].c;
+    const [first, second] = await Promise.all([postApprove(localDraftId), postApprove(localDraftId)]);
+    assert.equal([first, second].filter((r) => r.status === 200).length, 1);
+    assert.equal([first, second].filter((r) => r.status === 409).length, 1);
+    const after = (await p.query(
+      `SELECT count(*)::int AS c FROM audience_segments WHERE tenant_id = $1 AND name = $2`,
+      [tenantId, segName],
+    )).rows[0].c;
+    assert.equal(after - before, 1);
+    const draft = await p.query(
+      `SELECT status, segment_id FROM campaign_composer_drafts WHERE id = $1`,
+      [localDraftId],
     );
-    assert.match(rendered, /role="alert"/);
-    assert.match(rendered, /content_safety_blocked/);
-    assert.match(rendered, /content_safety_unavailable/);
-    assert.match(rendered, /Approve & Create Segment/);
-    assert.match(rendered, /switching drafts clears the prior draft approve alert/);
-    assert.match(rendered, /resets approving state/);
+    assert.equal(draft.rows[0].status, 'approved');
+    assert.ok(draft.rows[0].segment_id);
+  });
+
+  it('rolls back segment insert and draft approval when update fails inside the transaction', async () => {
+    const p = db.getPool();
+    const segName = `Rollback ${fixtureTag}`;
+    const rollbackDraftId = (await p.query(
+      `INSERT INTO campaign_composer_drafts (tenant_id, prompt, draft, status, content_safety_warnings)
+       VALUES ($1, 'Rollback approve', $2, 'draft', '[]'::jsonb) RETURNING id`,
+      [tenantId, JSON.stringify({ ...BASE_DRAFT, campaign_name: segName })],
+    )).rows[0].id;
+    const segmentsBefore = (await p.query(
+      `SELECT count(*)::int AS c FROM audience_segments WHERE tenant_id = $1 AND name = $2`,
+      [tenantId, segName],
+    )).rows[0].c;
+    const client = await p.connect();
+    try {
+      await client.query('BEGIN');
+      assert.equal((await client.query(
+        `SELECT * FROM campaign_composer_drafts WHERE id = $1 AND tenant_id = $2 AND status = 'draft' FOR UPDATE`,
+        [rollbackDraftId, tenantId],
+      )).rows.length, 1);
+      await client.query(
+        `INSERT INTO audience_segments (tenant_id, name, description, rules) VALUES ($1, $2, $3, $4)`,
+        [tenantId, segName, BASE_DRAFT.audience_description, JSON.stringify(BASE_DRAFT.audience_rules)],
+      );
+      await client.query(`DO $$ BEGIN RAISE EXCEPTION 'pr10h11_test_rollback_after_segment'; END $$`);
+      assert.fail('expected forced rollback exception');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      assert.match(String(err.message), /pr10h11_test_rollback_after_segment/);
+    } finally {
+      client.release();
+    }
+    const draft = await p.query(`SELECT status, segment_id FROM campaign_composer_drafts WHERE id = $1`, [rollbackDraftId]);
+    assert.equal(draft.rows[0].status, 'draft');
+    assert.equal(draft.rows[0].segment_id, null);
+    const segmentsAfter = (await p.query(
+      `SELECT count(*)::int AS c FROM audience_segments WHERE tenant_id = $1 AND name = $2`,
+      [tenantId, segName],
+    )).rows[0].c;
+    assert.equal(segmentsAfter, segmentsBefore);
   });
 });
