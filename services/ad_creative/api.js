@@ -5,6 +5,8 @@ const _fs     = require('fs');
 const _path   = require('path');
 const _db     = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { gateRouteText, contentSafetyHttpBody, contentSafetyUnavailableBody,
+  attachContentSafetyWarnings } = require('../ai_governance/route_gate');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -245,6 +247,22 @@ router.post('/generate', async (req, res) => {
 
   const prompt = _buildPrompt({ platform, style, headline, body_copy, brand_name, brand_colors, cta_text, extra_context });
 
+  // Scan the exact image prompt before provider, file, placeholder or DB side effects.
+  let warnings;
+  try {
+    const gated = await gateRouteText({
+      tenantId: tid, userId: req.user?.id || null, surface: 'ad_creative',
+      action: 'generate_content', text: prompt,
+    });
+    if (!gated.ok) {
+      return res.status(gated.error === 'content_safety_unavailable' ? 503 : 403)
+        .json(contentSafetyHttpBody(gated));
+    }
+    warnings = gated.warnings || gated.content_safety_warnings || [];
+  } catch (_) {
+    return res.status(503).json(contentSafetyUnavailableBody());
+  }
+
   let imageUrl = null;
   let imagePath = null;
   let source = 'dalle3';
@@ -273,15 +291,15 @@ router.post('/generate', async (req, res) => {
   if (_db.hasDb()) {
     try {
       const r = await _db.getPool().query(
-        `INSERT INTO ad_creatives (tenant_id, platform, format, style, headline, body_copy, brand_name, brand_colors, cta_text, image_url, image_path, prompt, source)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
-        [tid, platform, formatKey, style, headline, body_copy, brand_name, brand_colors, cta_text, imageUrl, imagePath, prompt.slice(0,2000), source]
+        `INSERT INTO ad_creatives (tenant_id, platform, format, style, headline, body_copy, brand_name, brand_colors, cta_text, image_url, image_path, prompt, source, content_safety_warnings)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+        [tid, platform, formatKey, style, headline, body_copy, brand_name, brand_colors, cta_text, imageUrl, imagePath, prompt.slice(0,2000), source, JSON.stringify(warnings)]
       );
       id = r.rows[0].id;
     } catch (e) { console.warn('[ad-creative] persist failed:', e.message); }
   }
 
-  res.json({ ok:true, id, platform, format:formatKey, style, headline, image_url:imageUrl, prompt, source });
+  res.json(attachContentSafetyWarnings({ ok:true, id, platform, format:formatKey, style, headline, image_url:imageUrl, prompt, source }, warnings));
 });
 
 // GET /history
@@ -291,7 +309,7 @@ router.get('/history', async (req, res) => {
   const limit = Math.min(50, parseInt(req.query?.limit, 10) || 20);
   try {
     const r = await _db.getPool().query(
-      `SELECT id, platform, format, style, headline, brand_name, image_url, source, created_at
+      `SELECT id, platform, format, style, headline, brand_name, image_url, source, created_at, content_safety_warnings
        FROM ad_creatives WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`, [tid, limit]);
     res.json({ ok:true, items: r.rows });
   } catch (e) { _err(res, 500, e.message); }

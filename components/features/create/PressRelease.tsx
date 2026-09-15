@@ -12,6 +12,7 @@
 
 import { useRef, useState } from "react";
 import { apiPost } from "@/lib/api";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
 interface PressQuote {
   text?: string;
@@ -33,6 +34,8 @@ interface PressRelease {
 interface GenerateResult {
   ok: boolean;
   error?: string;
+  userMessage?: string;
+  content_safety_warnings?: string[];
   release?: PressRelease;
   source?: string;
 }
@@ -83,6 +86,7 @@ export default function PressRelease() {
   const [error, setError] = useState("");
   const [release, setRelease] = useState<PressRelease | null>(null);
   const [source, setSource] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
   const fullRef = useRef<HTMLDivElement>(null);
 
   async function generate() {
@@ -90,7 +94,6 @@ export default function PressRelease() {
     if (!ctx.trim()) return toast("⚠️ Context required");
     setLoading(true);
     setError("");
-    setRelease(null);
     const r = await apiPost<GenerateResult>("/api/press-release/generate", {
       brand: brand.trim(),
       kind,
@@ -100,10 +103,11 @@ export default function PressRelease() {
     });
     setLoading(false);
     if (!r.ok || !r.release) {
-      setError(r.error || "failed");
+      setError(r.userMessage || r.error || "failed");
       return;
     }
     setRelease(r.release);
+    setWarnings(r.content_safety_warnings || []);
     setSource(r.source || "");
   }
 
@@ -261,6 +265,7 @@ export default function PressRelease() {
           )}
           {error && !loading && (
             <div
+              role="alert"
               style={{
                 background: "#FEE2E2",
                 color: "#B91C1C",
@@ -333,6 +338,7 @@ export default function PressRelease() {
                   </button>
                 </div>
               </div>
+              <ContentSafetyWarnings warnings={warnings} />
               <div id="prFull" ref={fullRef}>
                 <h1
                   style={{

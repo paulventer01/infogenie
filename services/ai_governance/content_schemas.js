@@ -201,7 +201,28 @@ function reviewReplyGateText(raw) {
   return normalizeReviewReply(raw).reply;
 }
 
+function normalizePressRelease(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    headline: _str(src.headline, 200),
+    subhead: _str(src.subhead, 400),
+    dateline: _str(src.dateline, 200),
+    body: _str(src.body, 12000),
+    quote: { text: _str(src.quote?.text, 2000), attribution: _str(src.quote?.attribution, 400) },
+    boilerplate: _str(src.boilerplate, 3000),
+    contact: { name: _str(src.contact?.name, 200), email: _str(src.contact?.email, 320) },
+  };
+}
+
+function pressReleaseGateText(release) {
+  const r = normalizePressRelease(release);
+  return [r.headline, r.subhead, r.dateline, r.body, r.quote.text,
+    r.quote.attribution, r.boilerplate, r.contact.name, r.contact.email].join('\n');
+}
+
 module.exports = {
+  normalizePressRelease,
+  pressReleaseGateText,
   normalizeProofreadFeedback,
   proofreadGateText,
   normalizeComposerDraft,

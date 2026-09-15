@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - 'services/ai_governance/**'
+      - 'services/press_release/**'
+      - 'services/ad_creative/**'
+      - 'components/features/create/PressRelease.tsx'
+      - 'components/features/create/AdCreative.tsx'
+      - 'components/layout/ContentSafetyWarnings.tsx'
+      - 'test/pr10h8-*.test.js'
       - 'services/ai/chat_router.js'
       - 'services/marketing_brief/**'
       - 'services/seo_autopilot/reddit_aeo.js'
@@ -36,6 +42,8 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify content safety enforcement unit tests
         run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/content-safety-enforcement.test.js test/ai-governance.test.js
+      - name: Verify press release and ad creative safety API and rendered UI
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h8-press-ad-safety.test.js test/pr10h8-press-ad-safety-ui.test.js
 
   integration-postgres:
     name: Policy permissions + audit redaction (zero skips)
