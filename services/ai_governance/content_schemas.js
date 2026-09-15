@@ -220,7 +220,67 @@ function pressReleaseGateText(release) {
     r.quote.attribution, r.boilerplate, r.contact.name, r.contact.email].join('\n');
 }
 
+// Ad copy surfaces retain only known fields before their decoded values are scanned.
+function adCopyGateText(normalized) {
+  const values = [];
+  function collect(value) {
+    if (value && typeof value === 'object') Object.values(value).forEach(collect);
+    else if (value != null) values.push(String(value));
+  }
+  collect(normalized);
+  return values.join('\n');
+}
+
+function normalizeAdScore(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const number = (v, max) => !['number', 'string'].includes(typeof v) || String(v).trim() === ''
+    ? null : _num(v, 0, max);
+  const scores = {};
+  for (const key of ['hook_strength', 'cta_clarity', 'urgency', 'emotional_resonance', 'relevance']) {
+    scores[key] = number(src.scores?.[key], 10);
+  }
+  return {
+    scores, overall: number(src.overall, 100),
+    ctr_range: { low: _str(src.ctr_range?.low, 200), high: _str(src.ctr_range?.high, 200) },
+    grade: ['A', 'B', 'C', 'D', 'F'].includes(src.grade) ? src.grade : null,
+    verdict: _str(src.verdict, 2000),
+    tips: (Array.isArray(src.tips) ? src.tips : []).slice(0, 5).map(t => ({
+      dimension: _str(t?.dimension, 100), tip: _str(t?.tip, 1000),
+    })),
+  };
+}
+
+function normalizeUgcScript(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    scenes: (Array.isArray(src.scenes) ? src.scenes : []).slice(0, 12).map(s => ({
+      timestamp: _str(s?.timestamp, 100), type: _str(s?.type, 100),
+      script: _str(s?.script, 3000), direction: _str(s?.direction, 1000),
+      text_overlay: s?.text_overlay == null ? null : _str(s.text_overlay, 1000),
+    })),
+    caption: _str(src.caption, 4000), hashtags: _pickStrings(src.hashtags, 30, 100),
+    creator_tips: _pickStrings(src.creator_tips, 10, 1000),
+  };
+}
+
+function normalizeAdPackages(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    packages: (Array.isArray(src.packages) ? src.packages : []).slice(0, 3).map(p => ({
+      platform: _str(p?.platform, 100), formats: _pickStrings(p?.formats, 6, 100),
+      headline: _str(p?.headline, 200), primary_text: _str(p?.primary_text, 2000),
+      description: _str(p?.description, 1000), cta_button: _str(p?.cta_button, 100),
+      notes: _str(p?.notes, 1000), hook: _str(p?.hook, 1000),
+      script_summary: _str(p?.script_summary, 3000), hashtags: _pickStrings(p?.hashtags, 30, 100),
+    })),
+  };
+}
+
 module.exports = {
+  adCopyGateText,
+  normalizeAdScore,
+  normalizeUgcScript,
+  normalizeAdPackages,
   normalizePressRelease,
   pressReleaseGateText,
   normalizeProofreadFeedback,

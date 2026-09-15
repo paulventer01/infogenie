@@ -8,6 +8,8 @@ const _tenantCtx = require('../tenants/context');
 const { gateRouteText, contentSafetyHttpBody, contentSafetyUnavailableBody,
   attachContentSafetyWarnings } = require('../ai_governance/route_gate');
 
+const { normalizeAdScore, normalizeUgcScript, normalizeAdPackages, adCopyGateText } = require('../ai_governance/content_schemas');
+
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 
@@ -129,6 +131,30 @@ function _placeholder(platform, style, headline) {
 
 // ── Routes ─────────────────────────────────────────────────────────────────
 
+async function _sendGatedCopy(req, res, tid, surface, raw, source) {
+  let parsed;
+  try { parsed = source === 'openai' ? JSON.parse(raw) : raw; }
+  catch (_) { return _err(res, 502, 'invalid generated JSON'); }
+  const normalizer = { score: normalizeAdScore, ugc_script: normalizeUgcScript, ad_package: normalizeAdPackages }[surface];
+  const output = normalizer(parsed);
+  const useful = surface === 'score' ? output.overall != null || !!output.verdict
+    : surface === 'ugc_script' ? output.scenes.some(s => s.script) || !!output.caption
+      : output.packages.some(p => p.headline || p.hook || p.primary_text || p.description || p.script_summary);
+  if (!useful) return _err(res, 502, 'generation produced no usable content');
+  try {
+    const gated = await gateRouteText({
+      tenantId: tid, userId: req.user?.id || null, surface: `ad_creative_${surface}`,
+      action: 'generate_content', text: adCopyGateText(output),
+    });
+    if (!gated.ok) return res.status(gated.error === 'content_safety_unavailable' ? 503 : 403)
+      .json(contentSafetyHttpBody(gated));
+    return res.json(attachContentSafetyWarnings({ ok: true, source, ...output },
+      gated.warnings || gated.content_safety_warnings || []));
+  } catch (_) {
+    return res.status(503).json(contentSafetyUnavailableBody());
+  }
+}
+
 // T68 — Pre-launch Creative Scoring
 router.post('/score', async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_creative:score' });
@@ -145,14 +171,13 @@ Rules: tips must be specific to the actual creative text. 3-5 tips. Score based 
   const user = `Platform: ${platform}\nHeadline: ${headline}\nBody copy: ${body_copy||'(none)'}\nCTA: ${cta_text||'(none)'}\nVisual description: ${visual_desc||'(none)'}`;
   const raw = await _openai([{role:'system',content:sys},{role:'user',content:user}], { json:true, max_tokens:900 });
   if (!raw) {
-    return res.json({ ok:true, source:'template', scores:{ hook_strength:6, cta_clarity:6, urgency:5, emotional_resonance:6, relevance:7 },
+    return _sendGatedCopy(req, res, tid, 'score', { scores:{ hook_strength:6, cta_clarity:6, urgency:5, emotional_resonance:6, relevance:7 },
       overall:60, ctr_range:{ low:'0.6%', high:'1.0%' }, grade:'C',
       verdict:'Solid foundation, but needs stronger emotional hooks and clearer urgency to stand out.',
       tips:[{dimension:'hook_strength',tip:'Open with a specific number or surprising stat to stop the scroll.'},{dimension:'urgency',tip:'Add a time-limited offer or quantity limit to motivate immediate action.'},{dimension:'cta_clarity',tip:'Make the CTA more specific: "Start Free Trial" beats "Get Started".'}]
-    });
+    }, 'template');
   }
-  try { res.json({ ok:true, source:'openai', ...JSON.parse(raw) }); }
-  catch { _err(res, 500, 'parse error'); }
+  return _sendGatedCopy(req, res, tid, 'score', raw, 'openai');
 });
 
 // T69 — UGC Video Ad Script
@@ -181,7 +206,7 @@ Hook style: ${hookNote}`;
   const user = `Product: ${product}\nAudience: ${audience||'general'}\nPlatform: ${platform}\nDuration: ${duration} seconds\nKey benefit: ${benefit||'(use product description)'}`;
   const raw = await _openai([{role:'system',content:sys},{role:'user',content:user}], { json:true, max_tokens:1400 });
   if (!raw) {
-    return res.json({ ok:true, source:'template', scenes:[
+    return _sendGatedCopy(req, res, tid, 'ugc_script', { scenes:[
       {timestamp:'0-3s',type:'hook',script:`Wait — you're still doing this the hard way?`,direction:'Surprised face to camera, hold phone close',text_overlay:'POV: still wasting hours on this'},
       {timestamp:'3-8s',type:'problem',script:`I used to spend hours every week on this. It was exhausting.`,direction:'Show "before" frustration, messy desk or tired look',text_overlay:null},
       {timestamp:'8-18s',type:'solution',script:`Then I found ${product} and honestly? Game changer. Look how easy this is.`,direction:'Screen recording or product demo, enthusiastic',text_overlay:`✅ ${product}`},
@@ -189,10 +214,9 @@ Hook style: ${hookNote}`;
       {timestamp:'25-30s',type:'cta',script:`Link in bio — try it free. You'll thank yourself later.`,direction:'Point at camera, smile, end card',text_overlay:'Try free 👆 Link in bio'},
     ], caption:`okay I NEED to tell you about this 😭 ${product} has completely changed how I work. full review in bio 🔗 #ugc #productreview #lifehack`,
     hashtags:['ugc','productreview','tiktokfinds','musthave','lifehack'],
-    creator_tips:['Film in natural window light for a genuine "at home" feel','Use your real voice — slight imperfection is more trustworthy than perfection','Film 3 takes and use the most natural one']});
+    creator_tips:['Film in natural window light for a genuine "at home" feel','Use your real voice — slight imperfection is more trustworthy than perfection','Film 3 takes and use the most natural one']}, 'template');
   }
-  try { res.json({ ok:true, source:'openai', ...JSON.parse(raw) }); }
-  catch { _err(res, 500, 'parse error'); }
+  return _sendGatedCopy(req, res, tid, 'ugc_script', raw, 'openai');
 });
 
 // T72 — Generate Ad Package from Landing Page
@@ -219,14 +243,13 @@ router.post('/from-landing-page', async (req, res) => {
   const user = `Landing page headline: ${headline}\nSubhead: ${subhead}\nHero CTA: ${cta}\nSocial proof: ${proof}\nKey features: ${feats}\nBrand: ${page.brand||'(not set)'}\nGoal: ${page.goal||'conversions'}`;
   const raw = await _openai([{role:'system',content:sys},{role:'user',content:user}], { json:true, max_tokens:1200 });
   if (!raw) {
-    return res.json({ ok:true, source:'template', packages:[
+    return _sendGatedCopy(req, res, tid, 'ad_package', { packages:[
       { platform:'Meta (Facebook + Instagram)', formats:['1:1 feed','9:16 story/reel'], headline:headline.slice(0,30), primary_text:`${subhead.slice(0,80)} ${proof ? '— '+proof.slice(0,40) : ''}`.trim(), cta_button:'Learn More', notes:'Use a bright lifestyle image with headline overlaid' },
       { platform:'Google Display', formats:['300x250','728x90'], headline:headline.slice(0,30), description:feats.slice(0,90)||subhead.slice(0,90), cta_button:'Get Started', notes:'Clean white background, brand colour CTA button' },
       { platform:'TikTok', formats:['9:16 vertical video'], hook:`Did you know ${headline.slice(0,40).toLowerCase()}?`, script_summary:`Hook with a relatable problem, reveal the solution (${page.brand||'this product'}), show the results, CTA to link in bio.`, hashtags:['tiktokfinds','musthave','viral'], notes:'Film in portrait, use trending sound, show real results' },
-    ]});
+    ]}, 'template');
   }
-  try { res.json({ ok:true, source:'openai', ...JSON.parse(raw) }); }
-  catch { _err(res, 500, 'parse error'); }
+  return _sendGatedCopy(req, res, tid, 'ad_package', raw, 'openai');
 });
 
 // POST /generate

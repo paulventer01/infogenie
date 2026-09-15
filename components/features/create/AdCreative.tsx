@@ -34,14 +34,16 @@ interface AdHistoryItem {
   style: string;
 }
 interface ScoreResult {
+  userMessage?: string;
+  content_safety_warnings?: string[];
   ok: boolean;
   error?: string;
-  overall?: number;
-  grade?: string;
+  overall?: number | null;
+  grade?: string | null;
   verdict?: string;
   source?: string;
   ctr_range?: { low?: string; high?: string };
-  scores?: Record<string, number>;
+  scores?: Record<string, number | null>;
   tips?: { dimension?: string; tip?: string }[];
 }
 interface UgcScene {
@@ -52,6 +54,8 @@ interface UgcScene {
   text_overlay?: string;
 }
 interface UgcResult {
+  userMessage?: string;
+  content_safety_warnings?: string[];
   ok: boolean;
   error?: string;
   scenes?: UgcScene[];
@@ -265,12 +269,10 @@ export default function AdCreative() {
   async function score() {
     if (!scHeadline.trim()) {
       setScError("Please enter a headline to score.");
-      setScResult(null);
       return;
     }
     setScLoading(true);
     setScError("");
-    setScResult(null);
     const r = await apiPost<ScoreResult>("/api/ad-creative/score", {
       headline: scHeadline,
       body_copy: scBody,
@@ -280,7 +282,7 @@ export default function AdCreative() {
     });
     setScLoading(false);
     if (!r.ok) {
-      setScError(`Error: ${r.error || "scoring failed"}`);
+      setScError(r.userMessage || r.error || "scoring failed");
       return;
     }
     setScResult(r);
@@ -289,12 +291,10 @@ export default function AdCreative() {
   async function genUgc() {
     if (!ugProduct.trim()) {
       setUgError("Please enter your product or service first.");
-      setUgResult(null);
       return;
     }
     setUgLoading(true);
     setUgError("");
-    setUgResult(null);
     const r = await apiPost<UgcResult>("/api/ad-creative/ugc-script", {
       product: ugProduct,
       audience: ugAudience,
@@ -305,7 +305,7 @@ export default function AdCreative() {
     });
     setUgLoading(false);
     if (!r.ok) {
-      setUgError(`Error: ${r.error || "generation failed"}`);
+      setUgError(r.userMessage || r.error || "generation failed");
       return;
     }
     setUgResult(r);
@@ -950,7 +950,7 @@ export default function AdCreative() {
                 </div>
               )}
               {!scLoading && scError && (
-                <p style={{ color: "#EF4444", fontSize: "0.8rem" }}>
+                <p role="alert" style={{ color: "#EF4444", fontSize: "0.8rem" }}>
                   {scError}
                 </p>
               )}
@@ -1141,7 +1141,7 @@ export default function AdCreative() {
                 </div>
               )}
               {!ugLoading && ugError && (
-                <p style={{ color: "#EF4444", fontSize: "0.8rem" }}>
+                <p role="alert" style={{ color: "#EF4444", fontSize: "0.8rem" }}>
                   {ugError}
                 </p>
               )}
@@ -1180,11 +1180,13 @@ export default function AdCreative() {
 }
 
 function ScoreView({ r }: { r: ScoreResult }) {
-  const overall = r.overall || 0;
+  const overall = r.overall ?? null;
   const overallColor =
-    overall >= 80 ? "#15803D" : overall >= 60 ? "#D97706" : "#DC2626";
+    overall == null ? "#64748B" : overall >= 80 ? "#15803D" : overall >= 60 ? "#D97706" : "#DC2626";
   const dims = r.scores || {};
   return (
+    <>
+      <ContentSafetyWarnings warnings={r.content_safety_warnings} />
     <div
       style={{
         background: "#fff",
@@ -1211,7 +1213,7 @@ function ScoreView({ r }: { r: ScoreResult }) {
               lineHeight: 1,
             }}
           >
-            {overall}
+            {overall ?? "—"}
           </div>
           <div
             style={{ fontSize: "0.65rem", color: "#94A3B8", fontWeight: 700 }}
@@ -1228,7 +1230,7 @@ function ScoreView({ r }: { r: ScoreResult }) {
               lineHeight: 1,
             }}
           >
-            {r.grade || "C"}
+            {r.grade || "—"}
           </div>
           <div
             style={{ fontSize: "0.65rem", color: "#94A3B8", fontWeight: 700 }}
@@ -1291,10 +1293,10 @@ function ScoreView({ r }: { r: ScoreResult }) {
             >
               <span>{label}</span>
               <span style={{ fontWeight: 800, color: "#1E293B" }}>
-                {dims[k] || 0}/10
+                {dims[k] ?? "—"}/10
               </span>
             </div>
-            {scoreBar(dims[k] || 0)}
+            {dims[k] != null && scoreBar(dims[k])}
           </div>
         ))}
       </div>
@@ -1339,6 +1341,7 @@ function ScoreView({ r }: { r: ScoreResult }) {
         </div>
       ) : null}
     </div>
+    </>
   );
 }
 
@@ -1361,6 +1364,8 @@ function UgcView({
     navigator.clipboard.writeText(txt);
   }
   return (
+    <>
+      <ContentSafetyWarnings warnings={r.content_safety_warnings} />
     <div
       ref={containerRef}
       style={{
@@ -1604,5 +1609,6 @@ function UgcView({
         </button>
       </div>
     </div>
+    </>
   );
 }
