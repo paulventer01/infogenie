@@ -11,8 +11,22 @@ const {
   normalizeComposerDraft,
   composerDraftGateText,
 } = require('../ai_governance/content_schemas');
+const { createRateLimiter } = require('../security/rate_limit');
 
 const router = express.Router();
+
+const composerDraftUpdateLimiter = createRateLimiter({
+  name: 'campaign-composer-draft-update',
+  windowMs: 60_000,
+  max: 30,
+  failClosed: true,
+  keyFn: (req) => {
+    const tid = req.tenant?.id;
+    const uid = req.user?.id;
+    if (tid != null && uid != null) return `campaign-composer|${tid}|${uid}`;
+    return null;
+  },
+});
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
@@ -180,7 +194,8 @@ router.get('/drafts', async (req, res) => {
   } catch (err) { _err(res, 500, err.message); }
 });
 
-router.put('/drafts/:id', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.put('/drafts/:id', composerDraftUpdateLimiter, async (req, res) => {
   try {
     const tid = await _tid(req, 'campaign-composer:update');
     const id = parseInt(req.params.id, 10);

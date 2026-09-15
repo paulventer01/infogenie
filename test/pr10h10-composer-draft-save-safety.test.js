@@ -32,6 +32,9 @@ describe('PR10H.10 scope — composer draft save gate (Step 6 partial)', () => {
     assert.match(composer, /campaign-composer:update/);
     assert.match(composer, /gateRouteText/);
     assert.match(composer, /content_safety_warnings = \$2/);
+    assert.match(composer, /createRateLimiter/);
+    assert.match(composer, /codeql\[js\/missing-rate-limiting\]/);
+    assert.match(composer, /composerDraftUpdateLimiter/);
   });
 
   it('does not claim whole-Step-6 completion', () => {
@@ -109,7 +112,12 @@ describe('PR10H.10 composer draft save gate', () => {
     const router = require('../services/campaign_composer/api');
     const app = express();
     app.use(express.json());
-    app.use((req, _res, next) => { req.user = { id: 3 }; next(); });
+    app.use((req, _res, next) => {
+      const tid = Number(req.headers['x-test-tenant'] || 11);
+      req.user = { id: 3 };
+      req.tenant = tid ? { id: tid, name: 'Test', slug: 'test', status: 'active' } : null;
+      next();
+    });
     app.use('/api/campaign-composer', router);
 
     server = await new Promise((resolve) => {
@@ -194,7 +202,12 @@ describe('PR10H.10 composer draft save gate', () => {
     const router = require('../services/campaign_composer/api');
     const app = express();
     app.use(express.json());
-    app.use((req, _res, next) => { req.user = { id: 3 }; next(); });
+    app.use((req, _res, next) => {
+      const tid = Number(req.headers['x-test-tenant'] || 11);
+      req.user = { id: 3 };
+      req.tenant = tid ? { id: tid, name: 'Test', slug: 'test', status: 'active' } : null;
+      next();
+    });
     app.use('/api/campaign-composer', router);
     const tmpServer = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
