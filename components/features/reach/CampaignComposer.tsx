@@ -99,6 +99,7 @@ export default function CampaignComposer() {
     if (activeDraft?.id != null) {
       invalidatePendingSave(activeDraft.id);
       clearSaveError(activeDraft.id);
+      setSaving(false);
     }
     setGenerating(true);
     const d = await apiPost<GenerateResp>("/api/campaign-composer/generate", { prompt });

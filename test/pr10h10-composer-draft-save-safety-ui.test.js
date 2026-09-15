@@ -94,11 +94,13 @@ async function composerHarness(t, opts = {}) {
     url: 'http://localhost/reach/campaign-composer',
     pretendToBeVisual: true,
   });
+  dom.window.alert = () => {};
 
   const values = {
     window: dom.window,
     document: dom.window.document,
     navigator: dom.window.navigator,
+    alert: dom.window.alert,
     HTMLElement: dom.window.HTMLElement,
     Node: dom.window.Node,
     IS_REACT_ACT_ENVIRONMENT: true,
@@ -225,6 +227,20 @@ async function composerHarness(t, opts = {}) {
     assert.ok(btn, 'Generate Campaign Draft');
     btn.click();
   });
+  const saveButton = () => [...dom.window.document.querySelectorAll('button')]
+    .find((b) => /Save Changes|Saving\.\.\./.test(b.textContent || ''));
+  const approveButton = () => [...dom.window.document.querySelectorAll('button')]
+    .find((b) => /Approve & Create Segment|Approving\.\.\./.test(b.textContent || ''));
+  const assertDraftActionsUsable = () => {
+    const save = saveButton();
+    const approve = approveButton();
+    assert.ok(save, 'Save Changes button');
+    assert.ok(approve, 'Approve button');
+    assert.equal(save.disabled, false);
+    assert.equal(approve.disabled, false);
+    assert.doesNotMatch(save.textContent || '', /Saving/i);
+    assert.doesNotMatch(approve.textContent || '', /Approving/i);
+  };
 
   return {
     document: dom.window.document,
@@ -236,6 +252,9 @@ async function composerHarness(t, opts = {}) {
     clickSave,
     clickGenerate,
     selectDraft,
+    saveButton,
+    approveButton,
+    assertDraftActionsUsable,
     state,
   };
 }
@@ -526,4 +545,89 @@ test('CampaignComposer generate clears a prior save alert and ignores late save 
   });
   assert.equal(h.document.querySelector('[role="alert"]'), null);
   assert.match(h.text(), /Generated campaign/);
+});
+
+test('CampaignComposer resets saving state when generate succeeds during a pending save', async (t) => {
+  let finishSave;
+  const h = await composerHarness(t, {
+    saveHandler: async ({ draftId, draft }, state) => new Promise((resolve) => {
+      finishSave = () => resolve({
+        ok: true,
+        draft: {
+          ...state.drafts.find((d) => d.id === draftId),
+          draft: { ...draft, body: 'Late saved body.' },
+        },
+      });
+    }),
+  });
+
+  await h.setBodyText('Pending save body.');
+  await h.clickSave();
+  await act(async () => {
+    for (let i = 0; i < 20 && !h.saveButton()?.disabled; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+  assert.equal(h.saveButton()?.disabled, true);
+
+  await h.setPromptText('Launch a spring promo');
+  await h.clickGenerate();
+  await act(async () => {
+    for (let i = 0; i < 40 && !h.text().includes('Generated campaign'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+
+  h.assertDraftActionsUsable();
+  await act(async () => finishSave());
+  await act(async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 25));
+  });
+  h.assertDraftActionsUsable();
+});
+
+test('CampaignComposer resets saving state when generate fails during a pending save', async (t) => {
+  let finishSave;
+  const h = await composerHarness(t, {
+    saveHandler: async ({ draftId, draft }, state) => new Promise((resolve) => {
+      finishSave = () => resolve({
+        ok: true,
+        draft: {
+          ...state.drafts.find((d) => d.id === draftId),
+          draft,
+        },
+      });
+    }),
+    generateHandler: async () => ({
+      ok: false,
+      error: 'generation_failed',
+      userMessage: 'Generation failed for test.',
+      httpStatus: 502,
+    }),
+  });
+
+  await h.setBodyText('Pending save body.');
+  await h.clickSave();
+  await act(async () => {
+    for (let i = 0; i < 20 && !h.saveButton()?.disabled; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+  assert.equal(h.saveButton()?.disabled, true);
+
+  await h.setPromptText('Broken prompt');
+  await h.clickGenerate();
+  await act(async () => {
+    for (let i = 0; i < 40 && !h.text().includes('Onboarding nurture'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+
+  h.assertDraftActionsUsable();
+  await act(async () => finishSave());
+  await act(async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 25));
+  });
+  h.assertDraftActionsUsable();
+  assert.match(h.text(), /Onboarding nurture/);
 });

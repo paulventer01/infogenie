@@ -435,6 +435,8 @@ describe('PR10H.10 UI coverage notes', () => {
     assert.match(rendered, /Save Changes/);
     assert.match(rendered, /switching drafts clears the prior draft save alert/);
     assert.match(rendered, /preserves edits made while a save is in flight/);
+    assert.match(rendered, /resets saving state when generate succeeds during a pending save/);
+    assert.match(rendered, /resets saving state when generate fails during a pending save/);
   });
 });
 
