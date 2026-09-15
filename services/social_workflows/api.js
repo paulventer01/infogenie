@@ -191,18 +191,25 @@ async function _onSocialPublished(tid, draft) {
     let autoPublishBlocked = null;
     if (pref.auto_publish) {
       try {
-        const settings = typeof draftsApi._getSettings === 'function'
-          ? await draftsApi._getSettings(tid)
-          : { require_approval: false };
-        if (settings.require_approval) {
+        const resolved = typeof draftsApi._resolveSettings === 'function'
+          ? await draftsApi._resolveSettings(tid)
+          : { ok: true, settings: { require_approval: false } };
+        if (!resolved.ok) {
+          autoPublishBlocked = {
+            error: 'settings_unavailable',
+            hint: 'Approval setting could not be resolved. Child draft was created as a draft.',
+          };
+        } else if (resolved.settings.require_approval) {
           autoPublishBlocked = {
             error: 'approval_required',
             hint: 'Auto-publish is blocked while require_approval is enabled. Child draft was created — submit via /api/social-drafts/:id/submit-approval.',
           };
-        } else if (typeof draftsApi._executePublishDraft === 'function') {
-          const result = await draftsApi._executePublishDraft(tid, child.id, { mode: 'direct' });
-          published = !!(result.ok && result.published);
-          if (!result.ok) autoPublishBlocked = { error: result.error, hint: result.hint || null };
+        } else {
+          await draftsApi._updateDraft(tid, child.id, {
+            status: 'scheduled',
+            meta: { ...(child.meta || {}), auto_scheduled: true },
+          });
+          published = true;
         }
       } catch (e) {
         autoPublishBlocked = { error: 'auto_publish_failed', hint: e.message };

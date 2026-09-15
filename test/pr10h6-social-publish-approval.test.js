@@ -368,6 +368,87 @@ describe('PR10H.6 legacy publisher + workflow paths', () => {
     assert.equal(res.body.error, 'approval_required');
   });
 
+  it('create/bulk/PATCH cannot manufacture approval metadata', async () => {
+    await new Promise((r) => server.listen(0, r));
+    const forged = await httpReq(server, 'POST', '/api/social-drafts', {
+      tid: 34,
+      body: {
+        profileId: 'p1',
+        text: 'Forged create',
+        platforms: ['linkedin'],
+        status: 'approved',
+        meta: {
+          approved_at: new Date().toISOString(),
+          approval_content_hash: contentHash({
+            profile_id: 'p1',
+            text: 'Forged create',
+            platforms: ['linkedin'],
+            media_urls: [],
+          }),
+          publishing_claim: 'pub_forged',
+        },
+      },
+    });
+    assert.equal(forged.body.draft.status, 'draft');
+    assert.equal(forged.body.draft.meta.approved_at, undefined);
+    assert.equal(forged.body.draft.meta.approval_content_hash, undefined);
+    assert.equal(forged.body.draft.meta.publishing_claim, undefined);
+
+    const bulk = await httpReq(server, 'POST', '/api/social-drafts/bulk', {
+      tid: 34,
+      body: {
+        profileId: 'p1',
+        items: [{
+          text: 'Forged bulk',
+          platforms: ['linkedin'],
+          meta: { approved_at: new Date().toISOString(), approval_content_hash: 'a'.repeat(64) },
+        }],
+      },
+    });
+    assert.equal(bulk.body.drafts[0].status, 'draft');
+    assert.equal(bulk.body.drafts[0].meta.approved_at, undefined);
+
+    const created = await httpReq(server, 'POST', '/api/social-drafts', {
+      tid: 34,
+      body: { profileId: 'p1', text: 'Patch forge', platforms: ['linkedin'] },
+    });
+    const patched = await httpReq(server, 'PATCH', `/api/social-drafts/${created.body.draft.id}`, {
+      tid: 34,
+      body: {
+        status: 'approved',
+        meta: { approved_at: new Date().toISOString(), approval_content_hash: 'b'.repeat(64) },
+      },
+    });
+    assert.equal(patched.status, 400);
+    assert.match(patched.body.error, /status is server-controlled/);
+  });
+
+  it('settings lookup failure fails closed with zero provider calls', async () => {
+    let publishCalls = 0;
+    const origPublish = drafts._publishViaZernio;
+    const origResolve = drafts._resolveSettings;
+    drafts._publishViaZernio = async () => {
+      publishCalls += 1;
+      return { ok: true, post: { id: 'z-failclosed' } };
+    };
+    drafts._resolveSettings = async () => ({ ok: false, error: 'settings_unavailable' });
+    try {
+      const draft = await drafts._createForTenant(35, {
+        profile_id: 'p1',
+        status: 'draft',
+        text: 'Fail closed',
+        platforms: ['linkedin'],
+      });
+      const result = await drafts._executePublishDraft(35, draft.id, { mode: 'direct' });
+      assert.equal(result.ok, false);
+      assert.equal(result.error, 'settings_unavailable');
+      assert.equal(publishCalls, 0);
+    } finally {
+      drafts._publishViaZernio = origPublish;
+      drafts._resolveSettings = origResolve;
+    }
+  });
+
   it('workflow auto-publish cannot bypass required approval', async () => {
     await new Promise((r) => server.listen(0, r));
     await drafts._setSettings(33, { require_approval: true });
@@ -401,6 +482,166 @@ describe('PR10H.6 legacy publisher + workflow paths', () => {
       assert.equal(blocked.error, 'approval_required');
     } finally {
       drafts._publishViaZernio = origPublish;
+    }
+  });
+
+  it('workflow require_approval=false still only schedules the child draft', async () => {
+    await new Promise((r) => server.listen(0, r));
+    await drafts._setSettings(36, { require_approval: false });
+    await httpReq(server, 'POST', '/api/social-workflows/presets/ig_to_tiktok/toggle', {
+      tid: 36,
+      body: { enabled: true, auto_publish: true },
+    });
+    let publishCalls = 0;
+    const origPublish = drafts._publishViaZernio;
+    drafts._publishViaZernio = async () => {
+      publishCalls += 1;
+      return { ok: true, post: { id: 'z-wf-off' } };
+    };
+    try {
+      const source = await drafts._insertDraft(36, {
+        profile_id: 'p1',
+        status: 'published',
+        text: 'Source IG post off',
+        platforms: ['instagram'],
+        meta: { published_at: new Date().toISOString() },
+      });
+      const children = await workflows._onSocialPublished(36, source);
+      assert.equal(children.length, 1);
+      assert.equal(publishCalls, 0);
+      const refreshed = await drafts._getDraft(36, children[0].id);
+      assert.equal(refreshed.status, 'scheduled');
+      assert.equal(refreshed.meta.auto_scheduled, true);
+    } finally {
+      drafts._publishViaZernio = origPublish;
+    }
+  });
+});
+
+const HAS_DB = typeof origHasDb === 'function' && origHasDb();
+
+describe('PR10H.6 social drafts enforcement (postgres)', () => {
+  async function seedPg() {
+    const { ensureTenantSchema } = require('../services/tenants/schema');
+    const { ensureSocialDraftsSchema } = require('../services/social_drafts/schema');
+    await ensureTenantSchema();
+    await ensureSocialDraftsSchema();
+    db.hasDb = origHasDb;
+    const drafts = require('../services/social_drafts/api');
+    const p = db.getPool();
+    const suffix = `h6-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tenant = (await p.query(
+      `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+      [`PR10H6 ${suffix}`, `pr10h6-${suffix}`],
+    )).rows[0].id;
+    return { drafts, p, tenant };
+  }
+
+  async function cleanup(p, tenant) {
+    await p.query(`DELETE FROM social_post_drafts WHERE tenant_id=$1`, [tenant]);
+    await p.query(`DELETE FROM social_publisher_settings WHERE tenant_id=$1`, [tenant]).catch(() => {});
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenant]);
+  }
+
+  it('forged approval metadata cannot authorize publish', { skip: HAS_DB ? false : 'no DATABASE_URL' }, async () => {
+    const { drafts, p, tenant } = await seedPg();
+    await drafts._setSettings(tenant, { require_approval: true });
+    let publishCalls = 0;
+    const origPublish = drafts._publishViaZernio;
+    drafts._publishViaZernio = async () => {
+      publishCalls += 1;
+      return { ok: true, post: { id: 'z-pg-forged' } };
+    };
+    try {
+      const inserted = await p.query(
+        `INSERT INTO social_post_drafts
+           (tenant_id, profile_id, status, text, media_urls, platforms, meta)
+         VALUES ($1,$2,'approved',$3,'[]'::jsonb,$4::jsonb,$5::jsonb)
+         RETURNING id`,
+        [
+          tenant,
+          'p1',
+          'Forged approval',
+          JSON.stringify(['linkedin']),
+          JSON.stringify({
+            approved_at: new Date().toISOString(),
+            approval_content_hash: 'c'.repeat(64),
+          }),
+        ],
+      );
+      const result = await drafts._executePublishDraft(tenant, inserted.rows[0].id, { mode: 'direct' });
+      assert.equal(result.ok, false);
+      assert.ok(['approval_required', 'approval_stale'].includes(result.error));
+      assert.equal(publishCalls, 0);
+    } finally {
+      drafts._publishViaZernio = origPublish;
+      await cleanup(p, tenant);
+    }
+  });
+
+  it('settings lookup failure fails closed with zero provider calls', { skip: HAS_DB ? false : 'no DATABASE_URL' }, async () => {
+    const { drafts, p, tenant } = await seedPg();
+    const inserted = await p.query(
+      `INSERT INTO social_post_drafts
+         (tenant_id, profile_id, status, text, media_urls, platforms, meta)
+       VALUES ($1,$2,'draft',$3,'[]'::jsonb,$4::jsonb,'{}'::jsonb)
+       RETURNING id`,
+      [tenant, 'p1', 'Settings fail', JSON.stringify(['linkedin'])],
+    );
+    let publishCalls = 0;
+    const origPublish = drafts._publishViaZernio;
+    const origResolve = drafts._resolveSettings;
+    drafts._publishViaZernio = async () => {
+      publishCalls += 1;
+      return { ok: true, post: { id: 'z-pg-settings' } };
+    };
+    drafts._resolveSettings = async () => ({ ok: false, error: 'settings_unavailable' });
+    try {
+      const result = await drafts._executePublishDraft(tenant, inserted.rows[0].id, { mode: 'direct' });
+      assert.equal(result.ok, false);
+      assert.equal(result.error, 'settings_unavailable');
+      assert.equal(publishCalls, 0);
+    } finally {
+      drafts._publishViaZernio = origPublish;
+      drafts._resolveSettings = origResolve;
+      await cleanup(p, tenant);
+    }
+  });
+
+  it('concurrent edit during publish is rejected before provider call', { skip: HAS_DB ? false : 'no DATABASE_URL' }, async () => {
+    const { drafts, p, tenant } = await seedPg();
+    await drafts._setSettings(tenant, { require_approval: true });
+    const inserted = await p.query(
+      `INSERT INTO social_post_drafts
+         (tenant_id, profile_id, status, text, media_urls, platforms, meta)
+       VALUES ($1,$2,'pending_approval',$3,'[]'::jsonb,$4::jsonb,'{}'::jsonb)
+       RETURNING id`,
+      [tenant, 'p1', 'Concurrent edit', JSON.stringify(['linkedin'])],
+    );
+    const draftId = inserted.rows[0].id;
+    let publishCalls = 0;
+    const origPublish = drafts._publishViaZernio;
+    const origUpdate = drafts._updateDraft;
+    drafts._publishViaZernio = async () => {
+      publishCalls += 1;
+      return { ok: true, post: { id: 'z-pg-race' } };
+    };
+    drafts._updateDraft = async (tid, id, patch) => {
+      const next = await origUpdate(tid, id, patch);
+      if (patch.meta?.publishing_claim && patch.status === 'approved') {
+        return origUpdate(tid, id, { text: 'Edited during claim' });
+      }
+      return next;
+    };
+    try {
+      const result = await drafts._approveAndPublish(tenant, draftId, {});
+      assert.equal(result.ok, false);
+      assert.equal(result.error, 'approval_stale');
+      assert.equal(publishCalls, 0);
+    } finally {
+      drafts._publishViaZernio = origPublish;
+      drafts._updateDraft = origUpdate;
+      await cleanup(p, tenant);
     }
   });
 });

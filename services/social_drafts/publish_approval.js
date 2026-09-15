@@ -6,6 +6,25 @@ const HASH_RE = /^[0-9a-f]{64}$/;
 const APPROVAL_HINT = 'Tenant requires approval before external delivery. Create a social draft via /api/social-drafts, submit for approval, then publish via /api/social-drafts/:id/approve.';
 
 const MATERIAL_FIELDS = ['text', 'media_urls', 'platforms', 'scheduled_for', 'profile_id'];
+const SERVER_META_KEYS = Object.freeze([
+  'approved_at',
+  'approval_content_hash',
+  'approval_request_id',
+  'approval_invalidated_at',
+  'reviewer_notes',
+  'publishing_claim',
+  'publishing_claim_at',
+  'published_at',
+  'published_via',
+  'delivery_outcome',
+  'delivery_uncertain_at',
+  'provider_accepted_at',
+  'provider_post_id',
+  'last_publish_error',
+  'last_publish_attempt_at',
+  'last_error',
+]);
+const USER_WRITABLE_STATUSES = Object.freeze(['draft', 'pending_approval']);
 
 function _sortedList(value) {
   if (!Array.isArray(value)) return [];
@@ -85,6 +104,32 @@ function recordApprovalMeta(draft, notes) {
   };
 }
 
+function sanitizeUserMeta(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (SERVER_META_KEYS.includes(k)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function sanitizeUserStatus(status, fallback = 'draft') {
+  return USER_WRITABLE_STATUSES.includes(status) ? status : fallback;
+}
+
+function hasActivePublishingClaim(draft) {
+  return !!(draft?.meta?.publishing_claim);
+}
+
+function materialFieldsChanged(before, after) {
+  return contentHash(before) !== contentHash(after);
+}
+
+function evaluateClaimedAuthorization({ requireApproval, claimed, mode }) {
+  return evaluatePublishAuthorization({ requireApproval, draft: claimed, mode });
+}
+
 function evaluatePublishAuthorization({ requireApproval, draft, mode }) {
   if (!requireApproval) return { ok: true };
 
@@ -151,6 +196,8 @@ function blockedPublisherBody(error = 'approval_required') {
 module.exports = {
   APPROVAL_HINT,
   MATERIAL_FIELDS,
+  SERVER_META_KEYS,
+  USER_WRITABLE_STATUSES,
   contentSnapshot,
   contentHash,
   validContentHash,
@@ -159,6 +206,11 @@ module.exports = {
   patchInvalidatesApproval,
   invalidateApprovalPatch,
   recordApprovalMeta,
+  sanitizeUserMeta,
+  sanitizeUserStatus,
+  hasActivePublishingClaim,
+  materialFieldsChanged,
   evaluatePublishAuthorization,
+  evaluateClaimedAuthorization,
   blockedPublisherBody,
 };

@@ -12,16 +12,19 @@ function _hasCreds() {
   return k && !/^_DUMMY/i.test(k);
 }
 async function _publisherApprovalBlocked(req, label) {
+  const draftsApi = require('../social_drafts/api');
+  let tid;
   try {
-    const draftsApi = require('../social_drafts/api');
-    const tid = await _tenantCtx.resolveTenantId(req, { label }).catch(() => null);
-    if (!tid || typeof draftsApi._getSettings !== 'function') return null;
-    const settings = await draftsApi._getSettings(tid);
-    if (!settings?.require_approval) return null;
-    return blockedPublisherBody('approval_required');
+    tid = await _tenantCtx.resolveTenantId(req, { label });
   } catch (_) {
-    return null;
+    return blockedPublisherBody('settings_unavailable');
   }
+  if (!tid) return blockedPublisherBody('settings_unavailable');
+  if (typeof draftsApi._resolveSettings !== 'function') return blockedPublisherBody('settings_unavailable');
+  const resolved = await draftsApi._resolveSettings(tid);
+  if (!resolved.ok) return blockedPublisherBody('settings_unavailable');
+  if (!resolved.settings?.require_approval) return null;
+  return blockedPublisherBody('approval_required');
 }
 
 function _friendlyError(err, status) {
