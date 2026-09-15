@@ -12,6 +12,22 @@ const {
 } = require('../services/ai_governance/route_gate');
 const { governSafe } = require('../services/ai_governance/hooks');
 
+describe('Step 6 scope — three modules only (partial completion)', () => {
+  it('documents gated paths in launch_compliance, campaign_composer, market_signals', () => {
+    const composer = fs.readFileSync(require.resolve('../services/campaign_composer/api'), 'utf8');
+    const compliance = fs.readFileSync(require.resolve('../services/launch_compliance/api'), 'utf8');
+    const signals = fs.readFileSync(require.resolve('../services/market_signals/routes'), 'utf8');
+    assert.match(composer, /content_safety_warnings/);
+    assert.match(compliance, /content_safety_warnings/);
+    assert.match(signals, /normalizeRedditReply/);
+  });
+
+  it('does not claim whole-Step-6 completion in test file', () => {
+    const src = fs.readFileSync(__filename, 'utf8');
+    assert.doesNotMatch(src, /Step 6:\s*Done/i);
+  });
+});
+
 describe('Step 6 inventory — surface classification', () => {
   it('launch_compliance proofread and campaign_composer generate are content paths', () => {
     const src = fs.readFileSync(require.resolve('../services/launch_compliance/api'), 'utf8');
@@ -95,11 +111,27 @@ describe('Step 6 campaign_composer generate gate', () => {
 
     const _db = require('../db');
     let inserted = null;
+    let storedRows = [];
     _db.getPool = () => ({
       query: async (sql, params) => {
         if (sql.includes('INSERT INTO campaign_composer_drafts')) {
           inserted = params;
-          return { rows: [{ id: 99, tenant_id: params[0], prompt: params[1], draft: JSON.parse(params[2]) }] };
+          const row = {
+            id: 99,
+            tenant_id: params[0],
+            prompt: params[1],
+            draft: JSON.parse(params[2]),
+            content_safety_warnings: JSON.parse(params[3]),
+            status: 'draft',
+            segment_id: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          storedRows = [row];
+          return { rows: [row] };
+        }
+        if (sql.includes('SELECT * FROM campaign_composer_drafts')) {
+          return { rows: storedRows };
         }
         return { rows: [] };
       },
@@ -168,6 +200,40 @@ describe('Step 6 campaign_composer generate gate', () => {
     await new Promise((r) => tmpServer.close(r));
     gateCached.exports.gateRouteText = realGate;
   });
+
+  it('persists content_safety_warnings and returns them on GET /drafts reload', async () => {
+    gateCached.exports.gateRouteText = async () => ({
+      ok: true,
+      warnings: ['Uncited metric or percentage detected — verify before external publish'],
+      content_safety_warnings: ['Uncited metric or percentage detected — verify before external publish'],
+    });
+    delete require.cache[require.resolve('../services/campaign_composer/api')];
+    const router = require('../services/campaign_composer/api');
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => { req.user = { id: 3 }; next(); });
+    app.use('/api/campaign-composer', router);
+    const tmpServer = await new Promise((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    const tmpUrl = `http://127.0.0.1:${tmpServer.address().port}`;
+
+    const gen = await fetch(`${tmpUrl}/api/campaign-composer/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'Newsletter with 15% off' }),
+    });
+    const genBody = await gen.json();
+    assert.equal(gen.ok, true);
+    assert.ok(genBody.content_safety_warnings?.length >= 1);
+
+    const list = await fetch(`${tmpUrl}/api/campaign-composer/drafts`);
+    const listBody = await list.json();
+    assert.equal(listBody.drafts[0].content_safety_warnings?.length, genBody.content_safety_warnings.length);
+
+    await new Promise((r) => tmpServer.close(r));
+    gateCached.exports.gateRouteText = realGate;
+  });
 });
 
 describe('Step 6 launch_compliance proofread gate', () => {
@@ -180,13 +246,26 @@ describe('Step 6 launch_compliance proofread gate', () => {
 
     const _db = require('../db');
     let updatedFeedback = null;
+    let updatedWarnings = null;
+    let storedChecklist = {
+      id: 5,
+      ad_copy: 'Buy now for guaranteed 100% returns with zero risk.',
+      ai_feedback: null,
+      content_safety_warnings: [],
+    };
     _db.getPool = () => ({
       query: async (sql, params) => {
-        if (sql.includes('SELECT * FROM campaign_compliance_checklists')) {
-          return { rows: [{ id: 5, ad_copy: 'Buy now for guaranteed 100% returns with zero risk.' }] };
+        if (sql.includes('SELECT * FROM campaign_compliance_checklists') && sql.includes('WHERE id=$1')) {
+          return { rows: [storedChecklist] };
         }
-        if (sql.includes('UPDATE campaign_compliance_checklists SET ai_feedback')) {
+        if (sql.includes('UPDATE campaign_compliance_checklists') && sql.includes('ai_feedback')) {
           updatedFeedback = params[0];
+          updatedWarnings = params[1];
+          storedChecklist = {
+            ...storedChecklist,
+            ai_feedback: JSON.parse(params[0]),
+            content_safety_warnings: JSON.parse(params[1]),
+          };
           return { rows: [] };
         }
         return { rows: [] };
@@ -243,6 +322,68 @@ describe('Step 6 launch_compliance proofread gate', () => {
     assert.equal(body.feedback, undefined);
     assert.equal(global.__step6UpdatedFeedback(), null);
   });
+
+  it('persists content_safety_warnings and returns them on checklist GET reload', async () => {
+    const gatePath = require.resolve('../services/ai_governance/route_gate');
+    const gateCached = require.cache[gatePath];
+    const realGate = gateCached.exports.gateRouteText;
+    gateCached.exports.gateRouteText = async () => ({
+      ok: true,
+      warnings: ['Content caution logged'],
+      content_safety_warnings: ['Content caution logged'],
+    });
+
+    const prevOpenai = global._openaiClient;
+    global._openaiClient = {
+      chat: {
+        completions: {
+          create: async () => ({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  overall_score: 7,
+                  issues: [],
+                  improved_copy: 'Schedule a product walkthrough with our team.',
+                  summary: 'Minor clarity tweaks suggested.',
+                }),
+              },
+            }],
+          }),
+        },
+      },
+    };
+
+    delete require.cache[require.resolve('../services/launch_compliance/api')];
+    const router = require('../services/launch_compliance/api');
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => { req.user = { id: 2 }; next(); });
+    app.use('/api/launch-compliance', router);
+    const tmpServer = await new Promise((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    const tmpUrl = `http://127.0.0.1:${tmpServer.address().port}`;
+
+    try {
+      const proof = await fetch(`${tmpUrl}/api/launch-compliance/checklists/5/proofread`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const proofBody = await proof.json();
+      assert.equal(proof.ok, true);
+      assert.deepEqual(proofBody.content_safety_warnings, ['Content caution logged']);
+
+      const get = await fetch(`${tmpUrl}/api/launch-compliance/checklists/5`);
+      const getBody = await get.json();
+      assert.deepEqual(getBody.checklist.content_safety_warnings, ['Content caution logged']);
+    } finally {
+      await new Promise((r) => tmpServer.close(r));
+      gateCached.exports.gateRouteText = realGate;
+      global._openaiClient = prevOpenai;
+      delete require.cache[require.resolve('../services/launch_compliance/api')];
+    }
+  });
 });
 
 describe('Step 6 market_signals reddit-reply gate', () => {
@@ -293,6 +434,51 @@ describe('Step 6 market_signals reddit-reply gate', () => {
     delete require.cache[require.resolve('../services/market_signals/routes')];
   });
 
+  it('blocks when prohibited content is only in tone_note secondary field', async () => {
+    const register = require('../services/market_signals/routes');
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => { req.user = { id: 4 }; next(); });
+    register(app, {
+      _chargeBudget: () => {},
+      anthropic: { messages: { create: async () => { throw new Error('unused'); } } },
+      callDataForSEO: async () => { throw new Error('unused'); },
+      callRapidAPI: async () => { throw new Error('unused'); },
+      https: require('node:https'),
+      openai: {
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [{
+                message: {
+                  content: JSON.stringify({
+                    reply: 'Happy to share our onboarding guide if helpful.',
+                    tone_note: 'guaranteed 100% returns with zero risk',
+                  }),
+                },
+              }],
+            }),
+          },
+        },
+      },
+      openaiChatWithRetry: async () => { throw new Error('unused'); },
+    });
+    const srv = await new Promise((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    const url = `http://127.0.0.1:${srv.address().port}`;
+    const res = await fetch(`${url}/api/reddit-reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postTitle: 'Broker tips?', brand: 'Acme', industry: 'finance' }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 403);
+    assert.equal(body.reply, undefined);
+    assert.equal(body.tone_note, undefined);
+    await new Promise((r) => srv.close(r));
+  });
+
   it('blocks reddit reply before return', async () => {
     const res = await fetch(`${baseUrl}/api/reddit-reply`, {
       method: 'POST',
@@ -303,6 +489,30 @@ describe('Step 6 market_signals reddit-reply gate', () => {
     assert.equal(res.status, 403);
     assert.equal(body.reply, undefined);
     assert.ok(body.error === 'content_safety_blocked' || body.error === 'content_safety_block');
+  });
+
+  it('returns only allowed reddit-reply schema fields', async () => {
+    const res = await fetch(`${baseUrl}/api/reddit-reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postTitle: 'Tips?', brand: 'Acme', industry: 'saas' }),
+    });
+    if (res.status !== 200) return;
+    const body = await res.json();
+    assert.equal(Object.keys(body).sort().join(','), 'content_safety_warnings,reply,tone_note');
+  });
+});
+
+describe('Step 6 UI — visible content safety warnings', () => {
+  it('CampaignComposer and LaunchCompliance render ContentSafetyWarnings banner', () => {
+    const composer = fs.readFileSync(require.resolve('../components/features/reach/CampaignComposer.tsx'), 'utf8');
+    const compliance = fs.readFileSync(require.resolve('../components/features/grow/LaunchCompliance.tsx'), 'utf8');
+    const banner = fs.readFileSync(require.resolve('../components/layout/ContentSafetyWarnings.tsx'), 'utf8');
+    assert.match(composer, /ContentSafetyWarnings/);
+    assert.match(composer, /content_safety_warnings/);
+    assert.match(compliance, /ContentSafetyWarnings/);
+    assert.match(compliance, /content_safety_warnings/);
+    assert.match(banner, /CONTENT SAFETY WARNINGS/);
   });
 });
 

@@ -7,18 +7,27 @@ const {
   contentSafetyHttpBody,
   attachContentSafetyWarnings,
 } = require('../ai_governance/route_gate');
+const {
+  normalizeProofreadFeedback,
+  proofreadGateText,
+} = require('../ai_governance/content_schemas');
 
 const router = express.Router();
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
 
-function _feedbackGateText(feedback) {
-  if (!feedback || typeof feedback !== 'object') return '';
-  const issueText = Array.isArray(feedback.issues)
-    ? feedback.issues.map((i) => (typeof i === 'string' ? i : i?.text || '')).join('\n')
-    : '';
-  return [feedback.summary, feedback.improved_copy, issueText].filter(Boolean).join('\n');
+function _parseWarnings(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
+  return [];
+}
+
+function _attachChecklistWarnings(row) {
+  if (!row) return row;
+  return { ...row, content_safety_warnings: _parseWarnings(row.content_safety_warnings) };
 }
 
 async function _gateFeedback(req, tid, feedback, label) {
@@ -28,7 +37,7 @@ async function _gateFeedback(req, tid, feedback, label) {
       userId: req.user?.id || null,
       surface: 'launch_compliance',
       action: 'generate_content',
-      text: _feedbackGateText(feedback),
+      text: proofreadGateText(feedback),
       label,
     });
   } catch (_) {
@@ -58,7 +67,7 @@ router.get('/checklists', async (req, res) => {
        WHERE c.tenant_id=$1 GROUP BY c.id ORDER BY c.created_at DESC LIMIT 100`,
       [tid]
     );
-    res.json({ ok: true, checklists: rows });
+    res.json({ ok: true, checklists: rows.map(_attachChecklistWarnings) });
   } catch (e) { _err(res, 500, e.message); }
 });
 
@@ -106,7 +115,7 @@ router.get('/checklists/:id', async (req, res) => {
       'SELECT * FROM compliance_checklist_items WHERE checklist_id=$1 AND tenant_id=$2 ORDER BY order_idx',
       [rows[0].id, tid]
     );
-    res.json({ ok: true, checklist: { ...rows[0], items } });
+    res.json({ ok: true, checklist: { ..._attachChecklistWarnings(rows[0]), items } });
   } catch (e) { _err(res, 500, e.message); }
 });
 
@@ -186,13 +195,15 @@ router.post('/checklists/:id/proofread', async (req, res) => {
     }
 
     if (!feedback || feedback._DUMMY) {
-      feedback = {
+      feedback = normalizeProofreadFeedback({
         overall_score: null,
         issues: [{ severity: 'suggestion', text: 'Configure an AI provider (OpenAI/Anthropic) for automated proofreading.' }],
         improved_copy: copy,
         summary: 'AI provider not configured. Manual peer-review is recommended.',
         _estimated: true,
-      };
+      });
+    } else {
+      feedback = normalizeProofreadFeedback(feedback);
     }
 
     const gated = await _gateFeedback(req, tid, feedback, 'compliance:proofread');
@@ -201,11 +212,14 @@ router.post('/checklists/:id/proofread', async (req, res) => {
       return res.status(status).json(contentSafetyHttpBody(gated));
     }
 
+    const warnings = gated.warnings || gated.content_safety_warnings || [];
     await p.query(
-      'UPDATE campaign_compliance_checklists SET ai_feedback=$1,updated_at=NOW() WHERE id=$2 AND tenant_id=$3',
-      [JSON.stringify(feedback), rows[0].id, tid]
+      `UPDATE campaign_compliance_checklists
+       SET ai_feedback=$1, content_safety_warnings=$2, updated_at=NOW()
+       WHERE id=$3 AND tenant_id=$4`,
+      [JSON.stringify(feedback), JSON.stringify(warnings), rows[0].id, tid]
     );
-    res.json(attachContentSafetyWarnings({ ok: true, feedback }, gated.warnings));
+    res.json(attachContentSafetyWarnings({ ok: true, feedback, content_safety_warnings: warnings }, warnings));
   } catch (e) { _err(res, 500, e.message); }
 });
 

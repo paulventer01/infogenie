@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import PanelHero from "@/components/layout/PanelHero";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
 interface AudienceRules {
   match: string;
@@ -27,6 +28,7 @@ interface DraftRow {
   draft: CampaignDraft;
   status: 'draft' | 'approved' | 'launched';
   segment_id: number | null;
+  content_safety_warnings?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -40,7 +42,9 @@ interface DraftsResp {
 interface GenerateResp {
   ok: boolean;
   draft: DraftRow;
+  content_safety_warnings?: string[];
   error?: string;
+  userMessage?: string;
 }
 
 export default function CampaignComposer() {
@@ -65,10 +69,14 @@ export default function CampaignComposer() {
     const d = await apiPost<GenerateResp>("/api/campaign-composer/generate", { prompt });
     setGenerating(false);
     if (d.ok) {
-      setActiveDraft(d.draft);
+      const warnings = d.content_safety_warnings || d.draft?.content_safety_warnings || [];
+      setActiveDraft({
+        ...d.draft,
+        content_safety_warnings: warnings,
+      });
       loadHistory();
     } else {
-      alert(d.error || "Failed to generate campaign");
+      alert(d.userMessage || d.error || "Failed to generate campaign");
     }
   }
 
@@ -143,6 +151,7 @@ export default function CampaignComposer() {
           {/* Draft Result */}
           {activeDraft && (
             <div className="ig-card" style={{ borderLeft: `4px solid ${activeDraft.status === 'draft' ? '#f59e0b' : '#10b981'}` }}>
+              <ContentSafetyWarnings warnings={activeDraft.content_safety_warnings} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <h3 style={{ fontSize: "1.1rem", margin: 0 }}>{activeDraft.draft.campaign_name}</h3>
                 <div style={{ display: "flex", gap: 8 }}>

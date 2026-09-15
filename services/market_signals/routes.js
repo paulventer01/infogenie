@@ -20,6 +20,16 @@ module.exports = function register(app, ctx) {
     contentSafetyHttpBody,
     attachContentSafetyWarnings,
   } = require('./services/ai_governance/route_gate');
+  const {
+    normalizeRedditReply,
+    redditReplyGateText,
+    normalizeRedditStudioSuggest,
+    redditStudioGateText,
+    normalizeChannelAd,
+    channelAdGateText,
+    normalizeContentCluster,
+    contentClusterGateText,
+  } = require('./services/ai_governance/content_schemas');
 
   async function _resolveTenant(req, label) {
     try {
@@ -523,10 +533,11 @@ Return JSON only: { "reply": "...", "tone_note": "brief note on how this matches
       max_tokens: 400, response_format: { type: 'json_object' }
     });
     const raw = completion.choices[0]?.message?.content || '{}';
-    let result;
-    try { result = JSON.parse(raw); } catch { result = { reply: raw.replace(/[{}'"]/g, ''), tone_note: '' }; }
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch { parsed = { reply: raw.replace(/[{}'"]/g, ''), tone_note: '' }; }
+    const result = normalizeRedditReply(parsed);
 
-    const gated = await _gateMarketText(req, result.reply || '', 'reddit-reply:generate');
+    const gated = await _gateMarketText(req, redditReplyGateText(result), 'reddit-reply:generate');
     if (!gated.ok) return _gateBlocked(res, gated);
 
     res.json(attachContentSafetyWarnings(result, gated.warnings));
@@ -607,15 +618,13 @@ Rules:
     });
 
     const raw = completion.choices[0]?.message?.content?.trim() || '{}';
-    let result;
-    try { result = JSON.parse(raw); } catch { result = {}; }
-    const titles = Array.isArray(result.titles) ? result.titles.filter(t => typeof t === 'string' && t.trim()).slice(0, 3) : [];
-    const persona = (result.persona || '').toString().trim();
-    const gateText = [persona, ...titles].join('\n');
-    const gated = await _gateMarketText(req, gateText, 'reddit-studio-suggest:generate');
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch { parsed = {}; }
+    const normalized = normalizeRedditStudioSuggest(parsed);
+    const gated = await _gateMarketText(req, redditStudioGateText(normalized), 'reddit-studio-suggest:generate');
     if (!gated.ok) return _gateBlocked(res, gated);
 
-    res.json(attachContentSafetyWarnings({ persona, titles }, gated.warnings));
+    res.json(attachContentSafetyWarnings(normalized, gated.warnings));
   } catch(err) {
     console.error('/api/reddit-studio-suggest error:', err.message);
     res.json({ persona: '', titles: [], error: err.message });
@@ -1377,26 +1386,21 @@ Goal: ${goal}. Target audience: ${audience}. Daily budget: $${budget}.
 Return JSON: { "headline": "...", "body": "...", "cta": "...", "hashtags": "..." }
 Headline: 5-10 words. Body: 1-3 sentences. CTA: 3-5 words. Hashtags: 3-5 relevant (for social platforms).`;
     const completion = await openai.chat.completions.create({ model:'gpt-5', messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}], max_tokens:300, response_format:{type:'json_object'} });
-    const ad = JSON.parse(completion.choices[0]?.message?.content||'{}');
-    const gateText = [ad.headline, ad.body, ad.cta, ad.hashtags].filter(Boolean).join('\n');
-    const gated = await _gateMarketText(req, gateText, 'ai-channel-ad:generate');
+    const ad = normalizeChannelAd(JSON.parse(completion.choices[0]?.message?.content || '{}'));
+    const gated = await _gateMarketText(req, channelAdGateText(ad), 'ai-channel-ad:generate');
     if (!gated.ok) return _gateBlocked(res, gated);
     res.json(attachContentSafetyWarnings({ ad }, gated.warnings));
   } catch(err) {
-    const fallbackAd = {
+    const fallbackAd = normalizeChannelAd({
       headline: `Grow with ${req.body?.domain || 'us'}`,
       body: `The smart way to drive leads in ${req.body?.industry || 'your industry'}. Start your campaign today.`,
       cta: 'Get Started Free',
       hashtags: '#marketing #growth #leads',
       _estimated: true,
       source: 'template',
-    };
+    });
     try {
-      const gated = await _gateMarketText(
-        req,
-        [fallbackAd.headline, fallbackAd.body, fallbackAd.cta].join('\n'),
-        'ai-channel-ad:template-fallback',
-      );
+      const gated = await _gateMarketText(req, channelAdGateText(fallbackAd), 'ai-channel-ad:template-fallback');
       if (!gated.ok) return _gateBlocked(res, gated);
       res.json(attachContentSafetyWarnings({ ad: fallbackAd, error: err.message }, gated.warnings));
     } catch (gateErr) {
@@ -1462,15 +1466,10 @@ Return ONLY raw JSON: {
       } catch {}
     }
 
-    const gateText = JSON.stringify({
-      pillar: cluster.pillar,
-      topics: cluster.topics,
-      questions: cluster.questions,
-      aiNote: cluster.aiNote,
-    });
-    const gated = await _gateMarketText(req, gateText, 'ai-content-clusters:generate');
+    const normalizedCluster = normalizeContentCluster(cluster);
+    const gated = await _gateMarketText(req, contentClusterGateText(normalizedCluster), 'ai-content-clusters:generate');
     if (!gated.ok) return _gateBlocked(res, gated);
-    res.json(attachContentSafetyWarnings({ cluster }, gated.warnings));
+    res.json(attachContentSafetyWarnings({ cluster: normalizedCluster }, gated.warnings));
   } catch(err) {
     res.json({ cluster: null, error: err.message });
   }
