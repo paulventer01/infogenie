@@ -15,6 +15,7 @@
 import { useEffect, useState } from "react";
 import { apiPost } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
 interface ColdEmailItem {
   step: number;
@@ -28,9 +29,11 @@ interface ColdEmailItem {
 interface GenerateResult {
   ok: boolean;
   error?: string;
+  userMessage?: string;
   emails?: ColdEmailItem[];
   tone?: string;
   source?: string;
+  content_safety_warnings?: string[];
 }
 
 const TONES = ["direct", "warm", "consultative", "witty", "executive", "curious"];
@@ -111,6 +114,7 @@ export default function ColdEmail() {
   const [resultTone, setResultTone] = useState("");
   const [source, setSource] = useState("");
   const [hasSaved, setHasSaved] = useState(false);
+  const [safetyWarnings, setSafetyWarnings] = useState<string[]>([]);
 
   useEffect(() => {
     const saved = loadSender();
@@ -135,6 +139,7 @@ export default function ColdEmail() {
     setLoading(true);
     setError("");
     setEmails(null);
+    setSafetyWarnings([]);
     const r = await apiPost<GenerateResult>("/api/cold-email/generate", {
       sender_brand: brand,
       sender_name: name,
@@ -147,12 +152,13 @@ export default function ColdEmail() {
     });
     setLoading(false);
     if (!r.ok || !r.emails) {
-      setError(r.error || "failed");
+      setError(r.userMessage || r.error || "failed");
       return;
     }
     setEmails(r.emails);
     setResultTone(r.tone || "");
     setSource(r.source || "");
+    setSafetyWarnings(r.content_safety_warnings || []);
     saveSender(brand.trim(), name.trim(), offer.trim());
     setHasSaved(true);
   }
@@ -398,6 +404,7 @@ export default function ColdEmail() {
           )}
           {emails && !loading && (
             <>
+              <ContentSafetyWarnings warnings={safetyWarnings} />
               <div
                 style={{
                   display: "flex",

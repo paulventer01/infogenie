@@ -21,6 +21,10 @@ async function ensureColdEmailSchema() {
   `);
   try { await addTenantIdColumn('cold_email_runs'); }
   catch (e) { console.error('[cold-email] addTenantIdColumn:', e.message); }
+  await _db.getPool().query(`
+    ALTER TABLE cold_email_runs
+      ADD COLUMN IF NOT EXISTS content_safety_warnings JSONB NOT NULL DEFAULT '[]'::jsonb
+  `);
   console.log('[cold-email] schema ready');
 }
 module.exports = { ensureColdEmailSchema };

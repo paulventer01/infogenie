@@ -2,6 +2,15 @@ const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const {
+  gateRouteText,
+  contentSafetyHttpBody,
+  attachContentSafetyWarnings,
+} = require('../ai_governance/route_gate');
+const {
+  normalizeColdEmailSequence,
+  coldEmailGateText,
+} = require('../ai_governance/content_schemas');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -9,6 +18,34 @@ async function _tid(req, label) {
   return await _tenantCtx.resolveTenantId(req, { label });
 }
 const TONES = new Set(['direct','warm','consultative','witty','executive','curious']);
+
+function _parseWarnings(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
+  return [];
+}
+
+async function _gateEmails(req, tid, emails, label) {
+  try {
+    return await gateRouteText({
+      tenantId: tid,
+      userId: req.user?.id || null,
+      surface: 'cold_email',
+      action: 'generate_content',
+      text: coldEmailGateText(emails),
+      label,
+    });
+  } catch (_) {
+    return {
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: 'Content safety checks are temporarily unavailable. Generation was stopped to protect your brand.',
+      warnings: [],
+    };
+  }
+}
 
 async function _aiGenerate(payload) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
@@ -72,20 +109,41 @@ router.post('/generate', async (req, res) => {
     tone, steps,
   };
   if (!payload.sender_offer) return _err(res, 400, 'sender_offer required (what you sell)');
-  let result = await _aiGenerate(payload);
+
+  let rawResult = await _aiGenerate(payload);
   let source = 'openai';
-  if (!result || !Array.isArray(result.emails) || !result.emails.length) {
-    result = _templateSequence(payload); source = 'template';
+  if (!rawResult || !Array.isArray(rawResult.emails) || !rawResult.emails.length) {
+    rawResult = _templateSequence(payload);
+    source = 'template';
   }
+
+  const normalized = normalizeColdEmailSequence(rawResult, source);
+  const emails = normalized.emails;
+  if (!emails.length) return _err(res, 500, 'generation produced no emails');
+
+  const tid = _db.hasDb() ? await _tid(req, 'cold-email:generate') : null;
+  const gated = await _gateEmails(req, tid, emails, 'cold-email:generate');
+  if (!gated.ok) {
+    const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+    return res.status(status).json(contentSafetyHttpBody(gated));
+  }
+
+  const warnings = gated.warnings || gated.content_safety_warnings || [];
+
   if (_db.hasDb()) {
     try {
-      const tid = await _tid(req, 'cold-email:generate');
       await _db.getPool().query(
-        `INSERT INTO cold_email_runs (tenant_id, sender_brand, sender_name, sender_offer, target_company, target_role, target_pain, tone, sequence_steps, emails, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [tid, payload.sender_brand, payload.sender_name, payload.sender_offer, payload.target_company, payload.target_role, payload.target_pain, tone, steps, JSON.stringify(result.emails), source]);
+        `INSERT INTO cold_email_runs (tenant_id, sender_brand, sender_name, sender_offer, target_company, target_role, target_pain, tone, sequence_steps, emails, generated_by, content_safety_warnings) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [tid, payload.sender_brand, payload.sender_name, payload.sender_offer, payload.target_company, payload.target_role, payload.target_pain, tone, steps, JSON.stringify(emails), source, JSON.stringify(warnings)]);
     } catch (e) { console.warn('[cold-email] persist failed:', e.message); }
   }
-  res.json({ ok:true, source, ...payload, emails: result.emails });
+
+  res.json(attachContentSafetyWarnings({
+    ok: true,
+    source,
+    ...payload,
+    emails,
+  }, warnings));
 });
 
 router.get('/history', async (req, res) => {
@@ -110,7 +168,9 @@ router.get('/:id', async (req, res) => {
       `SELECT * FROM cold_email_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]
     );
     if (!r.rows[0]) return _err(res, 404, 'not found');
-    res.json({ ok:true, run: r.rows[0] });
+    const run = r.rows[0];
+    run.content_safety_warnings = _parseWarnings(run.content_safety_warnings);
+    res.json({ ok:true, run });
   } catch (e) { _err(res, 500, e.message); }
 });
 
