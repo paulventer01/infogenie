@@ -137,9 +137,16 @@ async function runTechnicalScan(tid = null) {
   }
 
   // ── Security posture ──────────────────────────────────────────────────────
+  const { permissionMode } = require('../security/prod_defaults');
+  const permEnv = String(process.env.PERMISSION_ENFORCEMENT || '').toLowerCase().trim();
+  const permEnvOn = permEnv === 'on' || permEnv === '1';
+  const permMode = permissionMode();
   const security = {
     node_env_production: (process.env.NODE_ENV || '') === 'production',
-    permission_enforcement: process.env.PERMISSION_ENFORCEMENT === 'on' || process.env.PERMISSION_ENFORCEMENT === '1',
+    permission_enforcement: permEnvOn,
+    permissionMode: permMode,
+    permissionMode_debug: permMode,
+    PERMISSION_ENFORCEMENT_env_scan: permEnvOn,
     preview_mode: auth.preview_auth,
     vault_enabled: auth.credential_encryption,
   };

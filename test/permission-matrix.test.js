@@ -117,6 +117,37 @@ test('matrix: component→permission half is exported and valid for the menu tas
   }
 });
 
+test('matrix: analyse spy/SEO nav views match their API route-group permissions', () => {
+  const views = {
+    'yt-comment-miner': 'compete.intel.view',
+    'biz-scanner': 'compete.intel.view',
+    'web-extractor': 'compete.intel.view',
+    'google-trends': 'compete.intel.view',
+    spyfu: 'seo.view',
+    majestic: 'seo.view',
+    serpstat: 'seo.view',
+    contentking: 'seo.view',
+    'bing-webmaster': 'seo.view',
+  };
+  const apis = {
+    'yt-comment-miner': '/api/yt-comment-miner',
+    'biz-scanner': '/api/biz-scanner',
+    'web-extractor': '/api/web-extractor',
+    'google-trends': '/api/google-trends',
+    spyfu: '/api/spyfu',
+    majestic: '/api/majestic',
+    serpstat: '/api/serpstat',
+    contentking: '/api/contentking',
+    'bing-webmaster': '/api/bing-webmaster',
+  };
+  for (const [view, perm] of Object.entries(views)) {
+    assert.equal(matrix.requiredPermissionForComponent(view), perm, `${view} component perm`);
+    const route = matrix.requiredPermissionForRequest(apis[view], 'GET');
+    assert.equal(route.matched, true, `${apis[view]} is mapped`);
+    assert.equal(route.permission, perm, `${view} nav and ${apis[view]} share the same view permission`);
+  }
+});
+
 // ── Enforcement: deny / allow / owner-bypass (mode 'on') ────────────────────
 test("on: Client Viewer is denied a protected action with 403", async () => {
   const { server, baseUrl } = await makeServer({
@@ -186,6 +217,26 @@ test("on: platform_admin role bypasses via platformRole", async () => {
   try {
     const write = await req(baseUrl, 'POST', '/api/optimizer/dry-run');
     assert.equal(write.status, 200, 'platform_admin bypasses despite client_viewer perms');
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test("on: Marketer is denied tenant credential-vault and ads-connect routes", async () => {
+  // Marketer is not granted tenant.credentials.manage / tenant.integrations.manage
+  // (role: no integration secrets). Strict mode must 403 these — the legacy
+  // owner-gate allowlist is not an authorization grant.
+  const { server, baseUrl } = await makeServer({
+    mode: 'on', principal: principalFromRole('marketer'),
+  });
+  try {
+    const cred = await req(baseUrl, 'GET', '/api/credentials/google-ads/test');
+    assert.equal(cred.status, 403);
+    assert.equal(cred.json.required, 'tenant.credentials.manage');
+
+    const ads = await req(baseUrl, 'GET', '/api/integrations/google-ads/oauth/start');
+    assert.equal(ads.status, 403);
+    assert.equal(ads.json.required, 'tenant.integrations.manage');
   } finally {
     await new Promise((r) => server.close(r));
   }
