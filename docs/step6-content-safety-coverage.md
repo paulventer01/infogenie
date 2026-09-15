@@ -1,7 +1,7 @@
 # Step 6 — Content Safety Coverage Audit
 
 **Status:** Partial  
-**Audited from:** `main` @ `9c916358` (2026-09-15)  
+**Audited from:** `main` @ `a96d4a69` (2026-09-15)  
 **Scope:** Routes that generate, regenerate, save/edit, approve, or publish marketing copy toward external delivery.
 
 One **canonical row** per `method + path`. Lifecycle sections below reference these rows by **ID** only — they do not assign separate classifications.
@@ -16,15 +16,15 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Classification | Count | Meaning |
 |----------------|------:|---------|
-| **covered** | 23 | Gate before side effect; field scan complete |
+| **covered** | 26 | Gate before side effect; field scan complete |
 | **partial** | 16 | Gate present but incomplete scan, timing, status, or warning handling |
-| **gap** | 56 | In-scope lifecycle step with no Step 6 gate |
+| **gap** | 53 | In-scope lifecycle step with no Step 6 gate |
 | **out of scope** | 30 | Deferred with explicit justification (§5) |
 | **Total** | **125** | One row per `method + path` (CR-001–CR-124, CR-128) |
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **23** batches covering all **72** gap/partial rows |
+| Implementation batches (§4) | **22** batches covering all **69** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
@@ -150,9 +150,9 @@ Routes using `JSON.stringify` for gate text without flattening are **`partial`**
 
 | ID | Method | Path | Lifecycle | Class | Gate | Field scan | Batch | Tests |
 |----|--------|------|-----------|-------|------|------------|-------|-------|
-| CR-055 | POST | `/api/social-drafts/` | save | gap | none | n/a | PR-1a | pr10h6 |
-| CR-056 | POST | `/api/social-drafts/bulk` | save | gap | none | n/a | PR-1a | — |
-| CR-057 | PATCH | `/api/social-drafts/:id` | save | gap | none | n/a | PR-1a | pr10h6 |
+| CR-055 | POST | `/api/social-drafts/` | save | covered | `gateRouteText` + `socialDraftGateText` | complete | — | pr10h1a |
+| CR-056 | POST | `/api/social-drafts/bulk` | save | covered | `gateRouteText` + `socialDraftGateText` (atomic) | complete | — | pr10h1a |
+| CR-057 | PATCH | `/api/social-drafts/:id` | save | covered | `gateRouteText` on merged draft | complete | — | pr10h1a |
 | CR-058 | POST | `/api/social-drafts/:id/self-heal` | regen | gap | heuristic + indirect `chatForCategory` | n/a | PR-1b | — |
 | CR-059 | POST | `/api/social-drafts/:id/submit-approval` | approve | gap | heuristic `selfHealDraft` only | n/a | PR-1b | pr10h6 |
 | CR-060 | POST | `/api/social-drafts/:id/approve` | approve, publish | gap | none | n/a | PR-1b | pr10h6 |
@@ -292,7 +292,7 @@ References **CR-###** from §2. No separate classifications here.
 
 | Batch | Routes (IDs) | Est. size | Risk |
 |-------|----------------|----------:|------|
-| **PR-1a** | CR-055,056,057 | ~400 lines | High |
+| **PR-1a** | — (merged) | — | High |
 | **PR-1b** | CR-058,059,060,061 | ~600 lines | High |
 | **PR-1c** | CR-062 | ~250 lines | High |
 | **PR-2** | CR-063 | ~300 lines | High |
@@ -320,7 +320,8 @@ References **CR-###** from §2. No separate classifications here.
 
 | Batch | Done when |
 |-------|-----------|
-| PR-1a–1c | Social create/edit/approve/publish/post gated before side effect; warnings persisted; 403/503 block without copy leak |
+| PR-1a | Social create/edit/bulk gated before side effect; warnings persisted; 403/503 block without copy leak; bulk atomic |
+| PR-1b–1c | Social approve/publish/post gated before side effect; warnings persisted; 403/503 block without copy leak |
 | PR-2 | `wordpress/publish` gates title+content+excerpt; 503 unavailable; success warnings |
 | PR-3a–3b | Approve re-scans stored copy before status flip / execution |
 | PR-4a–4b | Save paths gate `ad_copy` / `message_template` before persist |
@@ -372,6 +373,7 @@ Aligned with §2 **Field scan** column. `complete` ↔ `covered`; `partial:*` �
 | `proofreadGateText` (CR-014) | summary, improved_copy, issues | `\n` | — |
 | `adCopyGateText` (CR-004–006) | all leaf values | `\n` | — |
 | `reviewReplyGateText` (CR-012) | reply | n/a | — |
+| `socialDraftGateText` (CR-055–057) | text, meta alt fields | `\n` | Tested: newlines/tabs, alt_text |
 | `ad_creative/generate` prompt (CR-007) | all input copy fields in prompt | space-joined | Image defer CR-007 |
 | `_respondGatedJson` text routes (CR-039–044) | route-specific primary text | n/a | complete |
 | `JSON.stringify` routes (CR-018,020–021,027,045–050) | whole payload | JSON | **partial:json-flatten** → PR-8c |
@@ -392,7 +394,9 @@ Aligned with §2 **Field scan** column. `complete` ↔ `covered`; `partial:*` �
 | `test/pr10h4-content-safety-approval.test.js` | CR-018,019 |
 | `test/pr10h5-step6-content-gates.test.js` | CR-001,014,024–028; **documents partial Step 6** |
 | `test/pr10h5-content-schemas.test.js` | CR-001,024 normalizers |
-| `test/pr10h6-social-publish-approval.test.js` | CR-055,057,059–062 (approval only, not safety) |
+| `test/pr10h1a-social-draft-save-safety.test.js` | CR-055,056,057 |
+| `test/pr10h1a-social-draft-save-safety-ui.test.js` | CR-055,057 UI |
+| `test/pr10h6-social-publish-approval.test.js` | CR-059–062 (approval only, not safety) |
 | `test/pr10h7-cold-email-review-reply-safety.test.js` | CR-009,012 |
 | `test/pr10h8`–`pr10h13` | CR-004–011,001–003 |
 | `test/site-builder-isolation.test.js` | CR-100,101 (tenant isolation, not safety) |

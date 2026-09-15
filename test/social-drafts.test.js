@@ -17,7 +17,12 @@ const draftsRouter = require('../services/social_drafts/api');
 function startServer() {
   const app = require('express')();
   app.use(require('express').json());
-  app.use((req, _res, next) => { req.user = { email: 't@test.local' }; next(); });
+  app.use((req, _res, next) => {
+    const tid = req.headers['x-test-tid'] ? parseInt(req.headers['x-test-tid'], 10) : 1;
+    req.user = { id: 1, email: 't@test.local' };
+    req.tenant = { id: tid, name: 'Test', slug: 'test', status: 'active' };
+    next();
+  });
   app.use('/api/social-drafts', draftsRouter);
   return http.createServer(app);
 }
