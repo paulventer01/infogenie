@@ -183,21 +183,7 @@ async function _insertDraft(tid, fields) {
 async function _updateDraft(tid, id, patch) {
   const existing = await _getDraft(tid, id);
   if (!existing) return null;
-  let nextMeta = existing.meta;
-  if (patch.meta !== undefined) {
-    nextMeta = { ...existing.meta, ...patch.meta };
-    for (const [k, v] of Object.entries(patch.meta)) {
-      if (v === null) delete nextMeta[k];
-    }
-  }
-  const next = {
-    ...existing,
-    ...patch,
-    media_urls: patch.media_urls !== undefined ? patch.media_urls : existing.media_urls,
-    platforms: patch.platforms !== undefined ? patch.platforms : existing.platforms,
-    meta: nextMeta,
-    updated_at: new Date().toISOString(),
-  };
+  const next = _applyDraftPatch(existing, patch);
   if (_db.hasDb()) {
     const p = await _db.getPool();
     const r = await p.query(
@@ -254,6 +240,101 @@ function _stripPublishingClaim(meta) {
     publishing_claim: null,
     publishing_claim_at: null,
   };
+}
+
+function _userPatchBlockedReason(draft) {
+  if (!draft) return 'not found';
+  if (draft.status === 'delivery_unknown' || draft.meta?.delivery_outcome === 'unknown') return 'delivery_unknown';
+  if (draft.meta?.publishing_claim) return 'publish_in_progress';
+  return null;
+}
+
+function _applyDraftPatch(existing, patch) {
+  let nextMeta = existing.meta;
+  if (patch.meta !== undefined) {
+    nextMeta = { ...existing.meta, ...patch.meta };
+    for (const [k, v] of Object.entries(patch.meta)) {
+      if (v === null) delete nextMeta[k];
+    }
+  }
+  return {
+    ...existing,
+    ...patch,
+    media_urls: patch.media_urls !== undefined ? patch.media_urls : existing.media_urls,
+    platforms: patch.platforms !== undefined ? patch.platforms : existing.platforms,
+    meta: nextMeta,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function _updateUserDraft(tid, id, expected, patch) {
+  const existing = await _getDraft(tid, id);
+  if (!existing) return { ok: false, error: 'not found' };
+  const blocked = _userPatchBlockedReason(existing);
+  if (blocked) return { ok: false, error: blocked, draft: existing };
+  if (expected && _userPatchBlockedReason(expected)) {
+    return { ok: false, error: _userPatchBlockedReason(expected), draft: existing };
+  }
+
+  if (_publishApproval.patchInvalidatesApproval(existing, patch)) {
+    Object.assign(patch, _publishApproval.invalidateApprovalPatch(existing));
+  }
+  const next = _applyDraftPatch(existing, patch);
+  if (_db.hasDb()) {
+    const p = await _db.getPool();
+    const r = await p.query(
+      `UPDATE social_post_drafts SET
+         profile_id=$1, status=$2, text=$3,
+         media_urls=$4::jsonb, platforms=$5::jsonb,
+         scheduled_for=$6, zernio_post_id=$7, meta=$8::jsonb,
+         updated_at=NOW()
+       WHERE id=$9 AND tenant_id=$10
+         AND status NOT IN ('delivery_unknown')
+         AND COALESCE(meta->>'delivery_outcome', '') <> 'unknown'
+         AND COALESCE(meta->>'publishing_claim', '') = ''
+       RETURNING *`,
+      [
+        next.profile_id,
+        next.status,
+        next.text || '',
+        JSON.stringify(next.media_urls || []),
+        JSON.stringify(next.platforms || []),
+        next.scheduled_for || null,
+        next.zernio_post_id || null,
+        JSON.stringify(next.meta || {}),
+        id,
+        tid,
+      ],
+    );
+    if (r.rows[0]) return { ok: true, draft: _rowOut(r.rows[0]) };
+    const current = await _getDraft(tid, id);
+    if (!current) return { ok: false, error: 'not found' };
+    return { ok: false, error: _userPatchBlockedReason(current) || 'publish_in_progress', draft: current };
+  }
+
+  const list = _memList(tid);
+  const idx = list.findIndex((r) => String(r.id) === String(id));
+  if (idx < 0) return { ok: false, error: 'not found' };
+  const current = list[idx];
+  const currentBlocked = _userPatchBlockedReason(current);
+  if (currentBlocked) return { ok: false, error: currentBlocked, draft: _rowOut(current) };
+  const written = _applyDraftPatch(current, patch);
+  list[idx] = written;
+  return { ok: true, draft: _rowOut(written) };
+}
+
+async function _releasePublishingClaim(tid, id, token) {
+  if (!token) return null;
+  const existing = await _getDraft(tid, id);
+  if (!existing) return null;
+  if (existing.meta?.publishing_claim !== token) return existing;
+  if (_isDeliveryUnknown(existing)) return existing;
+  return await _updateDraft(tid, id, {
+    meta: {
+      publishing_claim: null,
+      publishing_claim_at: null,
+    },
+  });
 }
 
 function _hasUnresolvedPublishingClaim(meta) {
@@ -585,8 +666,12 @@ router.patch('/:id', _safeAsync(async (req, res) => {
   if (_publishApproval.patchInvalidatesApproval(existing, patch)) {
     Object.assign(patch, _publishApproval.invalidateApprovalPatch(existing));
   }
-  const draft = await _updateDraft(tid, req.params.id, patch);
-  res.json({ ok: true, draft });
+  const updated = await _updateUserDraft(tid, req.params.id, existing, patch);
+  if (!updated.ok) {
+    const code = updated.error === 'not found' ? 404 : 409;
+    return res.status(code).json({ ok: false, error: updated.error, draft: updated.draft || undefined });
+  }
+  res.json({ ok: true, draft: updated.draft });
 }));
 
 router.post('/:id/publish', _safeAsync(async (req, res) => {
@@ -915,7 +1000,8 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
       mode,
     });
     if (!claimedAuthz.ok) {
-      return { ok: false, error: claimedAuthz.error, hint: claimedAuthz.hint, draft: claim.draft };
+      const released = await _releasePublishingClaim(tid, draftId, token);
+      return { ok: false, error: claimedAuthz.error, hint: claimedAuthz.hint, draft: released || claim.draft };
     }
 
     const approvedMeta = {
@@ -932,7 +1018,8 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
     });
 
     if (_publishApproval.materialFieldsChanged(claim.draft, fresh)) {
-      return { ok: false, error: 'approval_stale', draft: fresh };
+      const released = await _releasePublishingClaim(tid, draftId, token);
+      return { ok: false, error: 'approval_stale', draft: released || fresh };
     }
     const freshAuthz = _publishApproval.evaluateClaimedAuthorization({
       requireApproval,
@@ -940,7 +1027,8 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
       mode,
     });
     if (!freshAuthz.ok) {
-      return { ok: false, error: freshAuthz.error, hint: freshAuthz.hint, draft: fresh };
+      const released = await _releasePublishingClaim(tid, draftId, token);
+      return { ok: false, error: freshAuthz.error, hint: freshAuthz.hint, draft: released || fresh };
     }
 
     const publishFn = module.exports._publishViaZernio || _publishViaZernio;
@@ -1074,6 +1162,8 @@ router._rejectDraft = _rejectDraft;
 router._getDraft = _getDraft;
 router._insertDraft = _insertDraft;
 router._updateDraft = _updateDraft;
+router._updateUserDraft = _updateUserDraft;
+router._releasePublishingClaim = _releasePublishingClaim;
 router._getSettings = _getSettings;
 router._setSettings = _setSettings;
 router._resolveSettings = _resolveSettings;

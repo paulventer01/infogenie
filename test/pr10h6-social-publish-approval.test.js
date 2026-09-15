@@ -237,6 +237,25 @@ describe('PR10H.6 social drafts enforcement (memory)', () => {
     assert.equal(patched.body.draft.meta.approval_content_hash, undefined);
   });
 
+  it('memory PATCH write fails if a claim appears after the initial read', async () => {
+    const draft = await drafts._createForTenant(37, {
+      profile_id: 'p1',
+      status: 'approved',
+      text: 'Race patch',
+      platforms: ['linkedin'],
+    });
+    const existing = await drafts._getDraft(37, draft.id);
+    await drafts._updateDraft(37, draft.id, {
+      meta: { publishing_claim: 'pub_mem_race', publishing_claim_at: new Date().toISOString() },
+    });
+    const result = await drafts._updateUserDraft(37, draft.id, existing, { text: 'Should not write' });
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'publish_in_progress');
+    const after = await drafts._getDraft(37, draft.id);
+    assert.equal(after.text, 'Race patch');
+    assert.equal(after.meta.publishing_claim, 'pub_mem_race');
+  });
+
   it('cross-tenant approval rejected', async () => {
     await enableApproval(25);
     const draft = await drafts._createForTenant(25, {
@@ -641,6 +660,116 @@ describe('PR10H.6 social drafts enforcement (postgres)', () => {
     } finally {
       drafts._publishViaZernio = origPublish;
       drafts._updateDraft = origUpdate;
+      await cleanup(p, tenant);
+    }
+  });
+
+  it('PATCH write fails after a claim appears between read and update', { skip: HAS_DB ? false : 'no DATABASE_URL' }, async () => {
+    const { drafts, p, tenant } = await seedPg();
+    const inserted = await p.query(
+      `INSERT INTO social_post_drafts
+         (tenant_id, profile_id, status, text, media_urls, platforms, meta)
+       VALUES ($1,$2,'approved',$3,'[]'::jsonb,$4::jsonb,'{}'::jsonb)
+       RETURNING *`,
+      [tenant, 'p1', 'Patch after claim', JSON.stringify(['linkedin'])],
+    );
+    const draftId = inserted.rows[0].id;
+    const existing = await drafts._getDraft(tenant, draftId);
+    assert.equal(existing.meta.publishing_claim, undefined);
+    const claim = await drafts._claimPublishing(tenant, draftId, { mode: 'direct' });
+    assert.equal(claim.ok, true);
+    const result = await drafts._updateUserDraft(tenant, draftId, existing, { text: 'Should not persist' });
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'publish_in_progress');
+    const after = await drafts._getDraft(tenant, draftId);
+    assert.equal(after.text, 'Patch after claim');
+    assert.equal(after.meta.publishing_claim, claim.token);
+    await cleanup(p, tenant);
+  });
+
+  it('post-claim authorization rejection releases only this claim and stays recoverable', { skip: HAS_DB ? false : 'no DATABASE_URL' }, async () => {
+    const { drafts, p, tenant } = await seedPg();
+    await drafts._setSettings(tenant, { require_approval: true });
+    const hash = contentHash({
+      profile_id: 'p1',
+      text: 'Stale approved',
+      platforms: ['linkedin'],
+      media_urls: [],
+      scheduled_for: null,
+    });
+    const inserted = await p.query(
+      `INSERT INTO social_post_drafts
+         (tenant_id, profile_id, status, text, media_urls, platforms, meta)
+       VALUES ($1,$2,'approved',$3,'[]'::jsonb,$4::jsonb,$5::jsonb)
+       RETURNING id`,
+      [
+        tenant,
+        'p1',
+        'Changed after hash',
+        JSON.stringify(['linkedin']),
+        JSON.stringify({
+          approved_at: new Date().toISOString(),
+          approval_content_hash: hash,
+        }),
+      ],
+    );
+    const draftId = inserted.rows[0].id;
+    let publishCalls = 0;
+    const origPublish = drafts._publishViaZernio;
+    drafts._publishViaZernio = async () => {
+      publishCalls += 1;
+      return { ok: true, post: { id: 'z-pg-release' } };
+    };
+    try {
+      const result = await drafts._executePublishDraft(tenant, draftId, { mode: 'direct' });
+      assert.equal(result.ok, false);
+      assert.equal(result.error, 'approval_stale');
+      assert.equal(publishCalls, 0);
+      const after = await drafts._getDraft(tenant, draftId);
+      assert.ok(!after.meta.publishing_claim);
+      assert.notEqual(after.status, 'delivery_unknown');
+      const recovered = await drafts._updateUserDraft(tenant, draftId, after, { text: 'Reapproval copy' });
+      assert.equal(recovered.ok, true);
+      assert.equal(recovered.draft.status, 'draft');
+      assert.ok(recovered.draft.meta.approval_invalidated_at);
+    } finally {
+      drafts._publishViaZernio = origPublish;
+      await cleanup(p, tenant);
+    }
+  });
+
+  it('uncertain-delivery claims remain retained', { skip: HAS_DB ? false : 'no DATABASE_URL' }, async () => {
+    const { drafts, p, tenant } = await seedPg();
+    const inserted = await p.query(
+      `INSERT INTO social_post_drafts
+         (tenant_id, profile_id, status, text, media_urls, platforms, meta)
+       VALUES ($1,$2,'draft',$3,'[]'::jsonb,$4::jsonb,'{}'::jsonb)
+       RETURNING id`,
+      [tenant, 'p1', 'Uncertain retain', JSON.stringify(['linkedin'])],
+    );
+    const draftId = inserted.rows[0].id;
+    const origPublish = drafts._publishViaZernio;
+    drafts._publishViaZernio = async () => ({
+      ok: false,
+      error: 'zernio timeout (30s)',
+      uncertain: true,
+    });
+    try {
+      const first = await drafts._executePublishDraft(tenant, draftId, { mode: 'direct' });
+      assert.equal(first.ok, false);
+      assert.equal(first.error, 'delivery_unknown');
+      assert.ok(first.draft.meta.publishing_claim);
+      const token = first.draft.meta.publishing_claim;
+      const released = await drafts._releasePublishingClaim(tenant, draftId, token);
+      assert.equal(released.meta.publishing_claim, token);
+      assert.equal(released.status, 'delivery_unknown');
+      const retry = await drafts._executePublishDraft(tenant, draftId, { mode: 'direct' });
+      assert.equal(retry.ok, false);
+      assert.equal(retry.error, 'delivery_unknown');
+      const after = await drafts._getDraft(tenant, draftId);
+      assert.equal(after.meta.publishing_claim, token);
+    } finally {
+      drafts._publishViaZernio = origPublish;
       await cleanup(p, tenant);
     }
   });
