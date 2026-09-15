@@ -2,11 +2,48 @@ const express = require('express');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { normalizeChatParams } = require('../ai_compat');
+const {
+  gateRouteText,
+  contentSafetyHttpBody,
+  attachContentSafetyWarnings,
+} = require('../ai_governance/route_gate');
+const {
+  normalizeReviewReply,
+  reviewReplyGateText,
+} = require('../ai_governance/content_schemas');
 
 const router = express.Router();
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
+
+function _parseWarnings(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
+  return [];
+}
+
+async function _gateReply(req, tid, replyText, label) {
+  try {
+    return await gateRouteText({
+      tenantId: tid,
+      userId: req.user?.id || null,
+      surface: 'review_monitor',
+      action: 'generate_content',
+      text: replyText,
+      label,
+    });
+  } catch (_) {
+    return {
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: 'Content safety checks are temporarily unavailable. Generation was stopped to protect your brand.',
+      warnings: [],
+    };
+  }
+}
 
 /**
  * OpenAI call for review reply generation
@@ -85,21 +122,37 @@ Review: "${review_text}"`;
     { role: 'user', content: userPrompt }
   ]);
 
-  let result = _templateReply(rating);
+  let source = 'template';
   let _estimated = true;
+  let parsed = _templateReply(rating);
   if (raw) {
-    try { result = JSON.parse(raw); _estimated = false; } catch (e) {}
+    try {
+      parsed = JSON.parse(raw);
+      source = 'openai';
+      _estimated = false;
+    } catch (e) { /* keep template */ }
   }
+
+  const result = normalizeReviewReply(parsed, source);
+  const gated = await _gateReply(req, tid, reviewReplyGateText(result), 'reviews:generate-reply');
+  if (!gated.ok) {
+    const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+    return res.status(status).json(contentSafetyHttpBody(gated));
+  }
+
+  const warnings = gated.warnings || gated.content_safety_warnings || [];
 
   const p = await _db.getPool();
   const ins = await p.query(
-    `INSERT INTO review_reply_drafts (tenant_id, platform, reviewer_name, rating, review_text, ai_draft_reply, source_review_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO review_reply_drafts (tenant_id, platform, reviewer_name, rating, review_text, ai_draft_reply, source_review_id, content_safety_warnings)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
-    [tid, platform, reviewer_name, rating, review_text, result.reply, source_review_id]
+    [tid, platform, reviewer_name, rating, review_text, result.reply, source_review_id, JSON.stringify(warnings)]
   );
 
-  res.json({ ok: true, draft: ins.rows[0], _estimated });
+  const draft = ins.rows[0];
+  draft.content_safety_warnings = _parseWarnings(draft.content_safety_warnings);
+  res.json(attachContentSafetyWarnings({ ok: true, draft, _estimated }, warnings));
 });
 
 router.get('/replies', async (req, res) => {
@@ -112,7 +165,11 @@ router.get('/replies', async (req, res) => {
     `SELECT * FROM review_reply_drafts WHERE tenant_id = $1 AND status = $2 ORDER BY created_at DESC`,
     [tid, status]
   );
-  res.json({ ok: true, drafts: rows.rows });
+  const drafts = rows.rows.map((row) => ({
+    ...row,
+    content_safety_warnings: _parseWarnings(row.content_safety_warnings),
+  }));
+  res.json({ ok: true, drafts });
 });
 
 router.post('/replies/:id/approve', async (req, res) => {

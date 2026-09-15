@@ -153,6 +153,54 @@ function contentClusterGateText(raw) {
   return JSON.stringify(c);
 }
 
+function normalizeColdEmailItem(raw, stepFallback) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    step: _num(src.step, 1, 10, stepFallback) || stepFallback,
+    days_after_prev: _num(src.days_after_prev, 0, 30, 0),
+    subject: _str(src.subject, 200),
+    preview: _str(src.preview, 200),
+    body: _str(src.body, 8000),
+    cta: _str(src.cta, 500),
+    why_this_works: _str(src.why_this_works, 1000),
+  };
+}
+
+function normalizeColdEmailSequence(raw, source = 'template') {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const list = Array.isArray(src.emails) ? src.emails : [];
+  const emails = list
+    .slice(0, 5)
+    .map((e, i) => normalizeColdEmailItem(e, i + 1))
+    .filter((e) => e.body || e.subject);
+  return {
+    emails,
+    source: source === 'openai' ? 'openai' : 'template',
+  };
+}
+
+function coldEmailGateText(emailsOrRaw) {
+  const emails = Array.isArray(emailsOrRaw)
+    ? emailsOrRaw
+    : normalizeColdEmailSequence(emailsOrRaw).emails;
+  return emails
+    .flatMap((e) => [e.subject, e.preview, e.body, e.cta, e.why_this_works])
+    .filter(Boolean)
+    .join('\n');
+}
+
+function normalizeReviewReply(raw, source = 'template') {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const out = { reply: _str(src.reply, 4000) };
+  if (source === 'openai' || source === 'template') out.source = source;
+  if (src._estimated) out._estimated = true;
+  return out;
+}
+
+function reviewReplyGateText(raw) {
+  return normalizeReviewReply(raw).reply;
+}
+
 module.exports = {
   normalizeProofreadFeedback,
   proofreadGateText,
@@ -166,4 +214,9 @@ module.exports = {
   channelAdGateText,
   normalizeContentCluster,
   contentClusterGateText,
+  normalizeColdEmailItem,
+  normalizeColdEmailSequence,
+  coldEmailGateText,
+  normalizeReviewReply,
+  reviewReplyGateText,
 };

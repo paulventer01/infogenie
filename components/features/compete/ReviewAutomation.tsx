@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
 /* --- Types --- */
 
@@ -14,6 +15,7 @@ interface ReviewReplyDraft {
   ai_draft_reply: string;
   status: 'pending' | 'approved' | 'dismissed';
   created_at: string;
+  content_safety_warnings?: string[];
 }
 
 interface ReviewRequestRule {
@@ -94,7 +96,7 @@ export default function ReviewAutomation() {
   };
 
   const handleRegenerate = async (draft: ReviewReplyDraft) => {
-    const res = await apiPost<{ ok: boolean, draft: ReviewReplyDraft }>("/api/review-monitor/replies/generate", {
+    const res = await apiPost<{ ok: boolean, draft: ReviewReplyDraft, content_safety_warnings?: string[] }>("/api/review-monitor/replies/generate", {
       review_text: draft.review_text,
       rating: draft.rating,
       reviewer_name: draft.reviewer_name,
@@ -102,7 +104,8 @@ export default function ReviewAutomation() {
       source_review_id: draft.id.toString() // Or source_review_id if available
     });
     if (res.ok) {
-      setDrafts(drafts.map(d => d.id === draft.id ? res.draft : d));
+      const warnings = res.content_safety_warnings || res.draft?.content_safety_warnings || [];
+      setDrafts(drafts.map(d => d.id === draft.id ? { ...res.draft, content_safety_warnings: warnings } : d));
     }
   };
 
@@ -207,6 +210,8 @@ export default function ReviewAutomation() {
                   <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.9rem', fontStyle: 'italic' }}>
                     &quot;{draft.review_text}&quot;
                   </div>
+
+                  <ContentSafetyWarnings warnings={draft.content_safety_warnings} />
 
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#666', marginBottom: '4px', display: 'block' }}>
