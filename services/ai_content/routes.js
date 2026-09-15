@@ -232,6 +232,7 @@ module.exports = function register(app, ctx) {
     gateRouteText,
     isContentSafetyError,
     contentSafetyHttpBody,
+    contentSafetyUnavailableBody,
     attachContentSafetyWarnings,
   } = require('./services/ai_governance/route_gate');
 
@@ -257,9 +258,15 @@ module.exports = function register(app, ctx) {
   }
 
   async function _respondGatedJson(res, req, text, payload, opts = {}) {
-    const gated = await _gateRoutePayload(req, text, opts);
+    let gated;
+    try {
+      gated = await _gateRoutePayload(req, text, opts);
+    } catch (_) {
+      return res.status(503).json(contentSafetyUnavailableBody());
+    }
     if (!gated.ok) {
-      return res.status(403).json(contentSafetyHttpBody(gated));
+      const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json(contentSafetyHttpBody(gated));
     }
     return res.status(opts.status || 200).json(attachContentSafetyWarnings(payload, gated.warnings));
   }
@@ -804,9 +811,13 @@ Return valid JSON only.`;
     return await _respondGatedJson(res, req, scanText, parsed, { label: 'reengage-copy' });
   } catch(err) {
     if (isContentSafetyError(err)) {
-      return res.status(403).json({ error: err.code, userMessage: err.message });
+      const status = err.code === 'content_safety_unavailable' || err.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json(contentSafetyHttpBody({
+        error: err.code || err.error,
+        userMessage: err.message,
+      }));
     }
-    res.status(500).json({ error: err.message, email: { subject: 'We miss you', body: 'Hi there,\n\nWe noticed you\'ve been away for a while and wanted to reach out personally.\n\nA lot has changed since you last visited — and we\'d love to show you what\'s new.\n\nWould you be open to a quick 10-minute call this week?\n\nBest,\nThe Team' }, ad: { headline: 'We\'d love to have you back', body: 'See what\'s new — you\'re just one click away.', cta: 'Come Back Now' }, social: 'Hi [Name], hope things are going well at [Company]! I\'d love to reconnect and share what\'s new with us. Worth a quick chat?' });
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

@@ -52,6 +52,7 @@ interface ProposalDetail {
   status?: string;
   proposal?: ProposalBody;
   simulation?: Simulation;
+  content_safety_warnings?: string[];
 }
 interface ProposeResponse extends ProposalDetail {
   ok?: boolean;
@@ -63,6 +64,7 @@ interface ProposalListItem {
   status: string;
   proposal?: ProposalBody;
   simulation?: Simulation;
+  content_safety_warnings?: string[];
   budget_guardrail?: number | string;
   created_at: string;
 }
@@ -170,6 +172,18 @@ export default function SafeAgent() {
     loadProposals();
   };
 
+  const renderContentSafetyWarnings = (warnings?: string[]) => {
+    if (!warnings?.length) return null;
+    return (
+      <div style={{ background: "#FEF3C7", border: "1px solid #F59E0B", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+        <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#92400E", marginBottom: 6 }}>CONTENT SAFETY WARNINGS</div>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: "0.82rem", color: "#78350F" }}>
+          {warnings.map((w, i) => <li key={i}>{w}</li>)}
+        </ul>
+      </div>
+    );
+  };
+
   const renderDetail = () => {
     if (!detail) return null;
     const p = detail.proposal || {};
@@ -178,6 +192,7 @@ export default function SafeAgent() {
     const recCol = REC_COL[p._recommendation || ""] || "#6b7280";
     return (
       <div className="ig-card" style={{ borderTop: `3px solid ${recCol}`, marginBottom: 16 }}>
+        {renderContentSafetyWarnings(detail.content_safety_warnings)}
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
           <div>
             <div style={{ fontSize: "1rem", fontWeight: 700 }}>{p._title || detail.title || "Proposal"}</div>
@@ -316,7 +331,7 @@ export default function SafeAgent() {
                 <h3 style={{ fontWeight: 600, marginBottom: 8 }}>Proposal Log</h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {proposals.map((p) => (
-                    <div key={p.id} className="ig-card" style={{ padding: 12, cursor: "pointer" }} onClick={() => setDetail({ id: p.id, title: p.title, status: p.status, proposal: p.proposal, simulation: p.simulation })}>
+                    <div key={p.id} className="ig-card" style={{ padding: 12, cursor: "pointer" }} onClick={() => setDetail({ id: p.id, title: p.title, status: p.status, proposal: p.proposal, simulation: p.simulation, content_safety_warnings: p.content_safety_warnings })}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <span style={{ fontWeight: 600 }}>{STATUS_ICON[p.status] || "•"} {p.title}</span>
                         <span style={{ color: "#6b7280", fontSize: "0.8rem" }}>{new Date(p.created_at).toLocaleDateString()}</span>

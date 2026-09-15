@@ -75,6 +75,7 @@ Return strict JSON:
     simulation = { expected_outcome:'Incremental improvement in campaign efficiency', confidence:55, best_case:'15% ROAS lift', worst_case:'No significant change', risk_factors:['Market conditions may vary'], estimated_revenue_impact:0, estimated_roas_change:0 };
   }
 
+  let contentSafetyWarnings = [];
   try {
     const { gateRouteText } = require('../ai_governance/route_gate');
     const proposalText = JSON.stringify({ proposal, simulation, title: proposal._title || objective });
@@ -86,12 +87,14 @@ Return strict JSON:
       text: proposalText,
     });
     if (!gated.ok) {
-      return res.status(403).json({
+      const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json({
         ok: false,
         error: gated.error || 'content_safety_blocked',
         userMessage: gated.userMessage,
       });
     }
+    contentSafetyWarnings = gated.content_safety_warnings || gated.warnings || [];
   } catch (_) {
     return res.status(503).json({
       ok: false,
@@ -103,16 +106,16 @@ Return strict JSON:
   const title = proposal._title || objective.slice(0,100);
   const p = await _db.getPool();
   const row = await p.query(
-    `INSERT INTO safe_agent_proposals(tenant_id,title,proposal,simulation,budget_guardrail,status)
-     VALUES($1,$2,$3,$4,$5,'pending_approval') RETURNING id`,
-    [tid, title, JSON.stringify(proposal), JSON.stringify(simulation), budget_guardrail||null]
+    `INSERT INTO safe_agent_proposals(tenant_id,title,proposal,simulation,budget_guardrail,content_safety_warnings,status)
+     VALUES($1,$2,$3,$4,$5,$6,'pending_approval') RETURNING id`,
+    [tid, title, JSON.stringify(proposal), JSON.stringify(simulation), budget_guardrail||null, JSON.stringify(contentSafetyWarnings)]
   );
   const id = row.rows[0].id;
   await p.query(
     `INSERT INTO safe_agent_audit_log(tenant_id,proposal_id,event,actor_id,detail) VALUES($1,$2,'proposed',$3,$4)`,
     [tid, id, req.user?.id||null, JSON.stringify({ objective, budget_guardrail })]
   );
-  res.json({ ok:true, id, title, proposal, simulation });
+  res.json({ ok:true, id, title, proposal, simulation, content_safety_warnings: contentSafetyWarnings });
 });
 
 // Approve and execute
@@ -198,7 +201,7 @@ router.get('/proposals', async (req, res) => {
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const p = await _db.getPool();
   const rows = await p.query(
-    `SELECT id,title,status,budget_guardrail,proposal,simulation,approved_at,executed_at,rolled_back_at,created_at
+    `SELECT id,title,status,budget_guardrail,proposal,simulation,content_safety_warnings,approved_at,executed_at,rolled_back_at,created_at
      FROM safe_agent_proposals WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`,
     [tid]
   );

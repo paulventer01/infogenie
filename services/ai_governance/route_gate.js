@@ -22,16 +22,26 @@ async function gateRouteText(opts = {}) {
   const text = String(opts.text || opts.content || '').trim();
   if (!text) return { ok: true, warnings: [], content: text };
 
-  const gated = await gateGeneratedContent({
-    tenantId: opts.tenantId ?? null,
-    userId: opts.userId ?? null,
-    surface: opts.surface || 'ai_content',
-    action: opts.action || 'generate_content',
-    text,
-    hasContext: !!opts.hasContext,
-    contextPack: opts.contextPack || null,
-    gateOpts: opts.gateOpts || null,
-  });
+  let gated;
+  try {
+    gated = await gateGeneratedContent({
+      tenantId: opts.tenantId ?? null,
+      userId: opts.userId ?? null,
+      surface: opts.surface || 'ai_content',
+      action: opts.action || 'generate_content',
+      text,
+      hasContext: !!opts.hasContext,
+      contextPack: opts.contextPack || null,
+      gateOpts: opts.gateOpts || null,
+    });
+  } catch (_) {
+    return {
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: USER_MESSAGES.unavailable,
+      warnings: [],
+    };
+  }
 
   if (!gated.ok) {
     return {
@@ -52,11 +62,20 @@ async function gateRouteText(opts = {}) {
 }
 
 function contentSafetyHttpBody(gated) {
+  const unavailable = gated.error === 'content_safety_unavailable';
   return {
     ok: false,
     error: gated.error || 'content_safety_blocked',
-    userMessage: gated.userMessage || USER_MESSAGES.blocked,
+    userMessage: gated.userMessage || (unavailable ? USER_MESSAGES.unavailable : USER_MESSAGES.blocked),
     content_safety_warnings: gated.warnings || [],
+  };
+}
+
+function contentSafetyUnavailableBody() {
+  return {
+    ok: false,
+    error: 'content_safety_unavailable',
+    userMessage: USER_MESSAGES.unavailable,
   };
 }
 
@@ -69,6 +88,7 @@ module.exports = {
   gateRouteText,
   isContentSafetyError,
   contentSafetyHttpBody,
+  contentSafetyUnavailableBody,
   attachContentSafetyWarnings,
   CONTENT_SAFETY_CODES,
 };
