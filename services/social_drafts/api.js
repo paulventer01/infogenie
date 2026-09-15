@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const _publishApproval = require('./publish_approval');
 
 const STATUSES = ['draft', 'pending_approval', 'approved', 'scheduled', 'published', 'failed', 'delivery_unknown'];
 const PLATFORMS = [
@@ -182,21 +183,7 @@ async function _insertDraft(tid, fields) {
 async function _updateDraft(tid, id, patch) {
   const existing = await _getDraft(tid, id);
   if (!existing) return null;
-  let nextMeta = existing.meta;
-  if (patch.meta !== undefined) {
-    nextMeta = { ...existing.meta, ...patch.meta };
-    for (const [k, v] of Object.entries(patch.meta)) {
-      if (v === null) delete nextMeta[k];
-    }
-  }
-  const next = {
-    ...existing,
-    ...patch,
-    media_urls: patch.media_urls !== undefined ? patch.media_urls : existing.media_urls,
-    platforms: patch.platforms !== undefined ? patch.platforms : existing.platforms,
-    meta: nextMeta,
-    updated_at: new Date().toISOString(),
-  };
+  const next = _applyDraftPatch(existing, patch);
   if (_db.hasDb()) {
     const p = await _db.getPool();
     const r = await p.query(
@@ -253,6 +240,150 @@ function _stripPublishingClaim(meta) {
     publishing_claim: null,
     publishing_claim_at: null,
   };
+}
+
+function _updatedAtMs(draft) {
+  const at = draft?.updated_at ? new Date(draft.updated_at).getTime() : NaN;
+  return Number.isNaN(at) ? null : at;
+}
+
+function _userPatchBlockedReason(draft) {
+  if (!draft) return 'not found';
+  if (draft.status === 'published' || draft.status === 'scheduled' || draft.zernio_post_id || draft.meta?.published_at) {
+    return 'already_published';
+  }
+  if (draft.status === 'delivery_unknown' || draft.meta?.delivery_outcome === 'unknown') return 'delivery_unknown';
+  if (draft.meta?.publishing_claim) return 'publish_in_progress';
+  return null;
+}
+
+function _userPatchStaleReason(expected, current) {
+  if (!expected || !current) return null;
+  const blocked = _userPatchBlockedReason(current);
+  if (blocked) return blocked;
+  if (String(expected.id) !== String(current.id)) return 'conflict';
+  const expectedAt = _updatedAtMs(expected);
+  const currentAt = _updatedAtMs(current);
+  if (expectedAt == null || currentAt == null || expectedAt !== currentAt) return 'conflict';
+  return null;
+}
+
+function _nextUpdatedAt(existing) {
+  const now = Date.now();
+  const prev = _updatedAtMs(existing) || 0;
+  return new Date(Math.max(now, prev + 1)).toISOString();
+}
+
+function _applyDraftPatch(existing, patch) {
+  let nextMeta = existing.meta;
+  if (patch.meta !== undefined) {
+    nextMeta = { ...existing.meta, ...patch.meta };
+    for (const [k, v] of Object.entries(patch.meta)) {
+      if (v === null) delete nextMeta[k];
+    }
+  }
+  return {
+    ...existing,
+    ...patch,
+    media_urls: patch.media_urls !== undefined ? patch.media_urls : existing.media_urls,
+    platforms: patch.platforms !== undefined ? patch.platforms : existing.platforms,
+    meta: nextMeta,
+    updated_at: _nextUpdatedAt(existing),
+  };
+}
+
+async function _updateUserDraft(tid, id, expected, patch) {
+  const existing = await _getDraft(tid, id);
+  if (!existing) return { ok: false, error: 'not found' };
+  const blocked = _userPatchBlockedReason(existing);
+  if (blocked) return { ok: false, error: blocked, draft: existing };
+  if (expected) {
+    const stale = _userPatchStaleReason(expected, existing);
+    if (stale) return { ok: false, error: stale, draft: existing };
+  }
+
+  if (_publishApproval.patchInvalidatesApproval(existing, patch)) {
+    Object.assign(patch, _publishApproval.invalidateApprovalPatch(existing));
+  }
+  const next = _applyDraftPatch(existing, patch);
+  if (_db.hasDb()) {
+    const expectedAt = existing.updated_at;
+    const p = await _db.getPool();
+    const r = await p.query(
+      `UPDATE social_post_drafts SET
+         profile_id=$1, status=$2, text=$3,
+         media_urls=$4::jsonb, platforms=$5::jsonb,
+         scheduled_for=$6, meta=$7::jsonb,
+         updated_at=NOW()
+       WHERE id=$8 AND tenant_id=$9
+         AND status NOT IN ('published', 'scheduled', 'delivery_unknown')
+         AND zernio_post_id IS NULL
+         AND COALESCE(meta->>'published_at', '') = ''
+         AND COALESCE(meta->>'delivery_outcome', '') <> 'unknown'
+         AND COALESCE(meta->>'publishing_claim', '') = ''
+         AND FLOOR(EXTRACT(EPOCH FROM updated_at) * 1000) = $10::bigint
+       RETURNING *`,
+      [
+        next.profile_id,
+        next.status,
+        next.text || '',
+        JSON.stringify(next.media_urls || []),
+        JSON.stringify(next.platforms || []),
+        next.scheduled_for || null,
+        JSON.stringify(next.meta || {}),
+        id,
+        tid,
+        _updatedAtMs({ updated_at: expectedAt }),
+      ],
+    );
+    if (r.rows[0]) return { ok: true, draft: _rowOut(r.rows[0]) };
+    const current = await _getDraft(tid, id);
+    if (!current) return { ok: false, error: 'not found' };
+    return { ok: false, error: _userPatchStaleReason(expected || existing, current) || _userPatchBlockedReason(current) || 'conflict', draft: current };
+  }
+
+  const list = _memList(tid);
+  const idx = list.findIndex((r) => String(r.id) === String(id));
+  if (idx < 0) return { ok: false, error: 'not found' };
+  const current = list[idx];
+  const stale = _userPatchStaleReason(expected || existing, current);
+  if (stale) return { ok: false, error: stale, draft: _rowOut(current) };
+  const currentBlocked = _userPatchBlockedReason(current);
+  if (currentBlocked) return { ok: false, error: currentBlocked, draft: _rowOut(current) };
+  const written = _applyDraftPatch(current, patch);
+  list[idx] = written;
+  return { ok: true, draft: _rowOut(written) };
+}
+
+async function _releasePublishingClaim(tid, id, token) {
+  if (!token) return null;
+  if (_db.hasDb()) {
+    const p = await _db.getPool();
+    const r = await p.query(
+      `UPDATE social_post_drafts SET
+         meta = (COALESCE(meta, '{}'::jsonb)
+           || jsonb_build_object('publishing_claim', null, 'publishing_claim_at', null)),
+         updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2
+         AND meta->>'publishing_claim' = $3
+         AND status <> 'delivery_unknown'
+         AND COALESCE(meta->>'delivery_outcome', '') <> 'unknown'
+       RETURNING *`,
+      [id, tid, token],
+    );
+    if (r.rows[0]) return _rowOut(r.rows[0]);
+    return await _getDraft(tid, id);
+  }
+  const existing = await _getDraft(tid, id);
+  if (!existing) return null;
+  if (existing.meta?.publishing_claim !== token) return existing;
+  if (_isDeliveryUnknown(existing)) return existing;
+  return await _updateDraft(tid, id, {
+    meta: {
+      publishing_claim: null,
+      publishing_claim_at: null,
+    },
+  });
 }
 
 function _hasUnresolvedPublishingClaim(meta) {
@@ -458,8 +589,8 @@ router.post('/', _safeAsync(async (req, res) => {
   const media_urls = _normalizeMedia(body.media_urls || body.mediaUrls || []);
   if (!text && !media_urls.length) return _err(res, 400, 'text or media_urls required');
   const scheduled_for = _parseDate(body.scheduled_for || body.scheduledFor);
-  const status = STATUSES.includes(body.status) ? body.status : 'draft';
-  const meta = body.meta && typeof body.meta === 'object' ? body.meta : {};
+  const status = _publishApproval.sanitizeUserStatus(body.status, 'draft');
+  const meta = _publishApproval.sanitizeUserMeta(body.meta);
   const draft = await _insertDraft(tid, {
     profile_id,
     status,
@@ -498,12 +629,12 @@ router.post('/bulk', _safeAsync(async (req, res) => {
       media_urls,
       platforms,
       scheduled_for,
-      meta: {
+      meta: _publishApproval.sanitizeUserMeta({
         imported: true,
         funnel_stage: it.funnelStage || it.funnel_stage || null,
         archetype_id: it.archetypeId || it.archetype_id || null,
         ...(it.meta || {}),
-      },
+      }),
       created_by: req.user?.email || req.user?.id || null,
     });
     created.push(draft);
@@ -514,16 +645,23 @@ router.post('/bulk', _safeAsync(async (req, res) => {
 router.get('/settings', _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-drafts:settings');
   if (!tid) return _err(res, 400, 'no_tenant');
-  res.json({ ok: true, settings: await _getSettings(tid) });
+  const resolved = await _resolveSettings(tid);
+  if (!resolved.ok) return _err(res, 503, resolved.error);
+  res.json({ ok: true, settings: resolved.settings });
 }));
 
 router.put('/settings', _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-drafts:settings-put');
   if (!tid) return _err(res, 400, 'no_tenant');
-  const settings = await _setSettings(tid, {
-    require_approval: !!req.body?.require_approval,
-  });
-  res.json({ ok: true, settings });
+  try {
+    const settings = await _setSettings(tid, {
+      require_approval: !!req.body?.require_approval,
+    });
+    res.json({ ok: true, settings });
+  } catch (e) {
+    if (e.code === 'settings_unavailable') return _err(res, 503, 'settings_unavailable');
+    throw e;
+  }
 }));
 
 router.get('/approvals/queue', _safeAsync(async (req, res) => {
@@ -549,6 +687,9 @@ router.patch('/:id', _safeAsync(async (req, res) => {
   if (existing.status === 'pending_approval') {
     return _err(res, 400, 'Draft is pending approval — withdraw approval first or wait for a decision.');
   }
+  if (_publishApproval.hasActivePublishingClaim(existing) || existing.status === 'delivery_unknown') {
+    return _err(res, 409, existing.status === 'delivery_unknown' ? 'delivery_unknown' : 'publish_in_progress');
+  }
   const body = req.body || {};
   const patch = {};
   if (body.profile_id != null || body.profileId != null) {
@@ -562,10 +703,24 @@ router.patch('/:id', _safeAsync(async (req, res) => {
   if (body.scheduled_for !== undefined || body.scheduledFor !== undefined) {
     patch.scheduled_for = _parseDate(body.scheduled_for !== undefined ? body.scheduled_for : body.scheduledFor);
   }
-  if (body.status != null && STATUSES.includes(body.status)) patch.status = body.status;
-  if (body.meta != null && typeof body.meta === 'object') patch.meta = body.meta;
-  const draft = await _updateDraft(tid, req.params.id, patch);
-  res.json({ ok: true, draft });
+  if (body.status != null) {
+    if (!_publishApproval.USER_WRITABLE_STATUSES.includes(body.status)) {
+      return _err(res, 400, 'status is server-controlled');
+    }
+    patch.status = body.status;
+  }
+  if (body.meta != null && typeof body.meta === 'object') {
+    patch.meta = _publishApproval.sanitizeUserMeta(body.meta);
+  }
+  if (_publishApproval.patchInvalidatesApproval(existing, patch)) {
+    Object.assign(patch, _publishApproval.invalidateApprovalPatch(existing));
+  }
+  const updated = await _updateUserDraft(tid, req.params.id, existing, patch);
+  if (!updated.ok) {
+    const code = updated.error === 'not found' ? 404 : 409;
+    return res.status(code).json({ ok: false, error: updated.error, draft: updated.draft || undefined });
+  }
+  res.json({ ok: true, draft: updated.draft });
 }));
 
 router.post('/:id/publish', _safeAsync(async (req, res) => {
@@ -587,8 +742,10 @@ router.post('/:id/publish', _safeAsync(async (req, res) => {
 
 // ── Approval settings + queue (works with or without approval_workflows DB) ──
 const _settings = new Map(); // tid -> { require_approval: bool }
+const DEFAULT_SETTINGS = Object.freeze({ require_approval: false });
 
-async function _getSettings(tid) {
+async function _resolveSettings(tid) {
+  if (!tid) return { ok: false, error: 'settings_unavailable' };
   if (_db.hasDb()) {
     try {
       const p = await _db.getPool();
@@ -599,25 +756,43 @@ async function _getSettings(tid) {
           updated_at TIMESTAMPTZ DEFAULT NOW()
         )`);
       const r = await p.query(`SELECT * FROM social_publisher_settings WHERE tenant_id=$1`, [tid]);
-      if (r.rows[0]) return { require_approval: !!r.rows[0].require_approval };
-    } catch (_) {}
+      if (r.rows[0]) {
+        return { ok: true, settings: { require_approval: !!r.rows[0].require_approval }, source: 'db' };
+      }
+      return { ok: true, settings: { ...DEFAULT_SETTINGS }, source: 'default' };
+    } catch (e) {
+      return { ok: false, error: 'settings_unavailable', cause: e.message };
+    }
   }
-  return _settings.get(tid) || { require_approval: false };
+  return { ok: true, settings: _settings.get(tid) || { ...DEFAULT_SETTINGS }, source: 'memory' };
+}
+
+async function _getSettings(tid) {
+  const resolved = await _resolveSettings(tid);
+  if (!resolved.ok) {
+    const err = new Error(resolved.error || 'settings_unavailable');
+    err.code = 'settings_unavailable';
+    throw err;
+  }
+  return resolved.settings;
 }
 
 async function _setSettings(tid, patch) {
-  const cur = await _getSettings(tid);
-  const next = { ...cur, ...patch };
+  const resolved = await _resolveSettings(tid);
+  if (!resolved.ok) {
+    const err = new Error(resolved.error || 'settings_unavailable');
+    err.code = 'settings_unavailable';
+    throw err;
+  }
+  const next = { ...resolved.settings, ...patch, require_approval: !!(patch.require_approval ?? resolved.settings.require_approval) };
   _settings.set(tid, next);
   if (_db.hasDb()) {
-    try {
-      const p = await _db.getPool();
-      await p.query(`
-        INSERT INTO social_publisher_settings(tenant_id, require_approval, updated_at)
-        VALUES ($1,$2,NOW())
-        ON CONFLICT (tenant_id) DO UPDATE SET require_approval=$2, updated_at=NOW()`,
-        [tid, !!next.require_approval]);
-    } catch (_) {}
+    const p = await _db.getPool();
+    await p.query(`
+      INSERT INTO social_publisher_settings(tenant_id, require_approval, updated_at)
+      VALUES ($1,$2,NOW())
+      ON CONFLICT (tenant_id) DO UPDATE SET require_approval=$2, updated_at=NOW()`,
+      [tid, !!next.require_approval]);
   }
   return next;
 }
@@ -795,6 +970,26 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
   const draft = await _getDraft(tid, draftId);
   if (!draft) return { ok: false, error: 'not found' };
 
+  const resolveSettings = module.exports._resolveSettings || _resolveSettings;
+  const resolved = await resolveSettings(tid);
+  if (!resolved.ok) {
+    return { ok: false, error: 'settings_unavailable', draft };
+  }
+  const requireApproval = !!resolved.settings.require_approval;
+  const authz = _publishApproval.evaluatePublishAuthorization({
+    requireApproval,
+    draft,
+    mode,
+  });
+  if (!authz.ok) {
+    return {
+      ok: false,
+      error: authz.error,
+      hint: authz.hint,
+      draft,
+    };
+  }
+
   if (_isDeliveryUnknown(draft)) {
     return { ok: false, error: 'delivery_unknown', draft };
   }
@@ -827,8 +1022,7 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
         status: 'approved',
         meta: {
           ...(draft.meta || {}),
-          approved_at: new Date().toISOString(),
-          reviewer_notes: opts.notes || null,
+          ..._publishApproval.recordApprovalMeta(draft, opts.notes || null),
         },
       });
     }
@@ -849,19 +1043,42 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
     }
 
     const token = claim.token;
+    const claimedAuthz = _publishApproval.evaluateClaimedAuthorization({
+      requireApproval,
+      claimed: claim.draft,
+      mode,
+    });
+    if (!claimedAuthz.ok) {
+      const released = await _releasePublishingClaim(tid, draftId, token);
+      return { ok: false, error: claimedAuthz.error, hint: claimedAuthz.hint, draft: released || claim.draft };
+    }
+
     const approvedMeta = {
       ...(claim.draft.meta || {}),
       publishing_claim: token,
       publishing_claim_at: claim.draft.meta?.publishing_claim_at || new Date().toISOString(),
     };
     if (mode === 'approval') {
-      approvedMeta.approved_at = new Date().toISOString();
-      approvedMeta.reviewer_notes = opts.notes || null;
+      Object.assign(approvedMeta, _publishApproval.recordApprovalMeta(claim.draft, opts.notes || null));
     }
     let fresh = await updateDraft(tid, draftId, {
       status: mode === 'approval' ? 'approved' : claim.draft.status,
       meta: approvedMeta,
     });
+
+    if (_publishApproval.materialFieldsChanged(claim.draft, fresh)) {
+      const released = await _releasePublishingClaim(tid, draftId, token);
+      return { ok: false, error: 'approval_stale', draft: released || fresh };
+    }
+    const freshAuthz = _publishApproval.evaluateClaimedAuthorization({
+      requireApproval,
+      claimed: fresh,
+      mode,
+    });
+    if (!freshAuthz.ok) {
+      const released = await _releasePublishingClaim(tid, draftId, token);
+      return { ok: false, error: freshAuthz.error, hint: freshAuthz.hint, draft: released || fresh };
+    }
 
     const publishFn = module.exports._publishViaZernio || _publishViaZernio;
     const result = await publishFn(opts.req || {}, fresh);
@@ -994,6 +1211,10 @@ router._rejectDraft = _rejectDraft;
 router._getDraft = _getDraft;
 router._insertDraft = _insertDraft;
 router._updateDraft = _updateDraft;
+router._updateUserDraft = _updateUserDraft;
+router._releasePublishingClaim = _releasePublishingClaim;
 router._getSettings = _getSettings;
+router._setSettings = _setSettings;
+router._resolveSettings = _resolveSettings;
 
 module.exports = router;

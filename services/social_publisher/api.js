@@ -1,6 +1,8 @@
 const express = require('express');
 const _https = require('https');
 const router = express.Router();
+const _tenantCtx = require('../tenants/context');
+const { blockedPublisherBody } = require('../social_drafts/publish_approval');
 
 const PLATFORMS = ['twitter','instagram','facebook','linkedin','tiktok','youtube','pinterest','reddit','bluesky','threads','googlebusiness','telegram','snapchat','whatsapp','discord'];
 
@@ -9,6 +11,22 @@ function _hasCreds() {
   const k = process.env.ZERNIO_API_KEY;
   return k && !/^_DUMMY/i.test(k);
 }
+async function _publisherApprovalBlocked(req, label) {
+  const draftsApi = require('../social_drafts/api');
+  let tid;
+  try {
+    tid = await _tenantCtx.resolveTenantId(req, { label });
+  } catch (_) {
+    return blockedPublisherBody('settings_unavailable');
+  }
+  if (!tid) return blockedPublisherBody('settings_unavailable');
+  if (typeof draftsApi._resolveSettings !== 'function') return blockedPublisherBody('settings_unavailable');
+  const resolved = await draftsApi._resolveSettings(tid);
+  if (!resolved.ok) return blockedPublisherBody('settings_unavailable');
+  if (!resolved.settings?.require_approval) return null;
+  return blockedPublisherBody('approval_required');
+}
+
 function _friendlyError(err, status) {
   if (!err) return err;
   if (status === 401 || /unauthor|invalid.*key|invalid.*token/i.test(err)) return `${err} → Your ZERNIO_API_KEY is invalid or revoked. Generate a new key at https://zernio.com/dashboard.`;
@@ -92,6 +110,8 @@ router.post('/connect-url', async (req, res) => {
 
 router.post('/post', async (req, res) => {
   if (!_hasCreds()) return _err(res, 400, 'ZERNIO_API_KEY required.');
+  const blocked = await _publisherApprovalBlocked(req, 'social_publisher:post');
+  if (blocked) return res.status(403).json(blocked);
   const text = String(req.body?.text || '').trim();
   const platforms = Array.isArray(req.body?.platforms) ? req.body.platforms.map(p => String(p).toLowerCase()).filter(p => PLATFORMS.includes(p)) : [];
   const mediaUrls = Array.isArray(req.body?.mediaUrls) ? req.body.mediaUrls.filter(u => /^https?:\/\//i.test(u)).slice(0, 4) : [];
@@ -143,6 +163,8 @@ router.delete('/posts/:id', async (req, res) => {
 
 router.post('/schedule-calendar', async (req, res) => {
   if (!_hasCreds()) return _err(res, 400, 'ZERNIO_API_KEY required.');
+  const blocked = await _publisherApprovalBlocked(req, 'social_publisher:schedule-calendar');
+  if (blocked) return res.status(403).json(blocked);
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
   const profileId = String(req.body?.profileId || '').trim();
   const platformMap = req.body?.platformMap || {};
