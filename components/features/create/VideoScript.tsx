@@ -60,8 +60,8 @@ export default function VideoScript() {
       duration,
       count,
     });
-    setLoading(false);
     if (requestId !== generateRequestRef.current) return;
+    setLoading(false);
     if (!r.ok || !r.scripts) {
       setError(r.userMessage || r.error || "Generate failed");
       return;

@@ -65,8 +65,8 @@ async function harness(t, options = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/create' });
   const state = {
     response: null,
-    pending: null,
-    resolvePending: null,
+    holdNext: false,
+    pendingQueue: [],
   };
   const globals = {
     window: dom.window,
@@ -77,12 +77,13 @@ async function harness(t, options = {}) {
     IS_REACT_ACT_ENVIRONMENT: true,
     fetch: async (url, init) => {
       assert.equal(url, '/api/video-script/generate');
-      if (state.pending) {
+      if (state.holdNext) {
+        state.holdNext = false;
         return new Promise((resolve) => {
-          state.resolvePending = () => resolve(json(
-            state.response,
-            state.response.ok ? 200 : state.response.error === 'content_safety_unavailable' ? 503 : 403,
-          ));
+          state.pendingQueue.push({
+            resolve,
+            response: state.response,
+          });
         });
       }
       assert.ok(state.response);
@@ -125,15 +126,24 @@ async function harness(t, options = {}) {
 
   async function generate(response, { pending = false } = {}) {
     state.response = response;
-    state.pending = pending;
+    state.holdNext = pending;
     await clickGenerate();
   }
 
-  async function finishPending() {
-    assert.ok(state.resolvePending, 'expected pending generate');
-    await act(async () => state.resolvePending());
-    state.pending = false;
-    state.resolvePending = null;
+  async function finishPending(index = 0) {
+    const item = state.pendingQueue[index];
+    assert.ok(item, `expected pending generate at index ${index}`);
+    await act(async () => {
+      item.resolve(json(
+        item.response,
+        item.response.ok ? 200 : item.response.error === 'content_safety_unavailable' ? 503 : 403,
+      ));
+    });
+    state.pendingQueue.splice(index, 1);
+  }
+
+  function isLoading() {
+    return dom.window.document.body.textContent.includes('Generating');
   }
 
   async function waitFor(check, attempts = 40) {
@@ -152,6 +162,7 @@ async function harness(t, options = {}) {
     generate,
     finishPending,
     waitFor,
+    isLoading,
     text: () => dom.window.document.body.textContent,
     alerts: () => [...document.querySelectorAll('[role="alert"]')],
   };
@@ -201,6 +212,27 @@ test('VideoScript: warning-only success displays persisted warnings', async (t) 
   await h.generate(successScripts(['Warning-only script retained this caution.']));
   assert.match(h.text(), /Warning-only script retained this caution/);
   assert.equal(h.alerts().length, 0);
+});
+
+test('VideoScript: loading stays active until the latest pending generate finishes', async (t) => {
+  const h = await harness(t);
+  await h.setTopic('Concurrent generates');
+  await h.generate(successScripts(['First request warning']), { pending: true });
+  await h.generate({
+    ok: true,
+    scripts: [{ ...SAFE_SCRIPT, hook: 'Second hook line' }],
+    content_safety_warnings: [],
+  }, { pending: true });
+  assert.ok(h.isLoading(), 'expected loading indicator while both requests are pending');
+
+  await h.finishPending(0);
+  await h.waitFor(() => h.isLoading());
+  assert.ok(h.isLoading(), 'loading should remain while the second generate is still pending');
+
+  await h.finishPending(0);
+  await h.waitFor(() => !h.isLoading());
+  assert.match(h.text(), /Second hook line/);
+  assert.doesNotMatch(h.text(), /First request warning/);
 });
 
 test('VideoScript: ignores a late blocked response after a newer generate succeeds', async (t) => {
