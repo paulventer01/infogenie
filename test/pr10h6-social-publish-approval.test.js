@@ -256,6 +256,22 @@ describe('PR10H.6 social drafts enforcement (memory)', () => {
     assert.equal(after.meta.publishing_claim, 'pub_mem_race');
   });
 
+  it('memory delayed PATCH fails after an intervening write', async () => {
+    const draft = await drafts._createForTenant(38, {
+      profile_id: 'p1',
+      status: 'approved',
+      text: 'Original delayed',
+      platforms: ['linkedin'],
+    });
+    const existing = await drafts._getDraft(38, draft.id);
+    await drafts._updateDraft(38, draft.id, { text: 'Changed by later write' });
+    const result = await drafts._updateUserDraft(38, draft.id, existing, { text: 'Stale patch' });
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'conflict');
+    const after = await drafts._getDraft(38, draft.id);
+    assert.equal(after.text, 'Changed by later write');
+  });
+
   it('cross-tenant approval rejected', async () => {
     await enableApproval(25);
     const draft = await drafts._createForTenant(25, {
@@ -768,6 +784,50 @@ describe('PR10H.6 social drafts enforcement (postgres)', () => {
       assert.equal(retry.error, 'delivery_unknown');
       const after = await drafts._getDraft(tenant, draftId);
       assert.equal(after.meta.publishing_claim, token);
+    } finally {
+      drafts._publishViaZernio = origPublish;
+      await cleanup(p, tenant);
+    }
+  });
+
+  it('delayed PATCH after successful publish cannot overwrite published state', { skip: HAS_DB ? false : 'no DATABASE_URL' }, async () => {
+    const { drafts, p, tenant } = await seedPg();
+    const inserted = await p.query(
+      `INSERT INTO social_post_drafts
+         (tenant_id, profile_id, status, text, media_urls, platforms, meta)
+       VALUES ($1,$2,'approved',$3,'[]'::jsonb,$4::jsonb,'{}'::jsonb)
+       RETURNING *`,
+      [tenant, 'p1', 'Delayed patch race', JSON.stringify(['linkedin'])],
+    );
+    const draftId = inserted.rows[0].id;
+    const existing = await drafts._getDraft(tenant, draftId);
+    let publishCalls = 0;
+    const origPublish = drafts._publishViaZernio;
+    drafts._publishViaZernio = async () => {
+      publishCalls += 1;
+      return { ok: true, post: { id: 'z-published-once' } };
+    };
+    try {
+      const published = await drafts._executePublishDraft(tenant, draftId, { mode: 'direct' });
+      assert.equal(published.ok, true);
+      assert.equal(published.draft.status, 'published');
+      assert.equal(published.draft.zernio_post_id, 'z-published-once');
+      assert.ok(!published.draft.meta.publishing_claim);
+      assert.equal(publishCalls, 1);
+
+      const delayed = await drafts._updateUserDraft(tenant, draftId, existing, { text: 'Stale overwrite' });
+      assert.equal(delayed.ok, false);
+      assert.ok(['already_published', 'conflict'].includes(delayed.error));
+      const after = await drafts._getDraft(tenant, draftId);
+      assert.equal(after.status, 'published');
+      assert.equal(after.zernio_post_id, 'z-published-once');
+      assert.equal(after.text, 'Delayed patch race');
+      assert.ok(after.meta.published_at);
+
+      const retry = await drafts._executePublishDraft(tenant, draftId, { mode: 'direct' });
+      assert.equal(retry.ok, false);
+      assert.equal(retry.error, 'already_published');
+      assert.equal(publishCalls, 1);
     } finally {
       drafts._publishViaZernio = origPublish;
       await cleanup(p, tenant);

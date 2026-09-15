@@ -242,11 +242,36 @@ function _stripPublishingClaim(meta) {
   };
 }
 
+function _updatedAtMs(draft) {
+  const at = draft?.updated_at ? new Date(draft.updated_at).getTime() : NaN;
+  return Number.isNaN(at) ? null : at;
+}
+
 function _userPatchBlockedReason(draft) {
   if (!draft) return 'not found';
+  if (draft.status === 'published' || draft.status === 'scheduled' || draft.zernio_post_id || draft.meta?.published_at) {
+    return 'already_published';
+  }
   if (draft.status === 'delivery_unknown' || draft.meta?.delivery_outcome === 'unknown') return 'delivery_unknown';
   if (draft.meta?.publishing_claim) return 'publish_in_progress';
   return null;
+}
+
+function _userPatchStaleReason(expected, current) {
+  if (!expected || !current) return null;
+  const blocked = _userPatchBlockedReason(current);
+  if (blocked) return blocked;
+  if (String(expected.id) !== String(current.id)) return 'conflict';
+  const expectedAt = _updatedAtMs(expected);
+  const currentAt = _updatedAtMs(current);
+  if (expectedAt == null || currentAt == null || expectedAt !== currentAt) return 'conflict';
+  return null;
+}
+
+function _nextUpdatedAt(existing) {
+  const now = Date.now();
+  const prev = _updatedAtMs(existing) || 0;
+  return new Date(Math.max(now, prev + 1)).toISOString();
 }
 
 function _applyDraftPatch(existing, patch) {
@@ -263,7 +288,7 @@ function _applyDraftPatch(existing, patch) {
     media_urls: patch.media_urls !== undefined ? patch.media_urls : existing.media_urls,
     platforms: patch.platforms !== undefined ? patch.platforms : existing.platforms,
     meta: nextMeta,
-    updated_at: new Date().toISOString(),
+    updated_at: _nextUpdatedAt(existing),
   };
 }
 
@@ -272,8 +297,9 @@ async function _updateUserDraft(tid, id, expected, patch) {
   if (!existing) return { ok: false, error: 'not found' };
   const blocked = _userPatchBlockedReason(existing);
   if (blocked) return { ok: false, error: blocked, draft: existing };
-  if (expected && _userPatchBlockedReason(expected)) {
-    return { ok: false, error: _userPatchBlockedReason(expected), draft: existing };
+  if (expected) {
+    const stale = _userPatchStaleReason(expected, existing);
+    if (stale) return { ok: false, error: stale, draft: existing };
   }
 
   if (_publishApproval.patchInvalidatesApproval(existing, patch)) {
@@ -281,17 +307,21 @@ async function _updateUserDraft(tid, id, expected, patch) {
   }
   const next = _applyDraftPatch(existing, patch);
   if (_db.hasDb()) {
+    const expectedAt = existing.updated_at;
     const p = await _db.getPool();
     const r = await p.query(
       `UPDATE social_post_drafts SET
          profile_id=$1, status=$2, text=$3,
          media_urls=$4::jsonb, platforms=$5::jsonb,
-         scheduled_for=$6, zernio_post_id=$7, meta=$8::jsonb,
+         scheduled_for=$6, meta=$7::jsonb,
          updated_at=NOW()
-       WHERE id=$9 AND tenant_id=$10
-         AND status NOT IN ('delivery_unknown')
+       WHERE id=$8 AND tenant_id=$9
+         AND status NOT IN ('published', 'scheduled', 'delivery_unknown')
+         AND zernio_post_id IS NULL
+         AND COALESCE(meta->>'published_at', '') = ''
          AND COALESCE(meta->>'delivery_outcome', '') <> 'unknown'
          AND COALESCE(meta->>'publishing_claim', '') = ''
+         AND FLOOR(EXTRACT(EPOCH FROM updated_at) * 1000) = $10::bigint
        RETURNING *`,
       [
         next.profile_id,
@@ -300,22 +330,24 @@ async function _updateUserDraft(tid, id, expected, patch) {
         JSON.stringify(next.media_urls || []),
         JSON.stringify(next.platforms || []),
         next.scheduled_for || null,
-        next.zernio_post_id || null,
         JSON.stringify(next.meta || {}),
         id,
         tid,
+        _updatedAtMs({ updated_at: expectedAt }),
       ],
     );
     if (r.rows[0]) return { ok: true, draft: _rowOut(r.rows[0]) };
     const current = await _getDraft(tid, id);
     if (!current) return { ok: false, error: 'not found' };
-    return { ok: false, error: _userPatchBlockedReason(current) || 'publish_in_progress', draft: current };
+    return { ok: false, error: _userPatchStaleReason(expected || existing, current) || _userPatchBlockedReason(current) || 'conflict', draft: current };
   }
 
   const list = _memList(tid);
   const idx = list.findIndex((r) => String(r.id) === String(id));
   if (idx < 0) return { ok: false, error: 'not found' };
   const current = list[idx];
+  const stale = _userPatchStaleReason(expected || existing, current);
+  if (stale) return { ok: false, error: stale, draft: _rowOut(current) };
   const currentBlocked = _userPatchBlockedReason(current);
   if (currentBlocked) return { ok: false, error: currentBlocked, draft: _rowOut(current) };
   const written = _applyDraftPatch(current, patch);
@@ -325,6 +357,23 @@ async function _updateUserDraft(tid, id, expected, patch) {
 
 async function _releasePublishingClaim(tid, id, token) {
   if (!token) return null;
+  if (_db.hasDb()) {
+    const p = await _db.getPool();
+    const r = await p.query(
+      `UPDATE social_post_drafts SET
+         meta = (COALESCE(meta, '{}'::jsonb)
+           || jsonb_build_object('publishing_claim', null, 'publishing_claim_at', null)),
+         updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2
+         AND meta->>'publishing_claim' = $3
+         AND status <> 'delivery_unknown'
+         AND COALESCE(meta->>'delivery_outcome', '') <> 'unknown'
+       RETURNING *`,
+      [id, tid, token],
+    );
+    if (r.rows[0]) return _rowOut(r.rows[0]);
+    return await _getDraft(tid, id);
+  }
   const existing = await _getDraft(tid, id);
   if (!existing) return null;
   if (existing.meta?.publishing_claim !== token) return existing;
