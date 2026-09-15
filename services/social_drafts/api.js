@@ -11,7 +11,11 @@ const {
   contentSafetyHttpBody,
   attachContentSafetyWarnings,
 } = require('../ai_governance/route_gate');
-const { socialDraftGateText } = require('../ai_governance/content_schemas');
+const {
+  socialDraftGateText,
+  socialDraftScanSizeError,
+} = require('../ai_governance/content_schemas');
+const { MAX_OUTPUT_SCAN_CHARS } = require('../ai_governance/output_gate');
 const { createRateLimiter } = require('../security/rate_limit');
 
 function _testOnlyMax(envName, fallback) {
@@ -75,7 +79,15 @@ function _parseWarnings(val) {
   return [];
 }
 
+function _oversizedDraftResponse(draft) {
+  const oversized = socialDraftScanSizeError(draft, MAX_OUTPUT_SCAN_CHARS);
+  if (!oversized) return null;
+  return oversized;
+}
+
 async function _gateSocialDraft(req, tid, draft, label) {
+  const oversized = _oversizedDraftResponse(draft);
+  if (oversized) return oversized;
   try {
     return await gateRouteText({
       tenantId: tid,
@@ -244,6 +256,68 @@ async function _insertDraft(tid, fields) {
   };
   _memList(tid).push(row);
   return _rowOut(row);
+}
+
+async function _insertDraftWithClient(client, tid, fields) {
+  const warnings = _parseWarnings(fields.content_safety_warnings);
+  const r = await client.query(
+    `INSERT INTO social_post_drafts
+      (tenant_id, profile_id, status, text, media_urls, platforms, scheduled_for, zernio_post_id, meta, created_by, content_safety_warnings)
+     VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9::jsonb,$10,$11::jsonb)
+     RETURNING *`,
+    [
+      tid,
+      fields.profile_id,
+      fields.status || 'draft',
+      fields.text || '',
+      JSON.stringify(fields.media_urls || []),
+      JSON.stringify(fields.platforms || []),
+      fields.scheduled_for || null,
+      fields.zernio_post_id || null,
+      JSON.stringify(fields.meta || {}),
+      fields.created_by || null,
+      JSON.stringify(warnings),
+    ],
+  );
+  return _rowOut(r.rows[0]);
+}
+
+async function _insertDraftsBulk(tid, items, opts = {}) {
+  if (!items.length) return [];
+  if (!_db.hasDb()) {
+    const listBefore = _memList(tid).length;
+    const created = [];
+    try {
+      for (let i = 0; i < items.length; i++) {
+        if (opts.failAfterIndex != null && i >= opts.failAfterIndex) {
+          throw new Error('bulk_insert_test_failure');
+        }
+        created.push(await _insertDraft(tid, items[i]));
+      }
+      return created;
+    } catch (e) {
+      _mem.set(tid, _memList(tid).slice(0, listBefore));
+      throw e;
+    }
+  }
+  const client = await _db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const created = [];
+    for (let i = 0; i < items.length; i++) {
+      if (opts.failAfterIndex != null && i >= opts.failAfterIndex) {
+        throw new Error('bulk_insert_test_failure');
+      }
+      created.push(await _insertDraftWithClient(client, tid, items[i]));
+    }
+    await client.query('COMMIT');
+    return created;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 async function _updateDraft(tid, id, patch) {
@@ -743,7 +817,12 @@ router.post('/', socialDraftWriteLimiter, _safeAsync(async (req, res) => {
   if (!fields.text.trim() && !fields.media_urls.length) return _err(res, 400, 'text or media_urls required');
 
   const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(fields), 'social-drafts:create');
-  if (!gated.ok) return _safetyBlockResponse(res, gated);
+  if (!gated.ok) {
+    if (gated.error === 'content_too_long') {
+      return res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
+    }
+    return _safetyBlockResponse(res, gated);
+  }
 
   const warnings = gated.warnings || gated.content_safety_warnings || [];
   const draft = await _insertDraft(tid, {
@@ -768,7 +847,16 @@ router.post('/bulk', socialDraftWriteLimiter, _safeAsync(async (req, res) => {
     const fields = _fieldsFromBulkItem(it, profile_id);
     if (!fields.text.trim() && !fields.media_urls.length) continue;
     const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(fields), 'social-drafts:bulk');
-    if (!gated.ok) return _safetyBlockResponse(res, gated);
+    if (!gated.ok) {
+      if (gated.error === 'content_too_long') {
+        return res.status(400).json({
+          ok: false,
+          error: gated.error,
+          userMessage: gated.userMessage,
+        });
+      }
+      return _safetyBlockResponse(res, gated);
+    }
     prepared.push({
       ...fields,
       content_safety_warnings: gated.warnings || gated.content_safety_warnings || [],
@@ -776,11 +864,24 @@ router.post('/bulk', socialDraftWriteLimiter, _safeAsync(async (req, res) => {
     });
   }
 
-  const created = [];
-  for (const fields of prepared) {
-    created.push(await _insertDraft(tid, fields));
+  const failAfterIndex = (
+    process.env.NODE_ENV === 'test'
+    && req.headers['x-test-bulk-fail-after-index'] != null
+  )
+    ? Number.parseInt(String(req.headers['x-test-bulk-fail-after-index']), 10)
+    : null;
+
+  try {
+    const created = await _insertDraftsBulk(tid, prepared, {
+      failAfterIndex: Number.isFinite(failAfterIndex) ? failAfterIndex : null,
+    });
+    res.json({ ok: true, created: created.length, drafts: created });
+  } catch (e) {
+    if (e.message === 'bulk_insert_test_failure') {
+      return _err(res, 500, 'bulk_insert_failed');
+    }
+    throw e;
   }
-  res.json({ ok: true, created: created.length, drafts: created });
 }));
 
 router.get('/settings', _safeAsync(async (req, res) => {
@@ -846,7 +947,12 @@ router.patch('/:id', socialDraftWriteLimiter, _safeAsync(async (req, res) => {
 
   const mergedForGate = _applyDraftPatch(existing, patch);
   const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(mergedForGate), 'social-drafts:patch');
-  if (!gated.ok) return _safetyBlockResponse(res, gated);
+  if (!gated.ok) {
+    if (gated.error === 'content_too_long') {
+      return res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
+    }
+    return _safetyBlockResponse(res, gated);
+  }
 
   patch.content_safety_warnings = gated.warnings || gated.content_safety_warnings || [];
   const updated = await _updateUserDraft(tid, req.params.id, existing, patch);
@@ -1345,6 +1451,7 @@ router._publishLockChainSize = () => _publishLockChains.size;
 router._rejectDraft = _rejectDraft;
 router._getDraft = _getDraft;
 router._insertDraft = _insertDraft;
+router._insertDraftsBulk = _insertDraftsBulk;
 router._updateDraft = _updateDraft;
 router._updateUserDraft = _updateUserDraft;
 router._releasePublishingClaim = _releasePublishingClaim;
