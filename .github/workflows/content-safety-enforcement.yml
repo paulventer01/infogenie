@@ -129,7 +129,7 @@ jobs:
           INFOGENIE_API_KEY: pr10h1-integration-api-key
         run: |
           set -o pipefail
-          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h11-composer-draft-approve-safety.test.js | tee /tmp/pr10h11-postgres.tap
+          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit --test-name-pattern "composer draft approve postgres" test/pr10h11-composer-draft-approve-safety.test.js | tee /tmp/pr10h11-postgres.tap
           grep -Eq '^# tests [1-9][0-9]*$' /tmp/pr10h11-postgres.tap
           grep -Eq '^# fail 0$' /tmp/pr10h11-postgres.tap
           grep -Eq '^# skipped 0$' /tmp/pr10h11-postgres.tap

@@ -558,9 +558,9 @@ const pgSkip = !PG_URL ? (PG_REQUIRED ? false : 'no DATABASE_URL') : false;
 
 describe('PR10H.11 composer draft approve postgres', { skip: pgSkip }, () => {
   let db;
-  const { ensureTenantSchema } = require('../services/tenants/schema');
-  const { ensureAudiencesSchema } = require('../services/audiences/schema');
-  const { ensureCampaignComposerSchema } = require('../services/campaign_composer/schema');
+  let ensureTenantSchema;
+  let ensureAudiencesSchema;
+  let ensureCampaignComposerSchema;
   let server;
   let baseUrl;
   let tenantId;
@@ -569,8 +569,18 @@ describe('PR10H.11 composer draft approve postgres', { skip: pgSkip }, () => {
 
   before(async () => {
     assert.ok(PG_URL, 'DATABASE_URL is required when PR10H1_REQUIRE_INTEGRATION=1');
-    delete require.cache[require.resolve('../db')];
+    for (const mod of [
+      '../db',
+      '../services/tenants/schema',
+      '../services/audiences/schema',
+      '../services/campaign_composer/schema',
+    ]) {
+      delete require.cache[require.resolve(mod)];
+    }
     db = require('../db');
+    ({ ensureTenantSchema } = require('../services/tenants/schema'));
+    ({ ensureAudiencesSchema } = require('../services/audiences/schema'));
+    ({ ensureCampaignComposerSchema } = require('../services/campaign_composer/schema'));
     await ensureTenantSchema();
     await ensureAudiencesSchema();
     await ensureCampaignComposerSchema();
