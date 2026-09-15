@@ -636,16 +636,24 @@ describe('PR10H.7 tenant isolation for persisted records', () => {
   });
 });
 
-describe('PR10H.7 UI — visible content safety warnings', () => {
-  it('ColdEmail and ReviewAutomation render ContentSafetyWarnings banner', () => {
+describe('PR10H.7 UI coverage notes', () => {
+  it('ReviewAutomation rendered UI behavior is covered by pr10h7-review-automation-safety-ui.test.js', () => {
+    const rendered = fs.readFileSync(
+      require.resolve('./pr10h7-review-automation-safety-ui.test.js'),
+      'utf8',
+    );
+    assert.match(rendered, /role="alert"/);
+    assert.match(rendered, /CONTENT SAFETY WARNINGS/i);
+    assert.match(rendered, /content_safety_blocked/);
+    assert.match(rendered, /content_safety_unavailable/);
+  });
+
+  it('ColdEmail wires ContentSafetyWarnings for in-session generation only (no saved-run reload UI)', () => {
     const cold = fs.readFileSync(require.resolve('../components/features/create/ColdEmail.tsx'), 'utf8');
-    const review = fs.readFileSync(require.resolve('../components/features/compete/ReviewAutomation.tsx'), 'utf8');
-    const banner = fs.readFileSync(require.resolve('../components/layout/ContentSafetyWarnings.tsx'), 'utf8');
     assert.match(cold, /ContentSafetyWarnings/);
     assert.match(cold, /content_safety_warnings/);
-    assert.match(review, /ContentSafetyWarnings/);
-    assert.match(review, /content_safety_warnings/);
-    assert.match(banner, /CONTENT SAFETY WARNINGS/);
+    assert.doesNotMatch(cold, /\/api\/cold-email\/history/);
+    assert.doesNotMatch(cold, /\/api\/cold-email\/\$\{/);
   });
 });
 

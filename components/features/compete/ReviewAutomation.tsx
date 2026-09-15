@@ -49,6 +49,7 @@ export default function ReviewAutomation() {
   const [rules, setRules] = useState<ReviewRequestRule[]>([]);
   const [logs, setLogs] = useState<ReviewRequestLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [regenerateErrors, setRegenerateErrors] = useState<Record<number, string>>({});
 
   // Form states for new rule
   const [showRuleForm, setShowRuleForm] = useState(false);
@@ -96,17 +97,42 @@ export default function ReviewAutomation() {
   };
 
   const handleRegenerate = async (draft: ReviewReplyDraft) => {
-    const res = await apiPost<{ ok: boolean, draft: ReviewReplyDraft, content_safety_warnings?: string[] }>("/api/review-monitor/replies/generate", {
+    const res = await apiPost<{
+      ok: boolean;
+      error?: string;
+      userMessage?: string;
+      draft?: ReviewReplyDraft;
+      content_safety_warnings?: string[];
+    }>("/api/review-monitor/replies/generate", {
       review_text: draft.review_text,
       rating: draft.rating,
       reviewer_name: draft.reviewer_name,
       platform: draft.platform,
-      source_review_id: draft.id.toString() // Or source_review_id if available
+      source_review_id: draft.id.toString(),
     });
-    if (res.ok) {
-      const warnings = res.content_safety_warnings || res.draft?.content_safety_warnings || [];
-      setDrafts(drafts.map(d => d.id === draft.id ? { ...res.draft, content_safety_warnings: warnings } : d));
+    if (!res.ok) {
+      const code = res.error || "";
+      if (code === "content_safety_blocked" || code === "content_safety_unavailable") {
+        setRegenerateErrors((prev) => ({
+          ...prev,
+          [draft.id]: String(res.userMessage || res.error || "Regeneration blocked by content safety checks."),
+        }));
+      }
+      return;
     }
+    setRegenerateErrors((prev) => {
+      const next = { ...prev };
+      delete next[draft.id];
+      return next;
+    });
+    const warnings = res.content_safety_warnings || res.draft?.content_safety_warnings || [];
+    setDrafts((current) =>
+      current.map((d) =>
+        d.id === draft.id && res.draft
+          ? { ...res.draft, content_safety_warnings: warnings }
+          : d,
+      ),
+    );
   };
 
   const handleCreateRule = async () => {
@@ -212,6 +238,23 @@ export default function ReviewAutomation() {
                   </div>
 
                   <ContentSafetyWarnings warnings={draft.content_safety_warnings} />
+
+                  {regenerateErrors[draft.id] && (
+                    <div
+                      role="alert"
+                      style={{
+                        background: "#FEE2E2",
+                        border: "1px solid #F87171",
+                        borderRadius: 8,
+                        padding: 12,
+                        marginBottom: 12,
+                        color: "#991B1B",
+                        fontSize: "0.88rem",
+                      }}
+                    >
+                      {regenerateErrors[draft.id]}
+                    </div>
+                  )}
 
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#666', marginBottom: '4px', display: 'block' }}>
