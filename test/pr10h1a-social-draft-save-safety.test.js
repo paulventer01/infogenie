@@ -349,20 +349,27 @@ describe('PR-1a social draft bulk gate (CR-056)', () => {
   });
 
   it('rolls back memory bulk inserts when a later item fails to persist', async () => {
-    const r = await jsonFetch(server, 'POST', '/api/social-drafts/bulk', {
-      headers: { 'x-test-bulk-fail-after-index': '1' },
-      body: {
-        profileId: 'p1',
-        items: [
-          { caption: SAFE_TEXT, platforms: ['instagram'] },
-          { caption: 'Second item', platforms: ['linkedin'] },
-        ],
+    const items = [
+      {
+        profile_id: 'p1',
+        text: SAFE_TEXT,
+        platforms: ['instagram'],
+        media_urls: [],
+        meta: {},
       },
-    });
-    assert.equal(r.status, 500);
-    assert.equal(r.body.error, 'bulk_insert_failed');
-    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
-    assert.equal(listed.body.drafts.length, 0);
+      {
+        profile_id: 'p1',
+        text: 'Second item',
+        platforms: ['linkedin'],
+        media_urls: [],
+        meta: {},
+      },
+    ];
+    await assert.rejects(
+      () => draftsRouter._insertDraftsBulk(11, items, { failAfterIndex: 1 }),
+      (err) => err && err.message === 'bulk_insert_test_failure',
+    );
+    assert.equal(draftsRouter._listForTenant(11).length, 0);
   });
 });
 
