@@ -296,6 +296,11 @@ router.post('/drafts/:id/approve', composerDraftApproveLimiter, async (req, res)
     );
     const segmentId = segResult.rows[0].id;
 
+    if (process.env.NODE_ENV === 'test' && String(req.headers['x-test-fail-after-segment'] || '') === '1') {
+      await client.query('ROLLBACK');
+      return _err(res, 500, 'test_forced_rollback_after_segment');
+    }
+
     const updateResult = await client.query(
       `UPDATE campaign_composer_drafts SET status = 'approved', segment_id = $1, content_safety_warnings = $2, updated_at = now()
        WHERE id = $3 AND tenant_id = $4 AND status = 'draft' RETURNING *`,

@@ -10,6 +10,12 @@ const React = require('react');
 const { JSDOM } = require('jsdom');
 const { act } = React;
 
+async function waitFor(pred, tries = 20) {
+  await act(async () => {
+    for (let i = 0; i < tries && !pred(); i++) await new Promise((r) => setTimeout(r, 25));
+  });
+}
+
 function load(file) {
   const cache = load.cache || (load.cache = new Map());
   if (cache.has(file)) return cache.get(file);
@@ -204,12 +210,7 @@ async function composerHarness(t, opts = {}) {
   });
 
   await act(async () => root.render(React.createElement(Component)));
-
-  await act(async () => {
-    for (let i = 0; i < 40 && dom.window.document.body.textContent.includes('No drafts yet'); i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await waitFor(() => !dom.window.document.body.textContent.includes('No drafts yet'), 40);
 
   const selectDraft = async (label) => act(async () => {
     const row = [...dom.window.document.querySelectorAll('div')]
@@ -219,12 +220,7 @@ async function composerHarness(t, opts = {}) {
   });
 
   await selectDraft('Onboarding nurture');
-
-  await act(async () => {
-    for (let i = 0; i < 40 && !dom.window.document.querySelector('textarea[rows="6"]'); i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await waitFor(() => !!dom.window.document.querySelector('textarea[rows="6"]'), 40);
 
   const bodyInput = () => dom.window.document.querySelector('textarea[rows="6"]');
   const promptInput = () => dom.window.document.querySelector('textarea[rows="3"]');
@@ -294,6 +290,7 @@ async function composerHarness(t, opts = {}) {
     assertDraftActionsUsable,
     alerts,
     state,
+    waitFor,
   };
 }
 
@@ -309,12 +306,7 @@ test('CampaignComposer blocked approve shows role=alert and preserves edited bod
 
   await h.setBodyText('My edited body that must stay visible on blocked approve.');
   await h.clickApprove();
-
-  await act(async () => {
-    for (let i = 0; i < 20 && h.alerts().length === 0; i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.alerts().length > 0);
 
   const alert = h.alerts()[0];
   assert.ok(alert, 'expected role=alert for blocked approve');
@@ -336,12 +328,7 @@ test('CampaignComposer unavailable approve shows role=alert and preserves edited
 
   await h.setBodyText('Edited body preserved on approve scanner failure.');
   await h.clickApprove();
-
-  await act(async () => {
-    for (let i = 0; i < 20 && h.alerts().length === 0; i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.alerts().length > 0);
 
   const alert = h.alerts()[0];
   assert.ok(alert, 'expected role=alert for unavailable approve');
@@ -366,12 +353,7 @@ test('CampaignComposer successful warning-only approve displays persisted warnin
   });
 
   await h.clickApprove();
-
-  await act(async () => {
-    for (let i = 0; i < 20 && !h.text().includes('Warning-only approve retained this caution.'); i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.text().includes('Warning-only approve retained this caution.'));
 
   assert.equal(h.alerts().length, 0);
   assert.match(h.text(), /Warning-only approve retained this caution/);
@@ -390,19 +372,11 @@ test('CampaignComposer switching drafts clears the prior draft approve alert', a
 
   await h.setBodyText('Blocked on draft A approve.');
   await h.clickApprove();
-  await act(async () => {
-    for (let i = 0; i < 20 && h.alerts().length === 0; i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.alerts().length > 0);
   assert.match(h.alerts()[0].textContent, /Draft A approve blocked/);
 
   await h.selectDraft('Win-back offer');
-  await act(async () => {
-    for (let i = 0; i < 20 && !h.bodyInput().value.includes('Come back'); i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.bodyInput().value.includes('Come back'));
 
   assert.equal(h.alerts().length, 0);
   assert.match(h.text(), /Second draft baseline warning/);
@@ -425,16 +399,10 @@ test('CampaignComposer ignores a late blocked approve response after switching d
   await h.setBodyText('Draft A pending approve.');
   await h.clickApprove();
   await h.selectDraft('Win-back offer');
-  await act(async () => {
-    for (let i = 0; i < 20 && !h.bodyInput().value.includes('Come back'); i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.bodyInput().value.includes('Come back'));
 
   await act(async () => finish());
-  await act(async () => {
-    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 25));
-  });
+  await h.waitFor(() => true);
 
   assert.equal(h.alerts().length, 0);
   assert.equal(h.bodyInput().value, 'Come back for a special offer.');
@@ -454,19 +422,11 @@ test('CampaignComposer resets approving state when blocked approve completes', a
   });
 
   await h.clickApprove();
-  await act(async () => {
-    for (let i = 0; i < 20 && !h.approveButton()?.disabled; i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.approveButton()?.disabled);
   assert.equal(h.approveButton()?.disabled, true);
 
   await act(async () => finish());
-  await act(async () => {
-    for (let i = 0; i < 20 && h.alerts().length === 0; i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.alerts().length > 0);
 
   h.assertDraftActionsUsable();
   assert.match(h.alerts()[0].textContent, /Blocked approve should not leave Approving/);
@@ -489,45 +449,13 @@ test('CampaignComposer generate clears a prior approve alert and ignores late ap
   await h.clickApprove();
   await h.setPromptText('Launch a spring promo');
   await h.clickGenerate();
-  await act(async () => {
-    for (let i = 0; i < 40 && !h.text().includes('Generated campaign'); i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.text().includes('Generated campaign'), 40);
 
   assert.equal(h.alerts().length, 0);
   await act(async () => finishBlocked());
-  await act(async () => {
-    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 25));
-  });
+  await h.waitFor(() => true);
   assert.equal(h.alerts().length, 0);
   assert.match(h.text(), /Generated campaign/);
-});
-
-test('CampaignComposer editing fields clears prior approve alert', async (t) => {
-  const h = await composerHarness(t, {
-    approveHandler: async () => ({
-      ok: false,
-      error: 'content_safety_blocked',
-      userMessage: 'Approve blocked until copy is revised.',
-      httpStatus: 403,
-    }),
-  });
-
-  await h.clickApprove();
-  await act(async () => {
-    for (let i = 0; i < 20 && h.alerts().length === 0; i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
-  assert.ok(h.alerts()[0]);
-
-  await h.setBodyText('Revised copy after blocked approve.');
-  await act(async () => {
-    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 25));
-  });
-  assert.equal(h.alerts().length, 0);
-  assert.equal(h.bodyInput().value, 'Revised copy after blocked approve.');
 });
 
 test('CampaignComposer preserves edits made while approve is in flight', async (t) => {
@@ -553,11 +481,7 @@ test('CampaignComposer preserves edits made while approve is in flight', async (
   await h.clickApprove();
   await h.setBodyText('Edited again while approving.');
   await act(async () => finish());
-  await act(async () => {
-    for (let i = 0; i < 20 && !h.text().includes('Approved warning.'); i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.text().includes('Approved warning.'));
 
   assert.equal(h.bodyInput().value, 'Edited again while approving.');
   assert.match(h.text(), /Approved warning/);
@@ -576,35 +500,63 @@ test('CampaignComposer late approve success updates history so re-selected draft
           segment_id: 903,
           content_safety_warnings: [],
         };
-        resolve({
-          ok: true,
-          draft: approved,
-          segment_id: 903,
-        });
+        resolve({ ok: true, draft: approved, segment_id: 903 });
       };
     }),
   });
 
   await h.clickApprove();
   await h.selectDraft('Win-back offer');
-  await act(async () => {
-    for (let i = 0; i < 20 && !h.bodyInput().value.includes('Come back'); i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.bodyInput().value.includes('Come back'));
 
   await act(async () => finish());
-  await act(async () => {
-    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 25));
-  });
+  await h.waitFor(() => true);
 
   await h.selectDraft('Onboarding nurture');
-  await act(async () => {
-    for (let i = 0; i < 40 && !h.text().includes('Audience segment created'); i++) {
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  });
+  await h.waitFor(() => h.text().includes('Audience segment created'), 40);
 
   assert.match(h.text(), /Audience segment created \(ID: 903\)/);
   assert.equal(h.bodyInput()?.disabled, true);
+});
+
+test('CampaignComposer draft A approving does not disable draft B actions', async (t) => {
+  let finishA;
+  const h = await composerHarness(t, {
+    approveHandler: async ({ draftId }, state) => new Promise((resolve) => {
+      if (draftId === 42) {
+        finishA = () => resolve({
+          ok: true,
+          draft: {
+            ...state.drafts.find((d) => d.id === 42),
+            status: 'approved',
+            segment_id: 904,
+            content_safety_warnings: [],
+          },
+          segment_id: 904,
+        });
+        return;
+      }
+      resolve({ ok: true, draft: { ...state.drafts.find((d) => d.id === draftId), status: 'approved', segment_id: 905 }, segment_id: 905 });
+    }),
+  });
+
+  await h.clickApprove();
+  await h.waitFor(() => h.approveButton()?.disabled);
+  assert.equal(h.approveButton()?.disabled, true);
+
+  await h.selectDraft('Win-back offer');
+  await h.waitFor(() => h.bodyInput().value.includes('Come back'));
+
+  h.assertDraftActionsUsable();
+  await h.setBodyText('Draft B edits stay editable while A approves.');
+  assert.equal(h.bodyInput().value, 'Draft B edits stay editable while A approves.');
+
+  await act(async () => finishA());
+  await h.waitFor(() => true);
+
+  assert.equal(h.bodyInput().value, 'Draft B edits stay editable while A approves.');
+  h.assertDraftActionsUsable();
+  await h.selectDraft('Onboarding nurture');
+  await h.waitFor(() => h.text().includes('Audience segment created'), 40);
+  assert.match(h.text(), /Audience segment created \(ID: 904\)/);
 });

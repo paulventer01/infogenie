@@ -54,7 +54,7 @@ export default function CampaignComposer() {
   const [history, setHistory] = useState<DraftRow[]>([]);
   const [activeDraft, setActiveDraft] = useState<DraftRow | null>(null);
   const [saving, setSaving] = useState(false);
-  const [approving, setApproving] = useState(false);
+  const [approvingDraftId, setApprovingDraftId] = useState<number | null>(null);
   const [saveErrors, setSaveErrors] = useState<Record<number, string>>({});
   const [approveErrors, setApproveErrors] = useState<Record<number, string>>({});
   const activeDraftRef = useRef<DraftRow | null>(null);
@@ -98,20 +98,39 @@ export default function CampaignComposer() {
       clearApproveError(activeDraft.id);
     }
     setSaving(false);
-    setApproving(false);
+    setApprovingDraftId((prev) => (prev === activeDraft?.id ? null : prev));
     setActiveDraft(row);
   }
 
   const activeSaveError = activeDraft ? saveErrors[activeDraft.id] || null : null;
   const activeApproveError = activeDraft ? approveErrors[activeDraft.id] || null : null;
+  const isApprovingActive = activeDraft != null && approvingDraftId === activeDraft.id;
 
   useEffect(() => {
-    loadHistory();
+    refreshHistoryOnly();
   }, []);
 
-  async function loadHistory() {
+  async function refreshHistoryOnly() {
     const d = await apiGet<DraftsResp>("/api/campaign-composer/drafts");
-    if (d.ok) setHistory(d.drafts);
+    if (!d.ok) return;
+    const activeId = activeDraftRef.current?.id;
+    setHistory(d.drafts);
+    if (activeId == null) return;
+    setActiveDraft((prev) => {
+      if (!prev || prev.id !== activeId) return prev;
+      const latest = d.drafts.find((row) => row.id === activeId);
+      if (!latest) return prev;
+      return { ...latest, draft: prev.draft };
+    });
+  }
+
+  async function applyApprovedHistory(draftId: number, approvedRow: DraftRow, stillActive: boolean, preserveDraft?: CampaignDraft) {
+    setHistory((prev) => prev.map((row) => (
+      row.id === draftId
+        ? { ...approvedRow, draft: stillActive && preserveDraft ? preserveDraft : (approvedRow.draft || row.draft) }
+        : row
+    )));
+    await refreshHistoryOnly();
   }
 
   async function generate() {
@@ -122,7 +141,7 @@ export default function CampaignComposer() {
       clearSaveError(activeDraft.id);
       clearApproveError(activeDraft.id);
       setSaving(false);
-      setApproving(false);
+      setApprovingDraftId((prev) => (prev === activeDraft.id ? null : prev));
     }
     setGenerating(true);
     const d = await apiPost<GenerateResp>("/api/campaign-composer/generate", { prompt });
@@ -134,7 +153,7 @@ export default function CampaignComposer() {
         content_safety_warnings: warnings,
       });
       clearSaveError(d.draft.id);
-      loadHistory();
+      await refreshHistoryOnly();
     } else {
       alert(d.userMessage || d.error || "Failed to generate campaign");
     }
@@ -175,7 +194,7 @@ export default function CampaignComposer() {
           content_safety_warnings: warnings,
         });
       }
-      loadHistory();
+      await refreshHistoryOnly();
     } else {
       const code = d.error || "";
       if (code === "content_safety_blocked" || code === "content_safety_unavailable") {
@@ -197,14 +216,14 @@ export default function CampaignComposer() {
     approveRequestRef.current.set(draftId, reqSeq);
     const draftSnapshot = JSON.stringify(activeDraft.draft);
 
-    setApproving(true);
+    setApprovingDraftId(draftId);
     const d = await apiPost<GenerateResp>(`/api/campaign-composer/drafts/${draftId}/approve`, {});
 
     if (approveRequestRef.current.get(draftId) !== reqSeq) return;
 
-    setApproving(false);
+    setApprovingDraftId((prev) => (prev === draftId ? null : prev));
 
-    const mergeApprovedDraft = (serverDraft: DraftRow, warnings: string[]) => {
+    const finishApproved = async (serverDraft: DraftRow, warnings: string[]) => {
       const current = activeDraftRef.current;
       const stillActive = current && current.id === draftId;
       const approvedRow: DraftRow = {
@@ -213,51 +232,46 @@ export default function CampaignComposer() {
         segment_id: serverDraft?.segment_id ?? d.segment_id ?? current?.segment_id ?? null,
         content_safety_warnings: warnings,
       };
-      setHistory((prev) => prev.map((row) => (
-        row.id === draftId
-          ? { ...approvedRow, draft: stillActive ? current!.draft : (serverDraft?.draft || row.draft) }
-          : row
-      )));
-      if (stillActive) {
-        const userEditedDuringApprove = JSON.stringify(current!.draft) !== draftSnapshot;
-        if (userEditedDuringApprove) {
-          setActiveDraft((prev) => (
-            prev && prev.id === draftId
-              ? {
-                ...prev,
-                status: 'approved',
-                segment_id: approvedRow.segment_id,
-                content_safety_warnings: warnings,
-                updated_at: serverDraft?.updated_at || prev.updated_at,
-              }
-              : prev
-          ));
-        } else {
-          setActiveDraft(approvedRow);
-        }
-        alert("Campaign approved and segment created!");
+      const preserveDraft = stillActive && JSON.stringify(current!.draft) !== draftSnapshot
+        ? current!.draft
+        : undefined;
+      await applyApprovedHistory(draftId, approvedRow, !!stillActive, preserveDraft);
+      if (!stillActive) return;
+      if (preserveDraft) {
+        setActiveDraft((prev) => (
+          prev && prev.id === draftId
+            ? {
+              ...prev,
+              status: 'approved',
+              segment_id: approvedRow.segment_id,
+              content_safety_warnings: warnings,
+              updated_at: serverDraft?.updated_at || prev.updated_at,
+            }
+            : prev
+        ));
+      } else {
+        setActiveDraft(approvedRow);
       }
+      alert("Campaign approved and segment created!");
     };
 
     if (d.ok) {
       clearApproveError(draftId);
       const warnings = d.content_safety_warnings || d.draft?.content_safety_warnings || [];
-      mergeApprovedDraft(d.draft, warnings);
-      await loadHistory();
+      await finishApproved(d.draft, warnings);
+      return;
+    }
+
+    const code = d.error || "";
+    if (code === "already_approved" && d.draft) {
+      clearApproveError(draftId);
+      await finishApproved(d.draft, d.draft.content_safety_warnings || []);
       return;
     }
 
     const current = activeDraftRef.current;
     if (!current || current.id !== draftId) return;
 
-    const code = d.error || "";
-    if (code === "already_approved" && d.draft) {
-      clearApproveError(draftId);
-      const warnings = d.draft.content_safety_warnings || [];
-      mergeApprovedDraft(d.draft, warnings);
-      await loadHistory();
-      return;
-    }
     if (code === "content_safety_blocked" || code === "content_safety_unavailable") {
       setApproveErrors((prev) => ({
         ...prev,
@@ -435,11 +449,11 @@ export default function CampaignComposer() {
 
               {activeDraft.status === 'draft' && (
                 <div style={{ display: "flex", gap: 12 }}>
-                  <button className="btn btn-outline" style={{ flex: 1 }} onClick={saveDraft} disabled={saving || approving}>
+                  <button className="btn btn-outline" style={{ flex: 1 }} onClick={saveDraft} disabled={saving || isApprovingActive}>
                     {saving ? "Saving..." : "Save Changes"}
                   </button>
-                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={approveDraft} disabled={saving || approving}>
-                    {approving ? "Approving..." : "Approve & Create Segment"}
+                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={approveDraft} disabled={saving || isApprovingActive}>
+                    {isApprovingActive ? "Approving..." : "Approve & Create Segment"}
                   </button>
                 </div>
               )}

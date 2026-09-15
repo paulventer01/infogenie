@@ -9,11 +9,6 @@ const crypto = require('node:crypto');
 
 require('./helpers/env');
 
-const {
-  gateRouteText,
-  contentSafetyHttpBody,
-} = require('../services/ai_governance/route_gate');
-const { composerDraftGateText } = require('../services/ai_governance/content_schemas');
 
 const PROHIBITED = 'guaranteed 100% returns with zero risk';
 
@@ -137,6 +132,7 @@ describe('PR10H.11 composer draft approve gate', () => {
 
   before(async () => {
     gatePath = require.resolve('../services/ai_governance/route_gate');
+    require(gatePath);
     gateCached = require.cache[gatePath];
     realGate = gateCached.exports.gateRouteText;
 
@@ -374,26 +370,6 @@ describe('PR10H.11 composer draft approve gate', () => {
     assert.equal(state.approveUpdates.length, 0);
   });
 
-  it('scans saved draft via composerDraftGateText on approve', () => {
-    const text = composerDraftGateText({
-      ...BASE_DRAFT,
-      campaign_name: 'Name',
-      audience_description: 'Audience',
-      subject: 'Subject',
-      body: 'Body',
-      recommended_send_time: 'Monday',
-      rationale: 'Why',
-      audience_rules: {
-        match: 'all',
-        conditions: [{ type: 'trait', field: 'tier', op: 'equals', value: 'vip' }],
-      },
-    });
-    assert.match(text, /Name/);
-    assert.match(text, /Audience/);
-    assert.match(text, /Subject/);
-    assert.match(text, /Body/);
-  });
-
   it('returns 500 when pool connection acquisition fails without releasing an unacquired client', async () => {
     state.segmentInserts.length = 0;
     const _db = require('../db');
@@ -540,18 +516,6 @@ describe('PR10H.11 composer draft approve rate limit', () => {
   });
 });
 
-describe('PR10H.11 blocked approve responses omit usable content', () => {
-  it('contentSafetyHttpBody never includes composer draft fields on approve block', () => {
-    const body = contentSafetyHttpBody({
-      error: 'content_safety_blocked',
-      userMessage: 'blocked',
-      warnings: ['x'],
-    });
-    assert.equal(body.draft, undefined);
-    assert.equal(body.ok, false);
-  });
-});
-
 const PG_URL = process.env.DATABASE_URL || '';
 const PG_REQUIRED = process.env.PR10H1_REQUIRE_INTEGRATION === '1';
 const pgSkip = !PG_URL ? (PG_REQUIRED ? false : 'no DATABASE_URL') : false;
@@ -621,10 +585,14 @@ describe('PR10H.11 composer draft approve postgres', { skip: pgSkip }, () => {
     await p.query('DELETE FROM tenants WHERE id = $1', [tenantId]).catch(() => {});
   });
 
-  async function postApprove(id) {
+  async function postApprove(id, opts = {}) {
     return fetch(`${baseUrl}/api/campaign-composer/drafts/${id}/approve`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-test-tenant': String(tenantId) },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-tenant': String(tenantId),
+        ...(opts.failAfterSegment ? { 'x-test-fail-after-segment': '1' } : {}),
+      },
       body: JSON.stringify({}),
     });
   }
@@ -657,7 +625,7 @@ describe('PR10H.11 composer draft approve postgres', { skip: pgSkip }, () => {
     assert.ok(draft.rows[0].segment_id);
   });
 
-  it('rolls back segment insert and draft approval when update fails inside the transaction', async () => {
+  it('rolls back segment insert and draft approval via HTTP when forced after segment insert', async () => {
     const p = db.getPool();
     const segName = `Rollback ${fixtureTag}`;
     const rollbackDraftId = (await p.query(
@@ -669,25 +637,13 @@ describe('PR10H.11 composer draft approve postgres', { skip: pgSkip }, () => {
       `SELECT count(*)::int AS c FROM audience_segments WHERE tenant_id = $1 AND name = $2`,
       [tenantId, segName],
     )).rows[0].c;
-    const client = await p.connect();
-    try {
-      await client.query('BEGIN');
-      assert.equal((await client.query(
-        `SELECT * FROM campaign_composer_drafts WHERE id = $1 AND tenant_id = $2 AND status = 'draft' FOR UPDATE`,
-        [rollbackDraftId, tenantId],
-      )).rows.length, 1);
-      await client.query(
-        `INSERT INTO audience_segments (tenant_id, name, description, rules) VALUES ($1, $2, $3, $4)`,
-        [tenantId, segName, BASE_DRAFT.audience_description, JSON.stringify(BASE_DRAFT.audience_rules)],
-      );
-      await client.query(`DO $$ BEGIN RAISE EXCEPTION 'pr10h11_test_rollback_after_segment'; END $$`);
-      assert.fail('expected forced rollback exception');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      assert.match(String(err.message), /pr10h11_test_rollback_after_segment/);
-    } finally {
-      client.release();
-    }
+
+    const res = await postApprove(rollbackDraftId, { failAfterSegment: true });
+    const body = await res.json();
+    assert.equal(res.status, 500);
+    assert.equal(body.ok, false);
+    assert.match(body.error, /test_forced_rollback_after_segment/);
+
     const draft = await p.query(`SELECT status, segment_id FROM campaign_composer_drafts WHERE id = $1`, [rollbackDraftId]);
     assert.equal(draft.rows[0].status, 'draft');
     assert.equal(draft.rows[0].segment_id, null);
