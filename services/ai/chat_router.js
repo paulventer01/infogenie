@@ -347,7 +347,7 @@ async function chatForCategory(category, messages, opts = {}) {
 
     if (result && contextPack && !result.context_pack_id) result.context_pack_id = contextPack.id;
 
-    if (result?.content && opts.skipContentGate !== true) {
+    if (result?.content) {
       const { gateGeneratedContent } = require('../ai_governance/hooks');
       const gated = await gateGeneratedContent({
         tenantId: opts.tenantId ?? null,

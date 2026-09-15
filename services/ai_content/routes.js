@@ -228,6 +228,41 @@ module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
   const { _tkvCtx, _tkvRead, _tkvWrite, _tkvMutate, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path } = ctx;
+  const {
+    gateRouteText,
+    isContentSafetyError,
+    contentSafetyHttpBody,
+    attachContentSafetyWarnings,
+  } = require('./services/ai_governance/route_gate');
+
+  async function _tenantForGate(req, label) {
+    if (!_tkvCtx || typeof _tkvCtx.resolveTenantId !== 'function') return null;
+    try {
+      return await _tkvCtx.resolveTenantId(req, { label: label || 'ai-content:gate' });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function _gateRoutePayload(req, text, opts = {}) {
+    const tid = opts.tenantId != null ? opts.tenantId : await _tenantForGate(req, opts.label);
+    return gateRouteText({
+      tenantId: tid,
+      userId: req.user?.id || null,
+      surface: opts.surface || 'ai_content',
+      action: opts.action || 'generate_content',
+      text: String(text || ''),
+      hasContext: !!opts.hasContext,
+    });
+  }
+
+  async function _respondGatedJson(res, req, text, payload, opts = {}) {
+    const gated = await _gateRoutePayload(req, text, opts);
+    if (!gated.ok) {
+      return res.status(403).json(contentSafetyHttpBody(gated));
+    }
+    return res.status(opts.status || 200).json(attachContentSafetyWarnings(payload, gated.warnings));
+  }
 
   // Hermetic mounts that only inject read/write still serialize in-process
   // with the same promise-chain shape as server.js `_tkvMutate`.
@@ -298,8 +333,20 @@ module.exports = function register(app, ctx) {
     }
   }
 
-  async function _respondAttackPlan(res, tid, meta, response) {
+  async function _respondAttackPlan(res, req, tid, meta, response) {
     if (response && response.ok && response.plan) {
+      const gated = await _gateRoutePayload(req, JSON.stringify(response.plan), {
+        tenantId: tid,
+        label: 'attack-plan:gate',
+      });
+      if (!gated.ok) {
+        return res.status(403).json({
+          ok: false,
+          plan: null,
+          ...contentSafetyHttpBody(gated),
+        });
+      }
+      response = attachContentSafetyWarnings(response, gated.warnings);
       await _tryPersistAttackPlan(tid, {
         competitor: meta.competitor,
         myDomain: meta.myDomain,
@@ -379,8 +426,11 @@ Structure your response EXACTLY as plain text (no markdown headers, use emoji bu
 Keep the entire response under 350 words. Be specific and actionable.`;
     const completion = await openai.chat.completions.create({ model:'gpt-5', messages:[{ role:'user', content:prompt }], max_tokens:500 });
     const audit = completion.choices[0]?.message?.content?.trim() || '';
-    res.json({ audit });
+    return await _respondGatedJson(res, req, audit, { audit }, { label: 'ai-visibility-audit' });
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ audit: null, error: err.code, userMessage: err.message });
+    }
     res.json({ audit: null, error: err.message });
   }
 });
@@ -424,8 +474,11 @@ Format as plain text (no markdown, use emoji bullets). Structure EXACTLY as belo
 Keep the entire response under 420 words. Be specific and actionable.`;
     const completion = await openai.chat.completions.create({ model: 'gpt-5', messages: [{ role: 'user', content: prompt }], max_tokens: 620 });
     const report = completion.choices[0]?.message?.content?.trim() || '';
-    res.json({ report });
+    return await _respondGatedJson(res, req, report, { report }, { label: 'ai-brand-monitor' });
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ report: null, error: err.code, userMessage: err.message });
+    }
     res.json({ report: null, error: err.message });
   }
 });
@@ -495,8 +548,13 @@ Return ONLY raw JSON: {
       } catch {}
     }
 
-    res.json({ article, claudeExtras, dualAI: !!claudeExtras });
+    const payload = { article, claudeExtras, dualAI: !!claudeExtras };
+    const scanText = [article, claudeExtras ? JSON.stringify(claudeExtras) : ''].filter(Boolean).join('\n');
+    return await _respondGatedJson(res, req, scanText, payload, { label: 'ai-build-content' });
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ article: null, error: err.code, userMessage: err.message });
+    }
     res.json({ article: null, error: err.message });
   }
 });
@@ -549,8 +607,11 @@ WORD COUNT TARGET
 Keep the total response under 500 words. Be specific, not generic.`;
     const completion = await openai.chat.completions.create({ model: 'gpt-5', messages: [{ role: 'user', content: prompt }], max_tokens: 700 });
     const brief = completion.choices[0]?.message?.content?.trim() || '';
-    res.json({ brief });
+    return await _respondGatedJson(res, req, brief, { brief }, { label: 'ai-content-brief' });
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ brief: null, error: err.code, userMessage: err.message });
+    }
     res.json({ brief: null, error: err.message });
   }
 });
@@ -565,8 +626,11 @@ app.post('/api/ai-social-caption', async (req, res) => {
     ];
     const completion = await openai.chat.completions.create({ model:'gpt-5', messages: msgs, max_tokens: 350 });
     const caption = completion.choices[0]?.message?.content?.trim() || '';
-    res.json({ caption });
+    return await _respondGatedJson(res, req, caption, { caption }, { label: 'ai-social-caption' });
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ caption: '', error: err.code, userMessage: err.message });
+    }
     res.json({ caption: '', error: err.message });
   }
 });
@@ -630,13 +694,18 @@ Make KPIs realistic for the industry and budget. Use authoritative, professional
     raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || !parsed.executive_summary) {
-      return res.json(fallback());
+      const fb = fallback();
+      return await _respondGatedJson(res, req, JSON.stringify(fb), fb, { label: 'agency-report' });
     }
-    return res.json({ ok: true, ...parsed });
+    const payload = { ok: true, ...parsed };
+    return await _respondGatedJson(res, req, JSON.stringify(payload), payload, { label: 'agency-report' });
   } catch (err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ ok: false, error: err.code, userMessage: err.message });
+    }
     console.warn('[agency-report]', err.message);
-    // Always return a usable report body with ok:true so the UI can list it in Reports.
-    return res.json(fallback());
+    const fb = fallback();
+    return await _respondGatedJson(res, req, JSON.stringify(fb), fb, { label: 'agency-report' });
   }
 });
 
@@ -664,7 +733,8 @@ Keep it under 200 words. Return only the strategy text, no headings.`;
           { role: 'user', content: prompt }
         ]
       });
-      return res.json({ counter: completion.choices[0]?.message?.content?.trim() || '' });
+      const counter = completion.choices[0]?.message?.content?.trim() || '';
+      return await _respondGatedJson(res, req, counter, { counter }, { label: 'reengage-copy' });
     }
 
     const context = sequenceStep
@@ -730,8 +800,12 @@ Return valid JSON only.`;
     let raw = completion.choices[0]?.message?.content?.trim() || '{}';
     raw = raw.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/```$/,'').trim();
     const parsed = JSON.parse(raw);
-    res.json(parsed);
+    const scanText = JSON.stringify(parsed);
+    return await _respondGatedJson(res, req, scanText, parsed, { label: 'reengage-copy' });
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ error: err.code, userMessage: err.message });
+    }
     res.status(500).json({ error: err.message, email: { subject: 'We miss you', body: 'Hi there,\n\nWe noticed you\'ve been away for a while and wanted to reach out personally.\n\nA lot has changed since you last visited — and we\'d love to show you what\'s new.\n\nWould you be open to a quick 10-minute call this week?\n\nBest,\nThe Team' }, ad: { headline: 'We\'d love to have you back', body: 'See what\'s new — you\'re just one click away.', cta: 'Come Back Now' }, social: 'Hi [Name], hope things are going well at [Company]! I\'d love to reconnect and share what\'s new with us. Worth a quick chat?' });
   }
 });
@@ -793,7 +867,7 @@ app.post('/api/ai-attack-plan', async (req, res) => {
     const canOpenAI = _usableLlmKey(_openaiEnvKey()) && !!openai;
     const canAnthropic = _usableLlmKey(_anthropicEnvKey()) && !!anthropic;
     if (!canOpenAI && !canAnthropic) {
-      return await _respondAttackPlan(res, tid, templateInput, _templateAttackPlanResponse(templateInput));
+      return await _respondAttackPlan(res, req, tid, templateInput, _templateAttackPlanResponse(templateInput));
     }
 
     const prefillSuffix = (prefillContext ? '\n\nSTRATEGIC CONTEXT — HIGHEST PRIORITY: ' + prefillContext : '') +
@@ -886,13 +960,13 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
 
     // ── If only one succeeded, return it directly ────────────────────────────
     if (!gptPlan && !claudePlan) {
-      return await _respondAttackPlan(res, tid, templateInput, _templateAttackPlanResponse(templateInput));
+      return await _respondAttackPlan(res, req, tid, templateInput, _templateAttackPlanResponse(templateInput));
     }
     if (!gptPlan) {
-      return await _respondAttackPlan(res, tid, templateInput, { ok: true, plan: claudePlan, sources: ['Claude'] });
+      return await _respondAttackPlan(res, req, tid, templateInput, { ok: true, plan: claudePlan, sources: ['Claude'] });
     }
     if (!claudePlan) {
-      return await _respondAttackPlan(res, tid, templateInput, { ok: true, plan: gptPlan, sources: ['GPT-4o'] });
+      return await _respondAttackPlan(res, req, tid, templateInput, { ok: true, plan: gptPlan, sources: ['GPT-4o'] });
     }
 
     // ── Both succeeded — merge in code (no extra API call) ───────────────────
@@ -948,7 +1022,7 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
       criticalWins:      mergedWins
     };
 
-    return await _respondAttackPlan(res, tid, templateInput, { ok: true, plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
+    return await _respondAttackPlan(res, req, tid, templateInput, { ok: true, plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
   } catch(err) {
     res.json({ ok: false, plan: null, error: err.message });
   }
@@ -1125,7 +1199,8 @@ Return ONLY this JSON (no markdown, no explanation):
         }
 
         const hasClaude = !!sanitised.claude_angle;
-        return res.json({ ...sanitised, source: hasClaude ? 'dual_ai' : 'gpt4' });
+        const payload = { ...sanitised, source: hasClaude ? 'dual_ai' : 'gpt4' };
+        return await _respondGatedJson(res, req, JSON.stringify(payload), payload, { label: 'ai-creative' });
       }
 
       if (gptResult.status === 'rejected') console.warn('[ai-creative] GPT-4 failed:', gptResult.reason?.message);
@@ -1143,7 +1218,8 @@ Return ONLY this JSON (no markdown, no explanation):
         const text = r?.result || r?.response || r?.message || r?.content || '';
         const parsed = parseAIResponse(text);
         if (parsed && Array.isArray(parsed.headlines)) {
-          return res.json({ ...sanitiseAdCopy(parsed), source: 'rapidapi_gpt' });
+          const payload = { ...sanitiseAdCopy(parsed), source: 'rapidapi_gpt' };
+          return await _respondGatedJson(res, req, JSON.stringify(payload), payload, { label: 'ai-creative' });
         }
       } catch(e) { console.warn('[ai-creative] RapidAPI failed:', e.message); }
     }
@@ -1165,7 +1241,7 @@ Return ONLY this JSON (no markdown, no explanation):
     ];
     const pick = Math.floor(Math.random() * hSets.length);
 
-    res.json({
+    const fallbackPayload = {
       source: 'smart_fallback',
       headlines: hSets[pick],
       descriptions: dSets[pick % dSets.length],
@@ -1180,9 +1256,13 @@ Return ONLY this JSON (no markdown, no explanation):
       ],
       strategy_reasoning: `${toneWord.charAt(0).toUpperCase() + toneWord.slice(1)} creative targeting ${persona} on ${platform}, leading with "${differentiator}" as the core value proposition. Positioning as the smarter, more ROI-efficient choice drives high-intent clicks from audiences already evaluating their options.`,
       competitor_angle: `"Most ${industry} tools lock you into long contracts with no performance guarantee — we don't. ${cta} and see the difference in week one."`
-    });
+    };
+    return await _respondGatedJson(res, req, JSON.stringify(fallbackPayload), fallbackPayload, { label: 'ai-creative' });
 
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ error: err.code, userMessage: err.message, source: 'error' });
+    }
     console.error('[ai-creative] error:', err.message);
     res.status(500).json({ error: err.message, source: 'error' });
   }
@@ -1342,7 +1422,8 @@ Return ONLY this exact JSON structure:
         const parsed = parseJSON(text);
         if (parsed && Array.isArray(parsed.headlines) && parsed.headlines.length >= 2) {
           console.log('[ai-campaign-brief] GPT-4o success');
-          return res.json({ ...parsed, source: 'gpt4o' });
+          const payload = { ...parsed, source: 'gpt4o' };
+          return await _respondGatedJson(res, req, JSON.stringify(payload), payload, { label: 'ai-campaign-brief' });
         }
       } catch(e) { console.warn('[ai-campaign-brief] GPT-4o failed:', e.message); }
     }
@@ -1350,7 +1431,7 @@ Return ONLY this exact JSON structure:
     // Smart fallback — always contextual, never generic
     console.log('[ai-campaign-brief] Using smart fallback');
     const budgetNum = parseInt((budget || '2000').replace(/[^0-9]/g,'')) || 2000;
-    res.json({
+    const fallbackPayload = {
       source: 'fallback',
       headlines: [
         `Beat ${topComp} — ${platform === 'Google Ads' ? 'Search' : 'Start'} Free`,
@@ -1380,9 +1461,13 @@ Return ONLY this exact JSON structure:
         `Set daily spend caps to maintain consistent pacing within monthly budget`,
         `Launch A/B test variants for ad copy headlines and audience targeting`
       ]
-    });
+    };
+    return await _respondGatedJson(res, req, JSON.stringify(fallbackPayload), fallbackPayload, { label: 'ai-campaign-brief' });
 
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ error: err.code, userMessage: err.message, source: 'error' });
+    }
     console.error('[ai-campaign-brief] error:', err.message);
     res.status(500).json({ error: err.message, source: 'error' });
   }
@@ -1806,8 +1891,11 @@ Return ONLY the complete HTML — no markdown, no explanation, just the raw HTML
     html = html.replace(/action=["']#["']/g, `action="${domainUrl}"`);
     html = html.replace(/action=["']["']/g, `action="${domainUrl}"`);
 
-    res.json({ html, campName, domain });
+    return await _respondGatedJson(res, req, html, { html, campName, domain }, { label: 'landing-page' });
   } catch (err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ error: err.code, userMessage: err.message });
+    }
     console.error('Landing page generation error:', err.message);
     res.status(500).json({ error: err.message });
   }
@@ -1848,8 +1936,12 @@ Return ONLY the article HTML content, no markdown, no explanation.`;
     let content = completion.choices[0]?.message?.content || '';
     content = content.replace(/^```html\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'').trim();
     const wordCountActual = content.replace(/<[^>]+>/g,'').trim().split(/\s+/).length;
-    res.json({ content, title, keyword, wordCount: wordCountActual });
+    const payload = { content, title, keyword, wordCount: wordCountActual };
+    return await _respondGatedJson(res, req, content, payload, { label: 'generate-seo-article' });
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ error: err.code, userMessage: err.message });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -1882,8 +1974,12 @@ Return a JSON object with a "topics" array of ${count} objects. Return ONLY vali
     });
     const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
     const topics = parsed.topics || [];
-    res.json({ topics });
+    const payload = { topics };
+    return await _respondGatedJson(res, req, JSON.stringify(payload), payload, { label: 'generate-article-topics' });
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ error: err.code, userMessage: err.message });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -1921,8 +2017,12 @@ Return ONLY valid JSON, no markdown.`;
     // DataForSEO Backlinks source is not active for this deployment). Tag the
     // payload as fabricated so the central data-mode enforcement layer can badge
     // it in demo mode or withhold it (data_unavailable) in strict mode.
-    res.json({ opportunities, source: 'demo', _estimated: true });
+    const payload = { opportunities, source: 'demo', _estimated: true };
+    return await _respondGatedJson(res, req, JSON.stringify(payload), payload, { label: 'backlink-opportunities' });
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ error: err.code, userMessage: err.message });
+    }
     // Deterministic real-source failure → record an issue for admins (the AI
     // fallback that normally masks this could not be produced at all).
     try {
@@ -1971,8 +2071,12 @@ Return a JSON object with a "keywords" array. Return ONLY valid JSON.`;
     });
     const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
     const keywords = parsed.keywords || [];
-    res.json({ keywords });
+    const payload = { keywords };
+    return await _respondGatedJson(res, req, JSON.stringify(payload), payload, { label: 'keyword-research' });
   } catch(err) {
+    if (isContentSafetyError(err)) {
+      return res.status(403).json({ error: err.code, userMessage: err.message });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -2031,6 +2135,14 @@ app.post('/api/publish-to-wordpress', async (req, res) => {
     return res.status(400).json({ error: 'siteUrl, username, appPassword and content are required' });
   }
   try {
+    const gated = await _gateRoutePayload(req, String(content), {
+      label: 'publish-to-wordpress',
+      surface: 'ai_content',
+      action: 'publish_content',
+    });
+    if (!gated.ok) {
+      return res.status(403).json(contentSafetyHttpBody(gated));
+    }
     const base = siteUrl.startsWith('http') ? siteUrl.replace(/\/$/, '') : 'https://' + siteUrl.replace(/\/$/, '');
     const creds = Buffer.from(`${username}:${appPassword}`).toString('base64');
     const body  = {

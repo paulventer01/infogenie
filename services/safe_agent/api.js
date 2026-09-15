@@ -75,6 +75,31 @@ Return strict JSON:
     simulation = { expected_outcome:'Incremental improvement in campaign efficiency', confidence:55, best_case:'15% ROAS lift', worst_case:'No significant change', risk_factors:['Market conditions may vary'], estimated_revenue_impact:0, estimated_roas_change:0 };
   }
 
+  try {
+    const { gateRouteText } = require('../ai_governance/route_gate');
+    const proposalText = JSON.stringify({ proposal, simulation, title: proposal._title || objective });
+    const gated = await gateRouteText({
+      tenantId: tid,
+      userId: req.user?.id || null,
+      surface: 'safe_agent',
+      action: 'generate_content',
+      text: proposalText,
+    });
+    if (!gated.ok) {
+      return res.status(403).json({
+        ok: false,
+        error: gated.error || 'content_safety_blocked',
+        userMessage: gated.userMessage,
+      });
+    }
+  } catch (_) {
+    return res.status(503).json({
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: 'Content safety checks are temporarily unavailable. Generation was stopped to protect your brand.',
+    });
+  }
+
   const title = proposal._title || objective.slice(0,100);
   const p = await _db.getPool();
   const row = await p.query(

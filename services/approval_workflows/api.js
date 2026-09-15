@@ -162,9 +162,20 @@ router.post('/execute/:id', async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'approvals:execute' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const p = await _db.getPool();
+  const existing = await p.query(
+    `SELECT * FROM approval_requests WHERE id=$1 AND tenant_id=$2`,
+    [req.params.id, tid],
+  );
+  if (!existing.rows.length) return res.status(404).json({ ok:false, error:'not found' });
+  if (existing.rows[0].status === 'executed') {
+    return res.json({ ok:true, request: existing.rows[0], already_executed: true });
+  }
+  if (existing.rows[0].status !== 'approved') {
+    return res.status(404).json({ ok:false, error:'not found or not approved' });
+  }
   const r = await p.query(
     `UPDATE approval_requests SET status='executed', executed_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status='approved' RETURNING *`,
-    [req.params.id, tid]
+    [req.params.id, tid],
   );
   if (!r.rows.length) return res.status(404).json({ ok:false, error:'not found or not approved' });
   res.json({ ok:true, request: r.rows[0] });

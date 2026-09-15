@@ -645,9 +645,14 @@ router.post('/:id/reject', _safeAsync(async (req, res) => {
 async function _approveAndPublish(tid, draftId, opts = {}) {
   const draft = await _getDraft(tid, draftId);
   if (!draft) return { ok: false, error: 'not found' };
-  if (draft.status !== 'pending_approval' && draft.status !== 'approved') {
-    // allow approve from pending only
-    if (draft.status !== 'pending_approval') return { ok: false, error: `cannot approve status "${draft.status}"` };
+  if (draft.status === 'published' || draft.status === 'scheduled') {
+    return { ok: false, error: 'already_published', draft };
+  }
+  if (draft.status === 'approved' && draft.meta?.published_at) {
+    return { ok: false, error: 'already_published', draft };
+  }
+  if (!['pending_approval', 'approved', 'failed'].includes(draft.status)) {
+    return { ok: false, error: `cannot approve status "${draft.status}"` };
   }
   await _updateDraft(tid, draftId, {
     status: 'approved',
