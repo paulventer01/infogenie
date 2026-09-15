@@ -17,8 +17,11 @@ async function ensureSafeAgentSchema() {
       rollback_reason TEXT,
       outcome JSONB DEFAULT '{}',
       budget_guardrail NUMERIC(12,2),
+      content_safety_warnings JSONB NOT NULL DEFAULT '[]',
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+    ALTER TABLE safe_agent_proposals
+      ADD COLUMN IF NOT EXISTS content_safety_warnings JSONB NOT NULL DEFAULT '[]';
     CREATE TABLE IF NOT EXISTS safe_agent_audit_log (
       id SERIAL PRIMARY KEY,
       tenant_id INT NOT NULL REFERENCES tenants(id),

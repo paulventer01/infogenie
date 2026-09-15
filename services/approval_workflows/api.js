@@ -2,7 +2,22 @@ const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { createRateLimiter } = require('../security/rate_limit');
 const OpenAI = require('openai');
+
+const approvalsExecuteLimiter = createRateLimiter({
+  name: 'approvals-execute',
+  windowMs: 60_000,
+  max: 30,
+  failClosed: true,
+  keyFn: (req) => {
+    const tid = req.tenant?.id;
+    if (tid != null) return `approvals-execute|${tid}`;
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+      || req.socket?.remoteAddress || 'unknown';
+    return `approvals-execute|ip|${ip}`;
+  },
+});
 
 const ACTION_TYPES = ['pause_campaign','scale_budget','launch_campaign','send_email','publish_content','social_post_publish','audience_change','price_change','other'];
 
@@ -158,13 +173,25 @@ router.post('/reject/:id', async (req, res) => {
   res.json({ ok:true, request: r.rows[0] });
 });
 
-router.post('/execute/:id', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on tenant or IP
+router.post('/execute/:id', approvalsExecuteLimiter, async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'approvals:execute' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const p = await _db.getPool();
+  const existing = await p.query(
+    `SELECT * FROM approval_requests WHERE id=$1 AND tenant_id=$2`,
+    [req.params.id, tid],
+  );
+  if (!existing.rows.length) return res.status(404).json({ ok:false, error:'not found' });
+  if (existing.rows[0].status === 'executed') {
+    return res.json({ ok:true, request: existing.rows[0], already_executed: true });
+  }
+  if (existing.rows[0].status !== 'approved') {
+    return res.status(404).json({ ok:false, error:'not found or not approved' });
+  }
   const r = await p.query(
     `UPDATE approval_requests SET status='executed', executed_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status='approved' RETURNING *`,
-    [req.params.id, tid]
+    [req.params.id, tid],
   );
   if (!r.rows.length) return res.status(404).json({ ok:false, error:'not found or not approved' });
   res.json({ ok:true, request: r.rows[0] });
