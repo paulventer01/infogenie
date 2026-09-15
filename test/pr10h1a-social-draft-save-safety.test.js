@@ -174,6 +174,24 @@ describe('PR-1a social draft create gate (CR-055)', () => {
     }
   });
 
+  it('blocks create when prohibited copy sits beyond legacy caption or alt truncation', async () => {
+    for (const body of [
+      { profileId: 'p1', text: captionWithProhibitedSuffix(), platforms: ['instagram'] },
+      {
+        profileId: 'p1',
+        text: SAFE_TEXT,
+        platforms: ['instagram'],
+        meta: { alt_text: altWithProhibitedSuffix() },
+      },
+    ]) {
+      const r = await jsonFetch(server, 'POST', '/api/social-drafts', { body });
+      assert.equal(r.status, 403);
+      assert.ok(r.body.error === 'content_safety_blocked' || r.body.error === 'content_safety_block');
+    }
+    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
+    assert.equal(listed.body.drafts.length, 0);
+  });
+
   it('persists warning-only results and reloads on GET', async () => {
     const orch = require('../services/ai_governance/orchestrator');
     const loadPolicyOrig = orch.loadPolicy;
@@ -227,6 +245,23 @@ describe('PR-1a social draft PATCH gate (CR-057)', () => {
     assert.equal(patched.body.draft, undefined);
     const got = await jsonFetch(server, 'GET', `/api/social-drafts/${id}`);
     assert.equal(got.body.draft.text, SAFE_TEXT);
+  });
+
+  it('blocks merged PATCH when prohibited suffix sits beyond legacy caption or alt truncation', async () => {
+    const created = await jsonFetch(server, 'POST', '/api/social-drafts', {
+      body: { profileId: 'p1', text: SAFE_TEXT, platforms: ['instagram'] },
+    });
+    const id = created.body.draft.id;
+    for (const body of [
+      { text: captionWithProhibitedSuffix() },
+      { meta: { alt_text: altWithProhibitedSuffix() } },
+    ]) {
+      const patched = await jsonFetch(server, 'PATCH', `/api/social-drafts/${id}`, { body });
+      assert.equal(patched.status, 403);
+    }
+    const got = await jsonFetch(server, 'GET', `/api/social-drafts/${id}`);
+    assert.equal(got.body.draft.text, SAFE_TEXT);
+    assert.equal(got.body.draft.meta?.alt_text, undefined);
   });
 
   it('rejects cross-tenant PATCH without mutation', async () => {
@@ -293,6 +328,26 @@ describe('PR-1a social draft bulk gate (CR-056)', () => {
     assert.equal(listed.body.drafts.length, 0);
   });
 
+  it('blocks bulk when prohibited suffix sits beyond legacy caption or alt truncation', async () => {
+    for (const items of [
+      [
+        { caption: SAFE_TEXT, platforms: ['instagram'] },
+        { caption: captionWithProhibitedSuffix(), platforms: ['linkedin'] },
+      ],
+      [
+        { caption: SAFE_TEXT, platforms: ['instagram'] },
+        { caption: 'Alt gated item', alt_text: altWithProhibitedSuffix(), platforms: ['linkedin'] },
+      ],
+    ]) {
+      const r = await jsonFetch(server, 'POST', '/api/social-drafts/bulk', {
+        body: { profileId: 'p1', items },
+      });
+      assert.equal(r.status, 403);
+    }
+    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
+    assert.equal(listed.body.drafts.length, 0);
+  });
+
   it('rolls back memory bulk inserts when a later item fails to persist', async () => {
     const r = await jsonFetch(server, 'POST', '/api/social-drafts/bulk', {
       headers: { 'x-test-bulk-fail-after-index': '1' },
@@ -308,106 +363,6 @@ describe('PR-1a social draft bulk gate (CR-056)', () => {
     assert.equal(r.body.error, 'bulk_insert_failed');
     const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
     assert.equal(listed.body.drafts.length, 0);
-  });
-});
-
-describe('PR-1a scan coverage beyond legacy truncation limits', () => {
-  let server;
-  let draftsRouter;
-
-  before(async () => {
-    const { app, draftsRouter: router } = mountApp();
-    draftsRouter = router;
-    server = await listen(app);
-  });
-
-  after(async () => {
-    if (server) await new Promise((r) => server.close(r));
-  });
-
-  beforeEach(() => {
-    if (typeof draftsRouter._resetMem === 'function') draftsRouter._resetMem();
-  });
-
-  it('blocks create when prohibited copy sits beyond the legacy caption truncation point', async () => {
-    const r = await jsonFetch(server, 'POST', '/api/social-drafts', {
-      body: { profileId: 'p1', text: captionWithProhibitedSuffix(), platforms: ['instagram'] },
-    });
-    assert.equal(r.status, 403);
-    assert.ok(r.body.error === 'content_safety_blocked' || r.body.error === 'content_safety_block');
-    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
-    assert.equal(listed.body.drafts.length, 0);
-  });
-
-  it('blocks create when prohibited copy sits beyond the legacy alt truncation point', async () => {
-    const r = await jsonFetch(server, 'POST', '/api/social-drafts', {
-      body: {
-        profileId: 'p1',
-        text: SAFE_TEXT,
-        platforms: ['instagram'],
-        meta: { alt_text: altWithProhibitedSuffix() },
-      },
-    });
-    assert.equal(r.status, 403);
-    assert.ok(r.body.error === 'content_safety_blocked' || r.body.error === 'content_safety_block');
-    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
-    assert.equal(listed.body.drafts.length, 0);
-  });
-
-  it('blocks bulk when prohibited caption suffix sits beyond legacy truncation', async () => {
-    const r = await jsonFetch(server, 'POST', '/api/social-drafts/bulk', {
-      body: {
-        profileId: 'p1',
-        items: [
-          { caption: SAFE_TEXT, platforms: ['instagram'] },
-          { caption: captionWithProhibitedSuffix(), platforms: ['linkedin'] },
-        ],
-      },
-    });
-    assert.equal(r.status, 403);
-    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
-    assert.equal(listed.body.drafts.length, 0);
-  });
-
-  it('blocks bulk when prohibited alt suffix sits beyond legacy truncation', async () => {
-    const r = await jsonFetch(server, 'POST', '/api/social-drafts/bulk', {
-      body: {
-        profileId: 'p1',
-        items: [
-          { caption: SAFE_TEXT, platforms: ['instagram'] },
-          { caption: 'Alt gated item', alt_text: altWithProhibitedSuffix(), platforms: ['linkedin'] },
-        ],
-      },
-    });
-    assert.equal(r.status, 403);
-    const listed = await jsonFetch(server, 'GET', '/api/social-drafts/list?profileId=p1');
-    assert.equal(listed.body.drafts.length, 0);
-  });
-
-  it('blocks merged PATCH when prohibited caption suffix sits beyond legacy truncation', async () => {
-    const created = await jsonFetch(server, 'POST', '/api/social-drafts', {
-      body: { profileId: 'p1', text: SAFE_TEXT, platforms: ['instagram'] },
-    });
-    const id = created.body.draft.id;
-    const patched = await jsonFetch(server, 'PATCH', `/api/social-drafts/${id}`, {
-      body: { text: captionWithProhibitedSuffix() },
-    });
-    assert.equal(patched.status, 403);
-    const got = await jsonFetch(server, 'GET', `/api/social-drafts/${id}`);
-    assert.equal(got.body.draft.text, SAFE_TEXT);
-  });
-
-  it('blocks merged PATCH when prohibited alt suffix sits beyond legacy truncation', async () => {
-    const created = await jsonFetch(server, 'POST', '/api/social-drafts', {
-      body: { profileId: 'p1', text: SAFE_TEXT, platforms: ['instagram'] },
-    });
-    const id = created.body.draft.id;
-    const patched = await jsonFetch(server, 'PATCH', `/api/social-drafts/${id}`, {
-      body: { meta: { alt_text: altWithProhibitedSuffix() } },
-    });
-    assert.equal(patched.status, 403);
-    const got = await jsonFetch(server, 'GET', `/api/social-drafts/${id}`);
-    assert.equal(got.body.draft.meta?.alt_text, undefined);
   });
 });
 
