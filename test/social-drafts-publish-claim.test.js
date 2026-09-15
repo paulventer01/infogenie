@@ -187,6 +187,55 @@ describe('social drafts publish claim (memory)', () => {
     }
   });
 
+  it('provider acceptance with persist failure blocks expired-claim retry without second provider call', async () => {
+    let publishCalls = 0;
+    const origPublish = drafts._publishViaZernio;
+    const origUpdate = drafts._updateDraft;
+    drafts._publishViaZernio = async () => {
+      publishCalls += 1;
+      return { ok: true, post: { id: 'z-accepted' }, httpStatus: 200 };
+    };
+    drafts._updateDraft = async (tid, id, patch) => {
+      if (patch.status === 'published' || patch.status === 'scheduled') {
+        throw new Error('persist_failed');
+      }
+      return origUpdate(tid, id, patch);
+    };
+    const prevKey = process.env.ZERNIO_API_KEY;
+    process.env.ZERNIO_API_KEY = 'test-key-live';
+    try {
+      const draft = await drafts._createForTenant(17, {
+        profile_id: 'p1',
+        status: 'draft',
+        text: 'Persist failure after accept',
+        platforms: ['linkedin'],
+      });
+      const first = await drafts._executePublishDraft(17, draft.id, { mode: 'direct' });
+      assert.equal(first.ok, false);
+      assert.equal(first.error, 'delivery_unknown');
+      assert.equal(publishCalls, 1);
+      assert.ok(first.draft?.meta?.publishing_claim);
+
+      const staleAt = new Date(Date.now() - (6 * 60 * 1000)).toISOString();
+      await origUpdate(17, draft.id, {
+        meta: {
+          ...(first.draft.meta || {}),
+          publishing_claim_at: staleAt,
+        },
+      });
+
+      const retry = await drafts._executePublishDraft(17, draft.id, { mode: 'direct' });
+      assert.equal(retry.ok, false);
+      assert.equal(retry.error, 'delivery_unknown');
+      assert.equal(publishCalls, 1);
+    } finally {
+      drafts._publishViaZernio = origPublish;
+      drafts._updateDraft = origUpdate;
+      if (prevKey === undefined) delete process.env.ZERNIO_API_KEY;
+      else process.env.ZERNIO_API_KEY = prevKey;
+    }
+  });
+
   it('expired unresolved claim on delivery_unknown still blocks publish', async () => {
     const staleAt = new Date(Date.now() - (6 * 60 * 1000)).toISOString();
     const draft = await drafts._createForTenant(15, {
@@ -260,6 +309,47 @@ describe('social drafts publish claim (postgres)', () => {
     assert.equal(winners.length, 1);
     assert.equal(blocked.length, 1);
     assert.ok(['publish_in_progress', 'cannot_claim'].includes(blocked[0].error));
+
+    await p.query(`DELETE FROM social_post_drafts WHERE tenant_id=$1`, [tenant]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenant]);
+  });
+
+  it('does not reclaim expired publishing claims with unresolved delivery', { skip: HAS_DB ? false : 'no DATABASE_URL' }, async () => {
+    const { ensureTenantSchema } = require('../services/tenants/schema');
+    const { ensureSocialDraftsSchema } = require('../services/social_drafts/schema');
+    await ensureTenantSchema();
+    await ensureSocialDraftsSchema();
+
+    db.hasDb = origHasDb;
+    const drafts = require('../services/social_drafts/api');
+    const p = db.getPool();
+    const suffix = `sdpub-stale-${Date.now()}`;
+    const tenant = (await p.query(
+      `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+      [`Social Pub stale ${suffix}`, `sdpub-stale-${suffix}`],
+    )).rows[0].id;
+
+    const inserted = await p.query(
+      `INSERT INTO social_post_drafts
+         (tenant_id, profile_id, status, text, media_urls, platforms, meta)
+       VALUES ($1,$2,'approved',$3,'[]'::jsonb,$4::jsonb,$5::jsonb)
+       RETURNING id`,
+      [
+        tenant,
+        'prof_pg',
+        'Stale claim',
+        JSON.stringify(['linkedin']),
+        JSON.stringify({
+          publishing_claim: 'pub_stale_pg',
+          publishing_claim_at: new Date(Date.now() - (6 * 60 * 1000)).toISOString(),
+        }),
+      ],
+    );
+    const draftId = inserted.rows[0].id;
+
+    const claim = await drafts._claimPublishing(tenant, draftId, { mode: 'direct' });
+    assert.equal(claim.ok, false);
+    assert.equal(claim.error, 'delivery_unknown');
 
     await p.query(`DELETE FROM social_post_drafts WHERE tenant_id=$1`, [tenant]);
     await p.query(`DELETE FROM tenants WHERE id=$1`, [tenant]);

@@ -255,9 +255,20 @@ function _stripPublishingClaim(meta) {
   };
 }
 
+function _hasUnresolvedPublishingClaim(meta) {
+  return !!(meta?.publishing_claim);
+}
+
 function _isDeliveryUnknown(draft) {
   if (!draft) return false;
-  return draft.status === 'delivery_unknown' || draft.meta?.delivery_outcome === 'unknown';
+  if (draft.status === 'delivery_unknown' || draft.meta?.delivery_outcome === 'unknown') return true;
+  return false;
+}
+
+function _claimBlockError(meta) {
+  if (!_hasUnresolvedPublishingClaim(meta)) return null;
+  if (_isStalePublishingClaim(meta)) return 'delivery_unknown';
+  return 'publish_in_progress';
 }
 
 function _claimableStatuses(mode) {
@@ -305,14 +316,7 @@ async function _claimPublishing(tid, draftId, opts = {}) {
          AND zernio_post_id IS NULL
          AND COALESCE(meta->>'published_at', '') = ''
          AND COALESCE(meta->>'delivery_outcome', '') <> 'unknown'
-         AND (
-           COALESCE(meta->>'publishing_claim', '') = ''
-           OR (
-             meta->>'publishing_claim_at' IS NOT NULL
-             AND (meta->>'publishing_claim_at')::timestamptz < NOW() - INTERVAL '5 minutes'
-             AND COALESCE(meta->>'delivery_outcome', '') <> 'unknown'
-           )
-         )
+         AND COALESCE(meta->>'publishing_claim', '') = ''
        RETURNING *`,
       [draftId, tid, allowedStatuses, token],
     );
@@ -325,12 +329,8 @@ async function _claimPublishing(tid, draftId, opts = {}) {
     if (existing.status === 'published' || existing.status === 'scheduled' || existing.meta?.published_at || existing.zernio_post_id) {
       return { ok: false, error: 'already_published', draft: existing };
     }
-    if (existing.meta?.publishing_claim && !_isStalePublishingClaim(existing.meta)) {
-      return { ok: false, error: 'publish_in_progress', draft: existing };
-    }
-    if (existing.meta?.publishing_claim && _isStalePublishingClaim(existing.meta) && _isDeliveryUnknown(existing)) {
-      return { ok: false, error: 'delivery_unknown', draft: existing };
-    }
+    const claimErr = _claimBlockError(existing.meta);
+    if (claimErr) return { ok: false, error: claimErr, draft: existing };
     if (!allowedStatuses.includes(existing.status)) {
       const err = mode === 'direct'
         ? `cannot publish status "${existing.status}"`
@@ -356,14 +356,8 @@ async function _claimPublishing(tid, draftId, opts = {}) {
       : `cannot approve status "${row.status}"`;
     return { ok: false, error: err, draft: _rowOut(row) };
   }
-  if (row.meta?.publishing_claim) {
-    if (!_isStalePublishingClaim(row.meta)) {
-      return { ok: false, error: 'publish_in_progress', draft: _rowOut(row) };
-    }
-    if (row.meta?.delivery_outcome === 'unknown') {
-      return { ok: false, error: 'delivery_unknown', draft: _rowOut(row) };
-    }
-  }
+  const claimErr = _claimBlockError(row.meta);
+  if (claimErr) return { ok: false, error: claimErr, draft: _rowOut(row) };
   const token = `pub_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const next = {
     ...row,
@@ -796,6 +790,7 @@ router.post('/:id/reject', _safeAsync(async (req, res) => {
 }));
 
 async function _executePublishDraft(tid, draftId, opts = {}) {
+  const updateDraft = module.exports._updateDraft || _updateDraft;
   const mode = opts.mode || 'approval';
   const draft = await _getDraft(tid, draftId);
   if (!draft) return { ok: false, error: 'not found' };
@@ -828,7 +823,7 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
 
   if (opts.skipZernio || opts.skip_publish) {
     if (mode === 'approval') {
-      await _updateDraft(tid, draftId, {
+      await updateDraft(tid, draftId, {
         status: 'approved',
         meta: {
           ...(draft.meta || {}),
@@ -863,7 +858,7 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
       approvedMeta.approved_at = new Date().toISOString();
       approvedMeta.reviewer_notes = opts.notes || null;
     }
-    let fresh = await _updateDraft(tid, draftId, {
+    let fresh = await updateDraft(tid, draftId, {
       status: mode === 'approval' ? 'approved' : claim.draft.status,
       meta: approvedMeta,
     });
@@ -875,24 +870,45 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
     if (classified.outcome === 'success') {
       const zid = result.post?._id || result.post?.id || null;
       const nextStatus = fresh.scheduled_for ? 'scheduled' : 'published';
-      const updated = await _updateDraft(tid, draftId, {
-        status: nextStatus,
-        zernio_post_id: zid ? String(zid) : null,
-        meta: {
-          ..._stripPublishingClaim(fresh.meta || {}),
-          published_at: new Date().toISOString(),
-          published_via: mode === 'approval' ? 'approval' : 'direct',
-        },
-      });
       try {
-        const wf = require('../social_workflows/api');
-        if (typeof wf._onSocialPublished === 'function') wf._onSocialPublished(tid, updated).catch(() => {});
-      } catch (_) {}
-      return { ok: true, draft: updated, post: result.post, published: true };
+        const updated = await updateDraft(tid, draftId, {
+          status: nextStatus,
+          zernio_post_id: zid ? String(zid) : null,
+          meta: {
+            ..._stripPublishingClaim(fresh.meta || {}),
+            published_at: new Date().toISOString(),
+            published_via: mode === 'approval' ? 'approval' : 'direct',
+          },
+        });
+        try {
+          const wf = require('../social_workflows/api');
+          if (typeof wf._onSocialPublished === 'function') wf._onSocialPublished(tid, updated).catch(() => {});
+        } catch (_) {}
+        return { ok: true, draft: updated, post: result.post, published: true };
+      } catch (persistErr) {
+        const uncertain = await updateDraft(tid, draftId, {
+          status: 'delivery_unknown',
+          meta: {
+            ...(fresh.meta || {}),
+            delivery_outcome: 'unknown',
+            delivery_uncertain_at: new Date().toISOString(),
+            provider_accepted_at: new Date().toISOString(),
+            provider_post_id: zid ? String(zid) : null,
+            last_publish_error: `persist_failed: ${persistErr.message}`,
+            last_publish_attempt_at: new Date().toISOString(),
+          },
+        });
+        return {
+          ok: false,
+          error: 'delivery_unknown',
+          uncertain: true,
+          draft: uncertain || fresh,
+        };
+      }
     }
 
     if (classified.outcome === 'uncertain') {
-      const uncertain = await _updateDraft(tid, draftId, {
+      const uncertain = await updateDraft(tid, draftId, {
         status: 'delivery_unknown',
         meta: {
           ...(fresh.meta || {}),
@@ -905,7 +921,7 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
       return { ok: false, error: 'delivery_unknown', uncertain: true, draft: uncertain };
     }
 
-    const failed = await _updateDraft(tid, draftId, {
+    const failed = await updateDraft(tid, draftId, {
       status: 'failed',
       meta: _stripPublishingClaim({
         ...(fresh.meta || {}),
