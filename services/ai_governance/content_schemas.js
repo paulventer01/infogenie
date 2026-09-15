@@ -276,6 +276,58 @@ function normalizeAdPackages(raw) {
   };
 }
 
+const VIDEO_VIRAL_PATTERNS = new Set([
+  'curiosity_gap', 'problem_solution', 'listicle', 'transformation', 'controversy', 'story',
+]);
+
+function normalizeVideoScriptItem(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const body = (Array.isArray(src.body) ? src.body : [])
+    .slice(0, 12)
+    .map((line) => {
+      const l = line && typeof line === 'object' ? line : {};
+      return {
+        line: _str(l.line, 500),
+        onscreen_text: _str(l.onscreen_text, 300),
+        cue: _str(l.cue, 500),
+      };
+    })
+    .filter((l) => l.line || l.onscreen_text || l.cue);
+  const out = {
+    hook: _str(src.hook, 500),
+    body,
+    cta: _str(src.cta, 500),
+    estimated_duration_sec: _num(src.estimated_duration_sec, 1, 600, null),
+    viral_pattern: VIDEO_VIRAL_PATTERNS.has(src.viral_pattern) ? src.viral_pattern : null,
+    hashtags: _pickStrings(src.hashtags, 20, 100),
+  };
+  if (src._estimated) out._estimated = true;
+  return out;
+}
+
+function normalizeVideoScriptResult(raw, maxScripts = 5) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const list = Array.isArray(src.scripts) ? src.scripts : [];
+  const scripts = list
+    .slice(0, maxScripts)
+    .map(normalizeVideoScriptItem)
+    .filter((s) => s.hook || s.body.length || s.cta);
+  return { scripts };
+}
+
+function videoScriptGateText(scriptsOrRaw) {
+  const scripts = Array.isArray(scriptsOrRaw)
+    ? scriptsOrRaw.map(normalizeVideoScriptItem)
+    : normalizeVideoScriptResult(scriptsOrRaw).scripts;
+  return scripts.flatMap((s) => [
+    s.hook,
+    ...s.body.map((b) => [b.line, b.onscreen_text, b.cue].filter(Boolean).join('\t')),
+    s.cta,
+    s.viral_pattern || '',
+    ...s.hashtags,
+  ].filter(Boolean)).join('\n');
+}
+
 module.exports = {
   adCopyGateText,
   normalizeAdScore,
@@ -300,4 +352,7 @@ module.exports = {
   coldEmailGateText,
   normalizeReviewReply,
   reviewReplyGateText,
+  normalizeVideoScriptItem,
+  normalizeVideoScriptResult,
+  videoScriptGateText,
 };

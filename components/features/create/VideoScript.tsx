@@ -7,8 +7,9 @@
 //
 // See `docs/react-panel-migration.md` for the porting pattern.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { apiPost } from "@/lib/api";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
 interface BodyLine {
   line?: string;
@@ -26,7 +27,9 @@ interface Script {
 interface GenerateResult {
   ok: boolean;
   error?: string;
+  userMessage?: string;
   scripts?: Script[];
+  content_safety_warnings?: string[];
 }
 
 export default function VideoScript() {
@@ -36,21 +39,20 @@ export default function VideoScript() {
   const [duration, setDuration] = useState(30);
   const [count, setCount] = useState(3);
 
-  const [status, setStatus] = useState<"idle" | "loading" | "error" | "done">(
-    "idle",
-  );
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [scripts, setScripts] = useState<Script[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const generateRequestRef = useRef(0);
 
   async function generate() {
     if (!topic.trim()) {
-      setStatus("error");
       setError("⚠ Topic required");
       return;
     }
-    setStatus("loading");
+    const requestId = ++generateRequestRef.current;
+    setLoading(true);
     setError("");
-    setScripts([]);
     const r = await apiPost<GenerateResult>("/api/video-script/generate", {
       topic: topic.trim(),
       platform,
@@ -58,13 +60,15 @@ export default function VideoScript() {
       duration,
       count,
     });
-    if (!r.ok) {
-      setStatus("error");
-      setError(r.error || "Generate failed");
+    setLoading(false);
+    if (requestId !== generateRequestRef.current) return;
+    if (!r.ok || !r.scripts) {
+      setError(r.userMessage || r.error || "Generate failed");
       return;
     }
-    setScripts(r.scripts || []);
-    setStatus("done");
+    setScripts(r.scripts);
+    setWarnings(r.content_safety_warnings || []);
+    setError("");
   }
 
   const selStyle: React.CSSProperties = {
@@ -199,7 +203,6 @@ export default function VideoScript() {
           </div>
           <button
             onClick={generate}
-            disabled={status === "loading"}
             style={{
               marginTop: 12,
               background: "linear-gradient(135deg,#EC4899,#F472B6)",
@@ -217,24 +220,29 @@ export default function VideoScript() {
         </div>
 
         <div>
-          {status === "loading" && (
+          {loading && (
             <div style={{ color: "#9CA3AF" }}>
               ⏳ Generating {count} script(s)…
             </div>
           )}
-          {status === "error" && (
+          {error && !loading && (
             <div
+              role="alert"
               style={{
                 background: "#FEE2E2",
                 color: "#B91C1C",
                 padding: 14,
                 borderRadius: 10,
+                marginBottom: 14,
               }}
             >
               {error}
             </div>
           )}
-          {status === "done" && (
+          {warnings.length > 0 && !loading && (
+            <ContentSafetyWarnings warnings={warnings} />
+          )}
+          {scripts.length > 0 && !loading && (
             <div style={{ display: "grid", gap: 14 }}>
               {scripts.map((s, i) => (
                 <ScriptCard key={i} s={s} i={i} duration={duration} />
