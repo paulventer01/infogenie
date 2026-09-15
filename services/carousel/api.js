@@ -8,6 +8,16 @@ const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { createRateLimiter } = require('../security/rate_limit');
+const {
+  gateRouteText,
+  contentSafetyHttpBody,
+  attachContentSafetyWarnings,
+} = require('../ai_governance/route_gate');
+const {
+  normalizeCarouselSlides,
+  carouselGateText,
+} = require('../ai_governance/content_schemas');
 
 const router = express.Router();
 
@@ -78,6 +88,36 @@ const STRUCTURES = {
   },
 };
 
+function _testOnlyMax(envName, fallback) {
+  if (process.env.NODE_ENV !== 'test') return fallback;
+  const n = Number.parseInt(String(process.env[envName] || ''), 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  return fallback;
+}
+
+const CAROUSEL_GENERATE_MAX = _testOnlyMax('CAROUSEL_GENERATE_RATE_LIMIT_MAX', 20);
+
+const carouselGenerateLimiter = createRateLimiter({
+  name: 'carousel-generate',
+  windowMs: 60_000,
+  max: CAROUSEL_GENERATE_MAX,
+  failClosed: true,
+  keyFn: (req) => {
+    const tid = req.tenant?.id;
+    const uid = req.user?.id;
+    if (tid != null && uid != null) return `carousel-generate|${tid}|${uid}`;
+    return null;
+  },
+});
+
+function _parseWarnings(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
+  return [];
+}
+
 function _hasOpenAI() {
   const k = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   return k && !/^_DUMMY/i.test(k);
@@ -128,12 +168,36 @@ function _templateSlides(topic, structureKey, brandVoice, audience) {
   }));
 }
 
+async function _gateSlides(req, tid, slides, structureKey, label) {
+  try {
+    return await gateRouteText({
+      tenantId: tid,
+      userId: req.user?.id || null,
+      surface: 'carousel',
+      action: 'generate_content',
+      text: carouselGateText(slides, structureKey),
+      label,
+    });
+  } catch (_) {
+    return {
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: 'Content safety checks are temporarily unavailable. Generation was stopped to protect your brand.',
+      warnings: [],
+    };
+  }
+}
+
 router.get('/structures', (_req, res) => {
   res.json({ ok: true, structures: STRUCTURES });
 });
 
-router.post('/generate', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/generate', carouselGenerateLimiter, async (req, res) => {
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'carousel:generate' });
+    if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
+
     const { topic, structure, brandVoice, audience } = req.body || {};
     const topicS = String(topic || '').trim().slice(0, 200);
     const structureKey = String(structure || 'pure-info').toLowerCase();
@@ -164,29 +228,49 @@ Rules:
       try {
         const j = await _openaiChat([{ role:'system', content: sys }, { role:'user', content: user }]);
         if (Array.isArray(j?.slides) && j.slides.length >= 8) {
-          slides = j.slides.slice(0, 10).map((s, i) => {
-            let n = parseInt(s && s.n, 10);
-            if (!Number.isFinite(n) || n < 1 || n > 10) n = i + 1;
-            return {
-              n,
-              role: String((s && s.role) || tpl.template[i]?.role || '').slice(0, 40),
-              headline: String((s && s.headline) || '').slice(0, 140),
-              body: String((s && s.body) || '').slice(0, 400),
-              visualHint: String((s && s.visualHint) || '').slice(0, 200),
-            };
-          });
+          slides = normalizeCarouselSlides(
+            j.slides.slice(0, 10).map((s, i) => {
+              let n = parseInt(s && s.n, 10);
+              if (!Number.isFinite(n) || n < 1 || n > 10) n = i + 1;
+              return {
+                n,
+                role: String((s && s.role) || tpl.template[i]?.role || '').slice(0, 40),
+                headline: String((s && s.headline) || '').slice(0, 140),
+                body: String((s && s.body) || '').slice(0, 400),
+                visualHint: String((s && s.visualHint) || '').slice(0, 200),
+              };
+            }),
+            structureKey,
+          );
           source = 'openai';
         }
       } catch (e) { console.warn('[t38] openai fallback:', e.message); }
     }
 
-    if (!slides) slides = _templateSlides(topicS, structureKey, brandVoice, audience);
+    if (!slides) {
+      slides = normalizeCarouselSlides(
+        _templateSlides(topicS, structureKey, brandVoice, audience),
+        structureKey,
+      );
+    }
 
-    const meta = { source, structureLabel: tpl.label, brandVoice: brandVoice || null, audience: audience || null };
+    const gated = await _gateSlides(req, tid, slides, structureKey, 'carousel:generate');
+    if (!gated.ok) {
+      const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json(contentSafetyHttpBody(gated));
+    }
+
+    const warnings = gated.warnings || gated.content_safety_warnings || [];
+    const meta = {
+      source,
+      structureLabel: tpl.label,
+      brandVoice: brandVoice || null,
+      audience: audience || null,
+      content_safety_warnings: warnings,
+    };
     let id = null;
     if (_db.hasDb()) {
       try {
-        const tid = await _tenantCtx.resolveTenantId(req, { label: 'carousel:generate' });
         const r = await _db.getPool().query(
           `INSERT INTO carousels (tenant_id, topic, structure, brand_voice, audience, slides, meta)
            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb) RETURNING id`,
@@ -196,7 +280,16 @@ Rules:
       } catch (e) { console.warn('[t38] persist failed:', e.message); }
     }
 
-    res.json({ ok: true, id, topic: topicS, structure: structureKey, structureLabel: tpl.label, slides, source, meta });
+    res.json(attachContentSafetyWarnings({
+      ok: true,
+      id,
+      topic: topicS,
+      structure: structureKey,
+      structureLabel: tpl.label,
+      slides,
+      source,
+      meta,
+    }, warnings));
   } catch (e) {
     console.warn('[t38] generate error:', e.stack || e.message);
     res.status(500).json({ ok: false, error: e.message || 'generate failed' });
@@ -225,7 +318,14 @@ router.get('/:id', async (req, res) => {
     const tid = await _tenantCtx.resolveTenantId(req, { label: 'carousel:get' });
     const r = await _db.getPool().query(`SELECT * FROM carousels WHERE id = $1 AND tenant_id = $2`, [id, tid]);
     if (!r.rows[0]) return res.status(404).json({ ok: false, error: 'not found' });
-    res.json({ ok: true, item: r.rows[0] });
+    const row = r.rows[0];
+    let meta = row.meta;
+    if (typeof meta === 'string') {
+      try { meta = JSON.parse(meta); } catch { meta = {}; }
+    }
+    const warnings = _parseWarnings(meta?.content_safety_warnings);
+    row.meta = meta;
+    res.json(attachContentSafetyWarnings({ ok: true, item: row }, warnings));
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message || 'get failed' });
   }

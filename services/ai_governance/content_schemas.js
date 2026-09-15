@@ -328,6 +328,43 @@ function videoScriptGateText(scriptsOrRaw) {
   ].filter(Boolean)).join('\n');
 }
 
+function normalizeCarouselSlideItem(raw, indexFallback = 1, roleFallback = '') {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  let n = _num(src.n, 1, 10, indexFallback) || indexFallback;
+  return {
+    n,
+    role: _str(src.role || roleFallback, 40),
+    headline: _str(src.headline, 140),
+    body: _str(src.body, 400),
+    visualHint: _str(src.visualHint, 200),
+  };
+}
+
+function normalizeCarouselSlides(slidesOrRaw, structureKey = 'pure-info') {
+  const list = Array.isArray(slidesOrRaw) ? slidesOrRaw : [];
+  const roles = {
+    'pure-info': ['Hook', 'Context', 'Value', 'Value', 'Value', 'Value', 'Value', 'Recap', 'Climax', 'CTA'],
+    storytelling: ['Hook', 'Setup', 'Journey', 'Journey', 'Turning Point', 'Turning Point', 'Turning Point', 'Lesson', 'Lesson', 'CTA'],
+    'problem-solution': ['Hook', 'Problem', 'Why It Happens', 'Why It Happens', 'Solution', 'Solution', 'Solution', 'Outcome', 'Outcome', 'CTA'],
+    listicle: ['Hook', 'Context', 'List Item', 'List Item', 'List Item', 'List Item', 'List Item', 'List Item', 'Bonus / Recap', 'CTA'],
+  };
+  const fallbackRoles = roles[structureKey] || roles['pure-info'];
+  return list
+    .slice(0, 10)
+    .map((slide, i) => normalizeCarouselSlideItem(slide, i + 1, fallbackRoles[i] || ''))
+    .filter((s) => s.role || s.headline || s.body || s.visualHint);
+}
+
+function carouselGateText(slidesOrRaw, structureKey) {
+  const slides = Array.isArray(slidesOrRaw)
+    ? slidesOrRaw.map((s, i) => normalizeCarouselSlideItem(s, i + 1))
+    : normalizeCarouselSlides(slidesOrRaw, structureKey);
+  return slides
+    .map((s) => [s.role, s.headline, s.body, s.visualHint].filter(Boolean).join('\t'))
+    .filter(Boolean)
+    .join('\n');
+}
+
 module.exports = {
   adCopyGateText,
   normalizeAdScore,
@@ -355,4 +392,7 @@ module.exports = {
   normalizeVideoScriptItem,
   normalizeVideoScriptResult,
   videoScriptGateText,
+  normalizeCarouselSlideItem,
+  normalizeCarouselSlides,
+  carouselGateText,
 };

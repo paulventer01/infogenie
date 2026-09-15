@@ -9,10 +9,11 @@
 //
 // See `docs/react-panel-migration.md` for the porting pattern.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
 interface Structure {
   label: string;
@@ -36,12 +37,14 @@ interface Slide {
 interface CarouselResult {
   ok: boolean;
   error?: string;
+  userMessage?: string;
   id?: number;
   topic?: string;
   structure?: string;
   structureLabel?: string;
   slides?: Slide[];
   source?: string;
+  content_safety_warnings?: string[];
 }
 interface StructuresResult {
   ok?: boolean;
@@ -61,7 +64,9 @@ interface LoadItem {
 interface LoadResult {
   ok: boolean;
   error?: string;
+  userMessage?: string;
   item?: LoadItem;
+  content_safety_warnings?: string[];
 }
 
 const PALETTE = [
@@ -89,8 +94,12 @@ export default function Carousel() {
   const [audience, setAudience] = useState("");
 
   const [generating, setGenerating] = useState(false);
+  const [loadingId, setLoadingId] = useState<number | null>(null);
   const [outError, setOutError] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [current, setCurrent] = useState<CarouselResult | null>(null);
+  const generateRequestRef = useRef(0);
+  const loadRequestRef = useRef(0);
 
   async function loadHistory() {
     const r = await apiGet<ListResult>("/api/carousel/list");
@@ -117,32 +126,36 @@ export default function Carousel() {
       ).showToast?.("⚠️ Topic is required") ?? alert("⚠️ Topic is required");
       return;
     }
+    const requestId = ++generateRequestRef.current;
     setGenerating(true);
     setOutError("");
-    setCurrent(null);
     const r = await apiPost<CarouselResult>("/api/carousel/generate", {
       topic: topic.trim(),
       structure,
       brandVoice: brandVoice.trim() || undefined,
       audience: audience.trim() || undefined,
     });
-    if (!r.ok) {
-      setOutError(r.error || "Generate failed");
-      setGenerating(false);
+    if (requestId !== generateRequestRef.current) return;
+    setGenerating(false);
+    if (!r.ok || !r.slides) {
+      setOutError(r.userMessage || r.error || "Generate failed");
       return;
     }
     setCurrent(r);
-    setGenerating(false);
+    setWarnings(r.content_safety_warnings || []);
+    setOutError("");
     loadHistory();
   }
 
   async function load(id: number) {
+    const requestId = ++loadRequestRef.current;
+    setLoadingId(id);
+    setOutError("");
     const r = await apiGet<LoadResult>("/api/carousel/" + id);
+    if (requestId !== loadRequestRef.current) return;
+    setLoadingId(null);
     if (!r.ok || !r.item) {
-      (
-        window as unknown as { showToast?: (m: string) => void }
-      ).showToast?.("⚠️ Could not load: " + (r.error || "")) ??
-        alert("⚠️ Could not load");
+      setOutError(r.userMessage || r.error || "Could not load carousel");
       return;
     }
     const item = r.item;
@@ -152,6 +165,8 @@ export default function Carousel() {
       typeof item.meta === "string"
         ? JSON.parse(item.meta)
         : item.meta || {};
+    const loadedWarnings = r.content_safety_warnings
+      || (Array.isArray(meta.content_safety_warnings) ? meta.content_safety_warnings : []);
     setCurrent({
       ok: true,
       id: item.id,
@@ -160,7 +175,10 @@ export default function Carousel() {
       structureLabel: meta.structureLabel || item.structure,
       slides,
       source: meta.source || "template",
+      content_safety_warnings: loadedWarnings,
     });
+    setWarnings(loadedWarnings);
+    setOutError("");
   }
 
   function copyAll() {
@@ -421,7 +439,6 @@ export default function Carousel() {
 
           <button
             onClick={generate}
-            disabled={generating}
             style={{
               background: "linear-gradient(135deg,#0066FF,#7C3AED)",
               color: "white",
@@ -439,7 +456,7 @@ export default function Carousel() {
         </div>
 
         <div>
-          {generating && (
+          {(generating || loadingId != null) && (
             <div
               style={{
                 padding: 32,
@@ -447,23 +464,28 @@ export default function Carousel() {
                 color: "#64748B",
               }}
             >
-              ⏳ Generating 10 slides…
+              {generating ? "⏳ Generating 10 slides…" : "⏳ Loading carousel…"}
             </div>
           )}
-          {outError && (
+          {outError && !generating && loadingId == null && (
             <div
+              role="alert"
               style={{
                 background: "#FEF2F2",
                 border: "1px solid #FECACA",
                 borderRadius: 12,
                 padding: 18,
                 color: "#991B1B",
+                marginBottom: 14,
               }}
             >
-              ⚠️ {outError}
+              {outError}
             </div>
           )}
-          {current && !generating && (
+          {warnings.length > 0 && !generating && loadingId == null && (
+            <ContentSafetyWarnings warnings={warnings} />
+          )}
+          {current && !generating && loadingId == null && (
             <CarouselResultView
               r={current}
               onCopyAll={copyAll}
