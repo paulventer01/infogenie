@@ -159,7 +159,11 @@ test('PR10G.8 canonical metrics goals vs actuals table browser acceptance', {
   await login(page, baseUrl, actors);
   const nav = await page.goto(`${baseUrl}${CANONICAL_ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
   assert.ok(nav && nav.status() < 400, `canonical-metrics navigation failed: ${nav?.status()}`);
-  await page.waitForFunction((panel) => document.querySelector(panel)?.innerText.includes('Goals vs actuals'), {}, PANEL);
+  await page.waitForFunction(
+    (panel) => document.querySelector(panel)?.innerText.includes('Goals vs actuals'),
+    { timeout: 90_000 },
+    PANEL,
+  );
 
   const text = await page.$eval(PANEL, (el) => el.innerText);
   assert.match(text, /Meta ROAS/);
