@@ -93,13 +93,11 @@ export default function Carousel() {
   const [brandVoice, setBrandVoice] = useState("");
   const [audience, setAudience] = useState("");
 
-  const [generating, setGenerating] = useState(false);
-  const [loadingId, setLoadingId] = useState<number | null>(null);
+  const [pendingOp, setPendingOp] = useState<"generate" | "load" | null>(null);
   const [outError, setOutError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [current, setCurrent] = useState<CarouselResult | null>(null);
-  const generateRequestRef = useRef(0);
-  const loadRequestRef = useRef(0);
+  const carouselRequestRef = useRef(0);
 
   async function loadHistory() {
     const r = await apiGet<ListResult>("/api/carousel/list");
@@ -126,8 +124,8 @@ export default function Carousel() {
       ).showToast?.("⚠️ Topic is required") ?? alert("⚠️ Topic is required");
       return;
     }
-    const requestId = ++generateRequestRef.current;
-    setGenerating(true);
+    const requestId = ++carouselRequestRef.current;
+    setPendingOp("generate");
     setOutError("");
     const r = await apiPost<CarouselResult>("/api/carousel/generate", {
       topic: topic.trim(),
@@ -135,8 +133,8 @@ export default function Carousel() {
       brandVoice: brandVoice.trim() || undefined,
       audience: audience.trim() || undefined,
     });
-    if (requestId !== generateRequestRef.current) return;
-    setGenerating(false);
+    if (requestId !== carouselRequestRef.current) return;
+    setPendingOp(null);
     if (!r.ok || !r.slides) {
       setOutError(r.userMessage || r.error || "Generate failed");
       return;
@@ -148,12 +146,12 @@ export default function Carousel() {
   }
 
   async function load(id: number) {
-    const requestId = ++loadRequestRef.current;
-    setLoadingId(id);
+    const requestId = ++carouselRequestRef.current;
+    setPendingOp("load");
     setOutError("");
     const r = await apiGet<LoadResult>("/api/carousel/" + id);
-    if (requestId !== loadRequestRef.current) return;
-    setLoadingId(null);
+    if (requestId !== carouselRequestRef.current) return;
+    setPendingOp(null);
     if (!r.ok || !r.item) {
       setOutError(r.userMessage || r.error || "Could not load carousel");
       return;
@@ -451,12 +449,12 @@ export default function Carousel() {
               width: "100%",
             }}
           >
-            {generating ? "⏳ Drafting your slides…" : "✨ Generate 10-Slide Carousel"}
+            {pendingOp === "generate" ? "⏳ Drafting your slides…" : "✨ Generate 10-Slide Carousel"}
           </button>
         </div>
 
         <div>
-          {(generating || loadingId != null) && (
+          {pendingOp && (
             <div
               style={{
                 padding: 32,
@@ -464,10 +462,10 @@ export default function Carousel() {
                 color: "#64748B",
               }}
             >
-              {generating ? "⏳ Generating 10 slides…" : "⏳ Loading carousel…"}
+              {pendingOp === "generate" ? "⏳ Generating 10 slides…" : "⏳ Loading carousel…"}
             </div>
           )}
-          {outError && !generating && loadingId == null && (
+          {outError && !pendingOp && (
             <div
               role="alert"
               style={{
@@ -482,10 +480,10 @@ export default function Carousel() {
               {outError}
             </div>
           )}
-          {warnings.length > 0 && !generating && loadingId == null && (
+          {warnings.length > 0 && !pendingOp && (
             <ContentSafetyWarnings warnings={warnings} />
           )}
-          {current && !generating && loadingId == null && (
+          {current && !pendingOp && (
             <CarouselResultView
               r={current}
               onCopyAll={copyAll}

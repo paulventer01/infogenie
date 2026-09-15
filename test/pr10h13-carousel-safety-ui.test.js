@@ -200,8 +200,14 @@ async function harness(t, options = {}) {
   }
 
   function isLoading() {
+    return loadingMessage() != null;
+  }
+
+  function loadingMessage() {
     const text = dom.window.document.body.textContent;
-    return text.includes('Generating 10 slides') || text.includes('Loading carousel');
+    if (text.includes('Generating 10 slides')) return 'generate';
+    if (text.includes('Loading carousel')) return 'load';
+    return null;
   }
 
   async function waitFor(check, attempts = 40) {
@@ -223,8 +229,34 @@ async function harness(t, options = {}) {
     finishPendingLoad,
     waitFor,
     isLoading,
+    loadingMessage,
     text: () => dom.window.document.body.textContent,
     alerts: () => [...document.querySelectorAll('[role="alert"]')],
+  };
+}
+
+const SAVED_HISTORY = [{
+  id: 55,
+  topic: 'Saved carousel topic',
+  structure: 'pure-info',
+  created_at: new Date().toISOString(),
+}];
+
+function loadedCarousel(headline, warnings = []) {
+  return {
+    ok: true,
+    item: {
+      id: 55,
+      topic: 'Saved carousel topic',
+      structure: 'pure-info',
+      slides: [{ ...SAFE_SLIDE, headline }],
+      meta: {
+        source: 'template',
+        structureLabel: 'Pure Info',
+        content_safety_warnings: warnings,
+      },
+    },
+    content_safety_warnings: warnings,
   };
 }
 
@@ -322,14 +354,7 @@ test('Carousel: ignores a late blocked response after a newer generate succeeds'
 });
 
 test('Carousel: restores warnings when loading a saved carousel', async (t) => {
-  const h = await harness(t, {
-    history: [{
-      id: 55,
-      topic: 'Saved carousel topic',
-      structure: 'pure-info',
-      created_at: new Date().toISOString(),
-    }],
-  });
+  const h = await harness(t, { history: SAVED_HISTORY });
   await h.waitFor(() => h.text().includes('Saved carousel topic'));
   await h.loadCarousel({
     ok: true,
@@ -351,11 +376,138 @@ test('Carousel: restores warnings when loading a saved carousel', async (t) => {
   assert.match(h.text(), /Existing hook headline/);
 });
 
+test('Carousel: generate supersedes pending load and late load success does not overwrite', async (t) => {
+  const h = await harness(t, { history: SAVED_HISTORY });
+  await h.waitFor(() => h.text().includes('Saved carousel topic'));
+  await h.loadCarousel(loadedCarousel('Loaded hook headline', ['Load warning']), { pending: true });
+  assert.equal(h.loadingMessage(), 'load');
+
+  await h.setTopic('Superseding generate');
+  await h.generate({
+    ok: true,
+    topic: 'Superseding generate',
+    structure: 'pure-info',
+    structureLabel: 'Pure Info',
+    slides: [{ ...SAFE_SLIDE, headline: 'Generated hook headline' }],
+    source: 'template',
+    content_safety_warnings: [],
+  });
+  await h.waitFor(() => h.text().includes('Generated hook headline'));
+  assert.equal(h.loadingMessage(), null);
+
+  await h.finishPendingLoad();
+  await h.waitFor(() => true);
+  assert.match(h.text(), /Generated hook headline/);
+  assert.doesNotMatch(h.text(), /Loaded hook headline|Load warning/);
+});
+
+test('Carousel: generate supersedes pending load and late load failure does not show error', async (t) => {
+  const h = await harness(t, { history: SAVED_HISTORY });
+  await h.waitFor(() => h.text().includes('Saved carousel topic'));
+  await h.loadCarousel({
+    ok: false,
+    error: 'not found',
+    userMessage: 'Late load failure should be ignored.',
+  }, { pending: true });
+  assert.equal(h.loadingMessage(), 'load');
+
+  await h.setTopic('Winning generate');
+  await h.generate(successCarousel());
+  await h.waitFor(() => h.text().includes('Existing hook headline'));
+  assert.equal(h.alerts().length, 0);
+
+  await h.finishPendingLoad();
+  await h.waitFor(() => true);
+  assert.equal(h.alerts().length, 0);
+  assert.match(h.text(), /Existing hook headline/);
+});
+
+test('Carousel: load supersedes pending generate and late generate success does not overwrite', async (t) => {
+  const h = await harness(t, { history: SAVED_HISTORY });
+  await h.waitFor(() => h.text().includes('Saved carousel topic'));
+  await h.setTopic('Pending generate topic');
+  await h.generate({
+    ok: true,
+    topic: 'Pending generate topic',
+    structure: 'pure-info',
+    structureLabel: 'Pure Info',
+    slides: [{ ...SAFE_SLIDE, headline: 'Late generate headline' }],
+    source: 'template',
+    content_safety_warnings: ['Late generate warning'],
+  }, { pending: true });
+  assert.equal(h.loadingMessage(), 'generate');
+
+  await h.loadCarousel(loadedCarousel('Loaded winning headline'));
+  await h.waitFor(() => h.text().includes('Loaded winning headline'));
+  assert.equal(h.loadingMessage(), null);
+
+  await h.finishPendingGenerate();
+  await h.waitFor(() => true);
+  assert.match(h.text(), /Loaded winning headline/);
+  assert.doesNotMatch(h.text(), /Late generate headline|Late generate warning/);
+});
+
+test('Carousel: load supersedes pending generate and late blocked generate does not show error', async (t) => {
+  const h = await harness(t, { history: SAVED_HISTORY });
+  await h.waitFor(() => h.text().includes('Saved carousel topic'));
+  await h.setTopic('Blocked generate topic');
+  await h.generate({
+    ok: false,
+    error: 'content_safety_blocked',
+    userMessage: 'Late blocked generate should be ignored.',
+  }, { pending: true });
+  assert.equal(h.loadingMessage(), 'generate');
+
+  await h.loadCarousel(loadedCarousel('Loaded after blocked generate'));
+  await h.waitFor(() => h.text().includes('Loaded after blocked generate'));
+  assert.equal(h.alerts().length, 0);
+
+  await h.finishPendingGenerate();
+  await h.waitFor(() => true);
+  assert.equal(h.alerts().length, 0);
+  assert.match(h.text(), /Loaded after blocked generate/);
+});
+
+test('Carousel: superseding switches loading indicator from load to generate', async (t) => {
+  const h = await harness(t, { history: SAVED_HISTORY });
+  await h.waitFor(() => h.text().includes('Saved carousel topic'));
+  await h.loadCarousel(loadedCarousel('Stale load headline'), { pending: true });
+  assert.equal(h.loadingMessage(), 'load');
+
+  await h.setTopic('Indicator switch');
+  await h.generate(successCarousel(), { pending: true });
+  assert.equal(h.loadingMessage(), 'generate');
+
+  await h.finishPendingLoad();
+  assert.equal(h.loadingMessage(), 'generate');
+
+  await h.finishPendingGenerate();
+  await h.waitFor(() => !h.isLoading());
+});
+
+test('Carousel: superseding switches loading indicator from generate to load', async (t) => {
+  const h = await harness(t, { history: SAVED_HISTORY });
+  await h.waitFor(() => h.text().includes('Saved carousel topic'));
+  await h.setTopic('Indicator switch');
+  await h.generate(successCarousel(), { pending: true });
+  assert.equal(h.loadingMessage(), 'generate');
+
+  await h.loadCarousel(loadedCarousel('Load indicator headline'), { pending: true });
+  assert.equal(h.loadingMessage(), 'load');
+
+  await h.finishPendingGenerate();
+  assert.equal(h.loadingMessage(), 'load');
+
+  await h.finishPendingLoad();
+  await h.waitFor(() => !h.isLoading());
+});
+
 test('Carousel component renders ContentSafetyWarnings import', () => {
   const src = fs.readFileSync(require.resolve('../components/features/create/Carousel.tsx'), 'utf8');
   assert.match(src, /ContentSafetyWarnings/);
   assert.match(src, /content_safety_warnings/);
-  assert.match(src, /generateRequestRef/);
-  assert.match(src, /loadRequestRef/);
+  assert.match(src, /carouselRequestRef/);
+  assert.doesNotMatch(src, /generateRequestRef/);
+  assert.doesNotMatch(src, /loadRequestRef/);
   assert.match(src, /role="alert"/);
 });
