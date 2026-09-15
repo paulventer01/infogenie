@@ -201,6 +201,82 @@ describe('Step 6 campaign_composer generate gate', () => {
     gateCached.exports.gateRouteText = realGate;
   });
 
+  it('blocks when prohibited content is only in audience_rules condition value', async () => {
+    const https = require('node:https');
+    const origRequest = https.request;
+    https.request = function mockRequest(opts, cb) {
+      const mockRes = {
+        statusCode: 200,
+        on(ev, fn) {
+          if (ev === 'data') {
+            fn(JSON.stringify({
+              choices: [{
+                message: {
+                  content: JSON.stringify({
+                    campaign_name: 'Onboarding nurture',
+                    audience_description: 'Recent signups',
+                    audience_rules: {
+                      match: 'all',
+                      conditions: [
+                        {
+                          type: 'property',
+                          field: 'interest',
+                          op: 'eq',
+                          value: 'guaranteed 100% returns with zero risk',
+                          nested: { evil: true },
+                        },
+                      ],
+                    },
+                    channel: 'email',
+                    subject: 'Your onboarding guide',
+                    body: 'Here is a helpful walkthrough of our product.',
+                    recommended_send_time: 'Tuesday 10am',
+                    rationale: 'Target engaged signups',
+                  }),
+                },
+              }],
+            }));
+          }
+          if (ev === 'end') fn();
+          return this;
+        },
+      };
+      const req = {
+        on() { return this; },
+        setTimeout() {},
+        write() {},
+        end() { cb(mockRes); },
+        destroy() {},
+      };
+      return req;
+    };
+
+    delete require.cache[require.resolve('../services/campaign_composer/api')];
+    const router = require('../services/campaign_composer/api');
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => { req.user = { id: 3 }; next(); });
+    app.use('/api/campaign-composer', router);
+    const tmpServer = await new Promise((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    const tmpUrl = `http://127.0.0.1:${tmpServer.address().port}`;
+
+    const res = await fetch(`${tmpUrl}/api/campaign-composer/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'Nurture recent signups' }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 403);
+    assert.equal(body.draft, undefined);
+    assert.equal(global.__step6Inserted(), null);
+
+    await new Promise((r) => tmpServer.close(r));
+    https.request = origRequest;
+    delete require.cache[require.resolve('../services/campaign_composer/api')];
+  });
+
   it('persists content_safety_warnings and returns them on GET /drafts reload', async () => {
     gateCached.exports.gateRouteText = async () => ({
       ok: true,

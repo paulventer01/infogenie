@@ -1386,8 +1386,8 @@ Goal: ${goal}. Target audience: ${audience}. Daily budget: $${budget}.
 Return JSON: { "headline": "...", "body": "...", "cta": "...", "hashtags": "..." }
 Headline: 5-10 words. Body: 1-3 sentences. CTA: 3-5 words. Hashtags: 3-5 relevant (for social platforms).`;
     const completion = await openai.chat.completions.create({ model:'gpt-5', messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}], max_tokens:300, response_format:{type:'json_object'} });
-    const ad = normalizeChannelAd(JSON.parse(completion.choices[0]?.message?.content || '{}'));
-    const gated = await _gateMarketText(req, channelAdGateText(ad), 'ai-channel-ad:generate');
+    const ad = normalizeChannelAd(JSON.parse(completion.choices[0]?.message?.content || '{}'), 'openai');
+    const gated = await _gateMarketText(req, channelAdGateText(ad, 'openai'), 'ai-channel-ad:generate');
     if (!gated.ok) return _gateBlocked(res, gated);
     res.json(attachContentSafetyWarnings({ ad }, gated.warnings));
   } catch(err) {
@@ -1397,10 +1397,9 @@ Headline: 5-10 words. Body: 1-3 sentences. CTA: 3-5 words. Hashtags: 3-5 relevan
       cta: 'Get Started Free',
       hashtags: '#marketing #growth #leads',
       _estimated: true,
-      source: 'template',
-    });
+    }, 'template');
     try {
-      const gated = await _gateMarketText(req, channelAdGateText(fallbackAd), 'ai-channel-ad:template-fallback');
+      const gated = await _gateMarketText(req, channelAdGateText(fallbackAd, 'template'), 'ai-channel-ad:template-fallback');
       if (!gated.ok) return _gateBlocked(res, gated);
       res.json(attachContentSafetyWarnings({ ad: fallbackAd, error: err.message }, gated.warnings));
     } catch (gateErr) {

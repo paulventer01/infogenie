@@ -3,6 +3,8 @@
  * Strips unexpected fields before gate/persist/return.
  */
 
+const { sanitiseAudienceRules } = require('../audiences/rules_sanitise');
+
 function _str(v, max = 8000) {
   return String(v == null ? '' : v).slice(0, max);
 }
@@ -46,16 +48,22 @@ function proofreadGateText(feedback) {
 
 const COMPOSER_CHANNELS = new Set(['email', 'sms', 'whatsapp']);
 
+function _conditionGateText(conditions) {
+  return (conditions || [])
+    .map((c) => [c.field, c.event, c.metric, c.source, c.value]
+      .filter((v) => v != null && v !== '')
+      .join(' '))
+    .filter(Boolean)
+    .join('\n');
+}
+
 function normalizeComposerDraft(raw, source = 'template') {
   const src = raw && typeof raw === 'object' ? raw : {};
-  const rules = src.audience_rules && typeof src.audience_rules === 'object' ? src.audience_rules : {};
-  const match = ['all', 'any', 'none'].includes(rules.match) ? rules.match : 'all';
-  const conditions = Array.isArray(rules.conditions) ? rules.conditions.slice(0, 20) : [];
   const channel = COMPOSER_CHANNELS.has(src.channel) ? src.channel : 'email';
   const out = {
     campaign_name: _str(src.campaign_name || 'Untitled Campaign', 200),
     audience_description: _str(src.audience_description, 2000),
-    audience_rules: { match, conditions },
+    audience_rules: sanitiseAudienceRules(src.audience_rules),
     channel,
     subject: _str(src.subject, 500),
     body: _str(src.body, 8000),
@@ -76,6 +84,7 @@ function composerDraftGateText(draft) {
     d.body,
     d.recommended_send_time,
     d.rationale,
+    _conditionGateText(d.audience_rules?.conditions),
   ].filter(Boolean).join('\n');
 }
 
@@ -109,7 +118,7 @@ function redditStudioGateText(raw) {
   return [n.persona, ...n.titles].filter(Boolean).join('\n');
 }
 
-function normalizeChannelAd(raw) {
+function normalizeChannelAd(raw, source) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const out = {
     headline: _str(src.headline, 200),
@@ -118,12 +127,12 @@ function normalizeChannelAd(raw) {
     hashtags: _str(src.hashtags, 300),
   };
   if (src._estimated) out._estimated = true;
-  if (src.source) out.source = _str(src.source, 40);
+  if (source === 'openai' || source === 'template') out.source = source;
   return out;
 }
 
-function channelAdGateText(raw) {
-  const a = normalizeChannelAd(raw);
+function channelAdGateText(raw, source) {
+  const a = normalizeChannelAd(raw, source);
   return [a.headline, a.body, a.cta, a.hashtags].filter(Boolean).join('\n');
 }
 
