@@ -49,6 +49,26 @@ const PRESET_CATALOG = [
     description: 'HTTP JSON-RPC endpoint supporting tools/list + tools/call.',
     requiresCustomUrl: true,
   },
+  {
+    id: 'http-streamable-generic',
+    name: 'Custom Streamable HTTP MCP',
+    category: 'community',
+    transport: 'streamable',
+    base_url: '',
+    description: 'MCP Streamable HTTP endpoint (initialize + tools/list + tools/call).',
+    requiresCustomUrl: true,
+  },
+  {
+    id: 'mangools',
+    name: 'Mangools SEO MCP',
+    category: 'official',
+    transport: 'streamable',
+    base_url: 'https://mcp.mangools.com/mcp',
+    description: 'KWFinder, SiteProfiler, LinkMiner, SERPChecker & AI Watcher tools via Mangools Streamable HTTP MCP. Auth: x-access-token from MANGOOLS_API_KEY.',
+    authEnv: 'MANGOOLS_API_KEY',
+    authHeaderName: 'x-access-token',
+    autoSeedWhenKeyed: true,
+  },
 ];
 
 module.exports = { PRESET_CATALOG };
