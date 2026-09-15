@@ -186,6 +186,7 @@ test('PR10F.2 client reporting setup browser acceptance (real PostgreSQL/TLS)', 
   await t.test('switching clients confirms draft discard without saving to either client', async () => {
     const before = writes.length;
     await fill(owner, { report_title: 'Must not follow the client switch' });
+    await text(owner, 'Unsaved changes.');
     await owner.select(`${PANEL} select[name="client_id"]`, String(second.id));
     await text(owner, 'Switching clients discards your unsaved changes.');
     await responseFor(owner, 'GET', profilePath(second.id), () => button(owner, 'Discard changes and switch'));
