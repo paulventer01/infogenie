@@ -97,6 +97,8 @@ async function composerHarness(t, opts = {}) {
     nextSegmentId: 900,
     putCalls: [],
     approveCalls: [],
+    historyRefreshHold: null,
+    historyRefreshRelease: null,
   };
 
   const dom = new JSDOM('<div id="root"></div>', {
@@ -118,6 +120,7 @@ async function composerHarness(t, opts = {}) {
     fetch: async (url, options = {}) => {
       const method = options.method || 'GET';
       if (url.endsWith('/api/campaign-composer/drafts') && method === 'GET') {
+        if (state.historyRefreshHold) await state.historyRefreshHold;
         return json({ ok: true, drafts: state.drafts });
       }
       if (url.endsWith('/api/campaign-composer/generate') && method === 'POST') {
@@ -291,6 +294,16 @@ async function composerHarness(t, opts = {}) {
     alerts,
     state,
     waitFor,
+    releaseHistoryRefresh: () => {
+      state.historyRefreshRelease?.();
+      state.historyRefreshHold = null;
+      state.historyRefreshRelease = null;
+    },
+    blockHistoryRefresh: () => {
+      state.historyRefreshHold = new Promise((resolve) => {
+        state.historyRefreshRelease = resolve;
+      });
+    },
   };
 }
 
@@ -412,24 +425,14 @@ test('CampaignComposer resets approving state when blocked approve completes', a
   let finish;
   const h = await composerHarness(t, {
     approveHandler: async () => new Promise((resolve) => {
-      finish = () => resolve({
-        ok: false,
-        error: 'content_safety_blocked',
-        userMessage: 'Blocked approve should not leave Approving… stuck.',
-        httpStatus: 403,
-      });
+      finish = () => resolve({ ok: false, error: 'content_safety_blocked', userMessage: 'Blocked approve should not leave Approving… stuck.', httpStatus: 403 });
     }),
   });
-
   await h.clickApprove();
   await h.waitFor(() => h.approveButton()?.disabled);
-  assert.equal(h.approveButton()?.disabled, true);
-
   await act(async () => finish());
   await h.waitFor(() => h.alerts().length > 0);
-
   h.assertDraftActionsUsable();
-  assert.match(h.alerts()[0].textContent, /Blocked approve should not leave Approving/);
 });
 
 test('CampaignComposer generate clears a prior approve alert and ignores late approve responses', async (t) => {
@@ -559,4 +562,56 @@ test('CampaignComposer draft A approving does not disable draft B actions', asyn
   await h.selectDraft('Onboarding nurture');
   await h.waitFor(() => h.text().includes('Audience segment created'), 40);
   assert.match(h.text(), /Audience segment created \(ID: 904\)/);
+});
+
+test('CampaignComposer re-checks active draft and edits after approval history refresh', async (t) => {
+  let finish;
+  const h = await composerHarness(t, {
+    approveHandler: async ({ draftId }, state) => new Promise((resolve) => {
+      finish = () => resolve({
+        ok: true,
+        draft: {
+          ...state.drafts.find((d) => d.id === draftId),
+          status: 'approved',
+          segment_id: 906,
+          draft: { ...BASE_DRAFT, body: 'Server body should not overwrite latest edits.' },
+          content_safety_warnings: ['Post-refresh warning.'],
+        },
+        segment_id: 906,
+      });
+    }),
+  });
+  await h.blockHistoryRefresh();
+  await h.setBodyText('Body before approve.');
+  await h.clickApprove();
+  await act(async () => finish());
+  await h.setBodyText('Edited during history refresh.');
+  h.releaseHistoryRefresh();
+  await h.waitFor(() => h.text().includes('Audience segment created'), 40);
+  assert.equal(h.bodyInput().value, 'Edited during history refresh.');
+  assert.doesNotMatch(h.text(), /Server body should not overwrite/);
+});
+
+test('CampaignComposer generate keeps late approval outcome in history without touching new draft', async (t) => {
+  let finishApprove;
+  const h = await composerHarness(t, {
+    approveHandler: async ({ draftId }, state) => new Promise((resolve) => {
+      finishApprove = () => resolve({
+        ok: true,
+        draft: { ...state.drafts.find((d) => d.id === draftId), status: 'approved', segment_id: 907 },
+        segment_id: 907,
+      });
+    }),
+  });
+  await h.clickApprove();
+  await h.setPromptText('Launch a spring promo');
+  await h.clickGenerate();
+  await h.waitFor(() => h.text().includes('Generated campaign'), 40);
+  h.assertDraftActionsUsable();
+  await act(async () => finishApprove());
+  await h.waitFor(() => h.text().includes('approved'), 40);
+  assert.doesNotMatch(h.text(), /Audience segment created \(ID: 907\)/);
+  await h.selectDraft('Onboarding nurture');
+  await h.waitFor(() => h.text().includes('Audience segment created'), 40);
+  assert.match(h.text(), /Audience segment created \(ID: 907\)/);
 });

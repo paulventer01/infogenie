@@ -129,10 +129,10 @@ export default function CampaignComposer() {
     });
   }
 
-  async function applyApprovedHistory(draftId: number, approvedRow: DraftRow, stillActive: boolean, preserveDraft?: CampaignDraft) {
+  async function applyApprovedHistory(draftId: number, approvedRow: DraftRow) {
     setHistory((prev) => prev.map((row) => (
       row.id === draftId
-        ? { ...approvedRow, draft: stillActive && preserveDraft ? preserveDraft : (approvedRow.draft || row.draft) }
+        ? { ...approvedRow, draft: approvedRow.draft || row.draft }
         : row
     )));
     await refreshHistoryOnly();
@@ -142,11 +142,9 @@ export default function CampaignComposer() {
     if (!prompt.trim()) return;
     if (activeDraft?.id != null) {
       invalidatePendingSave(activeDraft.id);
-      invalidatePendingApprove(activeDraft.id);
       clearSaveError(activeDraft.id);
       clearApproveError(activeDraft.id);
       setSaving(false);
-      setApprovingDraftId((prev) => (prev === activeDraft.id ? null : prev));
     }
     setGenerating(true);
     const d = await apiPost<GenerateResp>("/api/campaign-composer/generate", { prompt });
@@ -229,31 +227,29 @@ export default function CampaignComposer() {
     setApprovingDraftId((prev) => (prev === draftId ? null : prev));
 
     const finishApproved = async (serverDraft: DraftRow, warnings: string[]) => {
-      const current = activeDraftRef.current;
-      const stillActive = current && current.id === draftId;
       const approvedRow: DraftRow = {
-        ...(serverDraft || current || activeDraft!),
+        ...(serverDraft || activeDraftRef.current || activeDraft!),
         status: 'approved',
-        segment_id: serverDraft?.segment_id ?? d.segment_id ?? current?.segment_id ?? null,
+        segment_id: serverDraft?.segment_id ?? d.segment_id ?? null,
         content_safety_warnings: warnings,
       };
-      const preserveDraft = stillActive && JSON.stringify(current!.draft) !== draftSnapshot
-        ? current!.draft
+      await applyApprovedHistory(draftId, approvedRow);
+
+      if (approveRequestRef.current.get(draftId) !== reqSeq) return;
+      const current = activeDraftRef.current;
+      if (!current || current.id !== draftId) return;
+
+      const preserveDraft = JSON.stringify(current.draft) !== draftSnapshot
+        ? current.draft
         : undefined;
-      await applyApprovedHistory(draftId, approvedRow, !!stillActive, preserveDraft);
-      if (!stillActive) return;
       if (preserveDraft) {
-        setActiveDraft((prev) => (
-          prev && prev.id === draftId
-            ? {
-              ...prev,
-              status: 'approved',
-              segment_id: approvedRow.segment_id,
-              content_safety_warnings: warnings,
-              updated_at: serverDraft?.updated_at || prev.updated_at,
-            }
-            : prev
-        ));
+        setActiveDraft({
+          ...current,
+          status: 'approved',
+          segment_id: approvedRow.segment_id,
+          content_safety_warnings: warnings,
+          updated_at: serverDraft?.updated_at || current.updated_at,
+        });
       } else {
         setActiveDraft(approvedRow);
       }
