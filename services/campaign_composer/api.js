@@ -11,8 +11,31 @@ const {
   normalizeComposerDraft,
   composerDraftGateText,
 } = require('../ai_governance/content_schemas');
+const { createRateLimiter } = require('../security/rate_limit');
 
 const router = express.Router();
+
+function _testOnlyMax(envName, fallback) {
+  if (process.env.NODE_ENV !== 'test') return fallback;
+  const n = Number.parseInt(String(process.env[envName] || ''), 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  return fallback;
+}
+
+const COMPOSER_DRAFT_UPDATE_MAX = _testOnlyMax('CAMPAIGN_COMPOSER_DRAFT_UPDATE_RATE_LIMIT_MAX', 30);
+
+const composerDraftUpdateLimiter = createRateLimiter({
+  name: 'campaign-composer-draft-update',
+  windowMs: 60_000,
+  max: COMPOSER_DRAFT_UPDATE_MAX,
+  failClosed: true,
+  keyFn: (req) => {
+    const tid = req.tenant?.id;
+    const uid = req.user?.id;
+    if (tid != null && uid != null) return `campaign-composer|${tid}|${uid}`;
+    return null;
+  },
+});
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
@@ -180,24 +203,39 @@ router.get('/drafts', async (req, res) => {
   } catch (err) { _err(res, 500, err.message); }
 });
 
-router.put('/drafts/:id', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.put('/drafts/:id', composerDraftUpdateLimiter, async (req, res) => {
   try {
     const tid = await _tid(req, 'campaign-composer:update');
     const id = parseInt(req.params.id, 10);
     const { draft } = req.body || {};
     if (!draft) return _err(res, 400, 'draft data required');
 
-    const normalized = normalizeComposerDraft(draft, draft.source || 'template');
     const p = _db.getPool();
+    const existing = await p.query(
+      `SELECT * FROM campaign_composer_drafts WHERE id = $1 AND tenant_id = $2 AND status = 'draft'`,
+      [id, tid]
+    );
+    if (!existing.rows.length) return _err(res, 404, 'draft not found or not editable');
+
+    const normalized = normalizeComposerDraft(draft, draft.source || 'template');
+    const gated = await _gateDraft(req, tid, normalized, 'campaign-composer:update');
+    if (!gated.ok) {
+      const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json(contentSafetyHttpBody(gated));
+    }
+
+    const warnings = gated.warnings || gated.content_safety_warnings || [];
     const result = await p.query(
-      `UPDATE campaign_composer_drafts SET draft = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3 AND status = 'draft' RETURNING *`,
-      [JSON.stringify(normalized), id, tid]
+      `UPDATE campaign_composer_drafts SET draft = $1, content_safety_warnings = $2, updated_at = now()
+       WHERE id = $3 AND tenant_id = $4 AND status = 'draft' RETURNING *`,
+      [JSON.stringify(normalized), JSON.stringify(warnings), id, tid]
     );
 
     if (!result.rows.length) return _err(res, 404, 'draft not found or not editable');
     const row = result.rows[0];
     row.content_safety_warnings = _parseWarnings(row.content_safety_warnings);
-    res.json({ ok: true, draft: row });
+    res.json(attachContentSafetyWarnings({ ok: true, draft: row }, warnings));
   } catch (err) { _err(res, 500, err.message); }
 });
 

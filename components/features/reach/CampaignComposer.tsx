@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import PanelHero from "@/components/layout/PanelHero";
 import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
@@ -53,6 +53,37 @@ export default function CampaignComposer() {
   const [history, setHistory] = useState<DraftRow[]>([]);
   const [activeDraft, setActiveDraft] = useState<DraftRow | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveErrors, setSaveErrors] = useState<Record<number, string>>({});
+  const activeDraftRef = useRef<DraftRow | null>(null);
+  const saveRequestRef = useRef<Map<number, number>>(new Map());
+
+  useEffect(() => {
+    activeDraftRef.current = activeDraft;
+  }, [activeDraft]);
+
+  function invalidatePendingSave(draftId: number) {
+    saveRequestRef.current.set(draftId, (saveRequestRef.current.get(draftId) || 0) + 1);
+  }
+
+  function clearSaveError(draftId: number) {
+    setSaveErrors((prev) => {
+      if (!prev[draftId]) return prev;
+      const next = { ...prev };
+      delete next[draftId];
+      return next;
+    });
+  }
+
+  function activateDraft(row: DraftRow | null) {
+    if (activeDraft?.id != null) {
+      invalidatePendingSave(activeDraft.id);
+      clearSaveError(activeDraft.id);
+    }
+    setSaving(false);
+    setActiveDraft(row);
+  }
+
+  const activeSaveError = activeDraft ? saveErrors[activeDraft.id] || null : null;
 
   useEffect(() => {
     loadHistory();
@@ -65,6 +96,11 @@ export default function CampaignComposer() {
 
   async function generate() {
     if (!prompt.trim()) return;
+    if (activeDraft?.id != null) {
+      invalidatePendingSave(activeDraft.id);
+      clearSaveError(activeDraft.id);
+      setSaving(false);
+    }
     setGenerating(true);
     const d = await apiPost<GenerateResp>("/api/campaign-composer/generate", { prompt });
     setGenerating(false);
@@ -74,6 +110,7 @@ export default function CampaignComposer() {
         ...d.draft,
         content_safety_warnings: warnings,
       });
+      clearSaveError(d.draft.id);
       loadHistory();
     } else {
       alert(d.userMessage || d.error || "Failed to generate campaign");
@@ -82,13 +119,49 @@ export default function CampaignComposer() {
 
   async function saveDraft() {
     if (!activeDraft || activeDraft.status !== 'draft') return;
+    const draftId = activeDraft.id;
+    const reqSeq = (saveRequestRef.current.get(draftId) || 0) + 1;
+    saveRequestRef.current.set(draftId, reqSeq);
+    const draftSnapshot = JSON.stringify(activeDraft.draft);
+
     setSaving(true);
-    const d = await apiPut<GenerateResp>(`/api/campaign-composer/drafts/${activeDraft.id}`, { draft: activeDraft.draft });
+    const d = await apiPut<GenerateResp>(`/api/campaign-composer/drafts/${draftId}`, { draft: activeDraft.draft });
+
+    if (saveRequestRef.current.get(draftId) !== reqSeq) return;
+    const current = activeDraftRef.current;
+    if (!current || current.id !== draftId) return;
+
     setSaving(false);
     if (d.ok) {
-      setActiveDraft(d.draft);
+      clearSaveError(draftId);
+      const warnings = d.content_safety_warnings || d.draft?.content_safety_warnings || [];
+      const userEditedDuringSave = JSON.stringify(current.draft) !== draftSnapshot;
+      if (userEditedDuringSave) {
+        setActiveDraft((prev) => (
+          prev && prev.id === draftId
+            ? {
+              ...prev,
+              content_safety_warnings: warnings,
+              updated_at: d.draft?.updated_at || prev.updated_at,
+            }
+            : prev
+        ));
+      } else {
+        setActiveDraft({
+          ...d.draft,
+          content_safety_warnings: warnings,
+        });
+      }
       loadHistory();
     } else {
+      const code = d.error || "";
+      if (code === "content_safety_blocked" || code === "content_safety_unavailable") {
+        setSaveErrors((prev) => ({
+          ...prev,
+          [draftId]: String(d.userMessage || d.error || "Save blocked by content safety checks."),
+        }));
+        return;
+      }
       alert(d.error || "Failed to save draft");
     }
   }
@@ -110,6 +183,7 @@ export default function CampaignComposer() {
 
   const updateDraftField = (field: keyof CampaignDraft, value: any) => {
     if (!activeDraft) return;
+    clearSaveError(activeDraft.id);
     setActiveDraft({
       ...activeDraft,
       draft: { ...activeDraft.draft, [field]: value }
@@ -152,6 +226,22 @@ export default function CampaignComposer() {
           {activeDraft && (
             <div className="ig-card" style={{ borderLeft: `4px solid ${activeDraft.status === 'draft' ? '#f59e0b' : '#10b981'}` }}>
               <ContentSafetyWarnings warnings={activeDraft.content_safety_warnings} />
+              {activeSaveError ? (
+                <div
+                  role="alert"
+                  style={{
+                    background: "#FEE2E2",
+                    border: "1px solid #FCA5A5",
+                    borderRadius: 8,
+                    padding: 12,
+                    marginBottom: 12,
+                    fontSize: "0.85rem",
+                    color: "#991B1B",
+                  }}
+                >
+                  {activeSaveError}
+                </div>
+              ) : null}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <h3 style={{ fontSize: "1.1rem", margin: 0 }}>{activeDraft.draft.campaign_name}</h3>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -271,7 +361,7 @@ export default function CampaignComposer() {
               {history.map((row) => (
                 <div
                   key={row.id}
-                  onClick={() => setActiveDraft(row)}
+                  onClick={() => activateDraft(row)}
                   style={{
                     padding: 12,
                     borderRadius: 8,
