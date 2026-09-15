@@ -283,6 +283,134 @@ describe('PR10H.10 composer draft save gate', () => {
   });
 });
 
+describe('PR10H.10 composer draft save rate limit', () => {
+  const apiPath = require.resolve('../services/campaign_composer/api');
+  const prevEnv = process.env.CAMPAIGN_COMPOSER_DRAFT_UPDATE_RATE_LIMIT_MAX;
+  let server;
+  let baseUrl;
+  let updateCalls;
+  let storedRow;
+
+  function mountRouter() {
+    delete require.cache[apiPath];
+    const tenantCtx = require('../services/tenants/context');
+    tenantCtx.resolveTenantId = async (req) => Number(req.headers['x-test-tenant'] || 11);
+
+    storedRow = {
+      id: 42,
+      tenant_id: 11,
+      prompt: 'Nurture recent signups',
+      draft: { ...BASE_DRAFT },
+      content_safety_warnings: [],
+      status: 'draft',
+      segment_id: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    updateCalls = [];
+
+    const _db = require('../db');
+    _db.getPool = () => ({
+      query: async (sql, params) => {
+        if (sql.includes('SELECT * FROM campaign_composer_drafts')) {
+          const id = params[0];
+          const tid = params[1];
+          if (storedRow.id === id && storedRow.tenant_id === tid && storedRow.status === 'draft') {
+            return { rows: [{ ...storedRow, draft: { ...storedRow.draft } }] };
+          }
+          return { rows: [] };
+        }
+        if (sql.includes('UPDATE campaign_composer_drafts')) {
+          updateCalls.push({ sql, params });
+          const id = params[2];
+          const tid = params[3];
+          if (storedRow.id === id && storedRow.tenant_id === tid) {
+            storedRow = {
+              ...storedRow,
+              draft: JSON.parse(params[0]),
+              content_safety_warnings: JSON.parse(params[1]),
+              updated_at: new Date().toISOString(),
+            };
+            return { rows: [{ ...storedRow }] };
+          }
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    });
+
+    const router = require(apiPath);
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      const tid = Number(req.headers['x-test-tenant'] || 11);
+      req.user = { id: 3 };
+      req.tenant = tid ? { id: tid, name: 'Test', slug: 'test', status: 'active' } : null;
+      next();
+    });
+    app.use('/api/campaign-composer', router);
+    return app;
+  }
+
+  async function putDraft(tenant = 11, body = BASE_DRAFT) {
+    return fetch(`${baseUrl}/api/campaign-composer/drafts/42`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-tenant': String(tenant),
+      },
+      body: JSON.stringify({ draft: body }),
+    });
+  }
+
+  before(async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.CAMPAIGN_COMPOSER_DRAFT_UPDATE_RATE_LIMIT_MAX = '2';
+    const app = mountRouter();
+    server = await new Promise((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    baseUrl = `http://127.0.0.1:${server.address().port}`;
+  });
+
+  after(async () => {
+    if (server) await new Promise((r) => server.close(r));
+    delete require.cache[apiPath];
+    if (prevEnv === undefined) delete process.env.CAMPAIGN_COMPOSER_DRAFT_UPDATE_RATE_LIMIT_MAX;
+    else process.env.CAMPAIGN_COMPOSER_DRAFT_UPDATE_RATE_LIMIT_MAX = prevEnv;
+  });
+
+  it('returns 429 without updating the draft after the tenant bucket is exhausted', async () => {
+    updateCalls.length = 0;
+    assert.equal((await putDraft()).status, 200);
+    assert.equal((await putDraft()).status, 200);
+    const limited = await putDraft();
+    const body = await limited.json();
+    assert.equal(limited.status, 429);
+    assert.equal(body.ok, false);
+    assert.equal(body.error, 'rate_limited');
+    assert.equal(updateCalls.length, 2);
+  });
+
+  it('keeps separate tenant buckets so tenant B is not 429 when tenant A is exhausted', async () => {
+    storedRow = {
+      ...storedRow,
+      tenant_id: 12,
+      draft: { ...BASE_DRAFT, campaign_name: 'Tenant twelve draft' },
+    };
+    updateCalls.length = 0;
+
+    assert.equal((await putDraft(11)).status, 429);
+    assert.equal((await putDraft(11)).status, 429);
+    const tenantB = await putDraft(12, { ...BASE_DRAFT, campaign_name: 'Tenant twelve draft' });
+    const body = await tenantB.json();
+    assert.equal(tenantB.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(updateCalls.length, 1);
+    assert.equal(storedRow.tenant_id, 12);
+  });
+});
+
 describe('PR10H.10 blocked responses omit usable content', () => {
   it('contentSafetyHttpBody never includes composer draft fields', () => {
     const body = contentSafetyHttpBody({
@@ -305,6 +433,8 @@ describe('PR10H.10 UI coverage notes', () => {
     assert.match(rendered, /content_safety_blocked/);
     assert.match(rendered, /content_safety_unavailable/);
     assert.match(rendered, /Save Changes/);
+    assert.match(rendered, /switching drafts clears the prior draft save alert/);
+    assert.match(rendered, /preserves edits made while a save is in flight/);
   });
 });
 

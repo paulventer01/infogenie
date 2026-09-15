@@ -15,10 +15,19 @@ const { createRateLimiter } = require('../security/rate_limit');
 
 const router = express.Router();
 
+function _testOnlyMax(envName, fallback) {
+  if (process.env.NODE_ENV !== 'test') return fallback;
+  const n = Number.parseInt(String(process.env[envName] || ''), 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  return fallback;
+}
+
+const COMPOSER_DRAFT_UPDATE_MAX = _testOnlyMax('CAMPAIGN_COMPOSER_DRAFT_UPDATE_RATE_LIMIT_MAX', 30);
+
 const composerDraftUpdateLimiter = createRateLimiter({
   name: 'campaign-composer-draft-update',
   windowMs: 60_000,
-  max: 30,
+  max: COMPOSER_DRAFT_UPDATE_MAX,
   failClosed: true,
   keyFn: (req) => {
     const tid = req.tenant?.id;

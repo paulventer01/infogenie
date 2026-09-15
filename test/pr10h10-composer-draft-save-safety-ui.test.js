@@ -58,6 +58,21 @@ const BASE_DRAFT = {
 };
 
 async function composerHarness(t, opts = {}) {
+  const secondDraft = {
+    id: 43,
+    prompt: 'Win-back campaign',
+    draft: {
+      ...BASE_DRAFT,
+      campaign_name: 'Win-back offer',
+      body: 'Come back for a special offer.',
+    },
+    status: 'draft',
+    segment_id: null,
+    content_safety_warnings: ['Second draft baseline warning.'],
+    created_at: '2026-01-02T00:00:00.000Z',
+    updated_at: '2026-01-02T00:00:00.000Z',
+  };
+
   const state = {
     drafts: opts.drafts || [{
       id: 42,
@@ -68,8 +83,11 @@ async function composerHarness(t, opts = {}) {
       content_safety_warnings: opts.warnings || ['Existing warning should remain when save is blocked.'],
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
-    }],
+    }, ...(opts.includeSecondDraft === false ? [] : [secondDraft])],
     saveHandler: opts.saveHandler || null,
+    generateHandler: opts.generateHandler || null,
+    nextDraftId: 100,
+    putCalls: [],
   };
 
   const dom = new JSDOM('<div id="root"></div>', {
@@ -89,14 +107,41 @@ async function composerHarness(t, opts = {}) {
       if (url.endsWith('/api/campaign-composer/drafts') && method === 'GET') {
         return json({ ok: true, drafts: state.drafts });
       }
-      if (url.endsWith('/api/campaign-composer/drafts/42') && method === 'PUT') {
+      if (url.endsWith('/api/campaign-composer/generate') && method === 'POST') {
         const payload = JSON.parse(options.body || '{}');
-        const response = state.saveHandler
-          ? await state.saveHandler(payload, state)
+        const response = state.generateHandler
+          ? await state.generateHandler(payload, state)
           : {
             ok: true,
             draft: {
-              ...state.drafts[0],
+              id: ++state.nextDraftId,
+              prompt: payload.prompt,
+              draft: {
+                ...BASE_DRAFT,
+                campaign_name: 'Generated campaign',
+                body: `Generated for ${payload.prompt}`,
+              },
+              status: 'draft',
+              segment_id: null,
+              content_safety_warnings: [],
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          };
+        const status = response.httpStatus || (response.ok ? 200 : 403);
+        return json(response, status);
+      }
+      const putMatch = url.match(/\/api\/campaign-composer\/drafts\/(\d+)$/);
+      if (putMatch && method === 'PUT') {
+        const draftId = Number(putMatch[1]);
+        const payload = JSON.parse(options.body || '{}');
+        state.putCalls.push({ draftId, payload });
+        const response = state.saveHandler
+          ? await state.saveHandler({ draftId, ...payload }, state)
+          : {
+            ok: true,
+            draft: {
+              ...state.drafts.find((d) => d.id === draftId),
               draft: payload.draft,
               content_safety_warnings: [],
             },
@@ -135,14 +180,14 @@ async function composerHarness(t, opts = {}) {
     }
   });
 
-  const selectDraft = async () => act(async () => {
+  const selectDraft = async (label) => act(async () => {
     const row = [...dom.window.document.querySelectorAll('div')]
-      .find((el) => el.textContent?.includes('Onboarding nurture') && el.style?.cursor === 'pointer');
-    assert.ok(row, 'history draft row');
+      .find((el) => el.textContent?.includes(label) && el.style?.cursor === 'pointer');
+    assert.ok(row, `history draft row: ${label}`);
     row.click();
   });
 
-  await selectDraft();
+  await selectDraft('Onboarding nurture');
 
   await act(async () => {
     for (let i = 0; i < 40 && !dom.window.document.querySelector('textarea[rows="6"]'); i++) {
@@ -151,8 +196,17 @@ async function composerHarness(t, opts = {}) {
   });
 
   const bodyInput = () => dom.window.document.querySelector('textarea[rows="6"]');
+  const promptInput = () => dom.window.document.querySelector('textarea[rows="3"]');
   const setBodyText = async (value) => act(async () => {
     const el = bodyInput();
+    assert.ok(el);
+    Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')
+      .set.call(el, value);
+    el.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    el.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+  const setPromptText = async (value) => act(async () => {
+    const el = promptInput();
     assert.ok(el);
     Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')
       .set.call(el, value);
@@ -165,13 +219,23 @@ async function composerHarness(t, opts = {}) {
     assert.ok(btn, 'Save Changes');
     btn.click();
   });
+  const clickGenerate = async () => act(async () => {
+    const btn = [...dom.window.document.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Generate Campaign Draft'));
+    assert.ok(btn, 'Generate Campaign Draft');
+    btn.click();
+  });
 
   return {
     document: dom.window.document,
     text: () => dom.window.document.body.textContent,
     bodyInput,
+    promptInput,
     setBodyText,
+    setPromptText,
     clickSave,
+    clickGenerate,
+    selectDraft,
     state,
   };
 }
@@ -303,4 +367,163 @@ test('CampaignComposer successful save clears prior save alert', async (t) => {
   });
   assert.equal(h.document.querySelector('[role="alert"]'), null);
   assert.equal(h.bodyInput().value, 'Clean save copy');
+});
+
+test('CampaignComposer switching drafts clears the prior draft save alert', async (t) => {
+  const h = await composerHarness(t, {
+    saveHandler: async () => ({
+      ok: false,
+      error: 'content_safety_blocked',
+      userMessage: 'Draft A save blocked.',
+      httpStatus: 403,
+    }),
+  });
+
+  await h.setBodyText('Blocked on draft A.');
+  await h.clickSave();
+  await act(async () => {
+    for (let i = 0; i < 20 && !h.document.querySelector('[role="alert"]'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+  assert.match(h.document.querySelector('[role="alert"]').textContent, /Draft A save blocked/);
+
+  await h.selectDraft('Win-back offer');
+  await act(async () => {
+    for (let i = 0; i < 20 && !h.bodyInput().value.includes('Come back'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+
+  assert.equal(h.document.querySelector('[role="alert"]'), null);
+  assert.match(h.text(), /Second draft baseline warning/);
+  assert.equal(h.bodyInput().value, 'Come back for a special offer.');
+});
+
+test('CampaignComposer ignores a late blocked save response after switching drafts', async (t) => {
+  let finish;
+  const h = await composerHarness(t, {
+    saveHandler: async () => new Promise((resolve) => {
+      finish = () => resolve({
+        ok: false,
+        error: 'content_safety_blocked',
+        userMessage: 'Late blocked response for draft A.',
+        httpStatus: 403,
+      });
+    }),
+  });
+
+  await h.setBodyText('Draft A pending save.');
+  await h.clickSave();
+  await h.selectDraft('Win-back offer');
+  await act(async () => {
+    for (let i = 0; i < 20 && !h.bodyInput().value.includes('Come back'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+
+  await act(async () => finish());
+  await act(async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 25));
+  });
+
+  assert.equal(h.document.querySelector('[role="alert"]'), null);
+  assert.equal(h.bodyInput().value, 'Come back for a special offer.');
+});
+
+test('CampaignComposer ignores a late successful save response after switching drafts', async (t) => {
+  let finish;
+  const h = await composerHarness(t, {
+    saveHandler: async ({ draftId, draft }, state) => new Promise((resolve) => {
+      finish = () => resolve({
+        ok: true,
+        draft: {
+          ...state.drafts.find((d) => d.id === draftId),
+          draft: { ...draft, body: 'Server overwrote draft A.' },
+          content_safety_warnings: ['Late success warning.'],
+        },
+      });
+    }),
+  });
+
+  await h.setBodyText('Draft A pending save.');
+  await h.clickSave();
+  await h.selectDraft('Win-back offer');
+  await act(async () => {
+    for (let i = 0; i < 20 && !h.bodyInput().value.includes('Come back'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+
+  await act(async () => finish());
+  await act(async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 25));
+  });
+
+  assert.equal(h.document.querySelector('[role="alert"]'), null);
+  assert.equal(h.bodyInput().value, 'Come back for a special offer.');
+  assert.doesNotMatch(h.text(), /Server overwrote draft A|Late success warning/);
+});
+
+test('CampaignComposer preserves edits made while a save is in flight', async (t) => {
+  let finish;
+  const h = await composerHarness(t, {
+    saveHandler: async ({ draftId, draft }, state) => new Promise((resolve) => {
+      finish = () => resolve({
+        ok: true,
+        draft: {
+          ...state.drafts.find((d) => d.id === draftId),
+          draft: { ...draft, body: 'Server saved stale body.' },
+          content_safety_warnings: ['Saved warning.'],
+        },
+        content_safety_warnings: ['Saved warning.'],
+      });
+    }),
+  });
+
+  await h.setBodyText('Initial save body.');
+  await h.clickSave();
+  await h.setBodyText('Edited again while saving.');
+  await act(async () => finish());
+  await act(async () => {
+    for (let i = 0; i < 20 && !h.text().includes('Saved warning.'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+
+  assert.equal(h.bodyInput().value, 'Edited again while saving.');
+  assert.match(h.text(), /Saved warning/);
+  assert.doesNotMatch(h.text(), /Server saved stale body/);
+});
+
+test('CampaignComposer generate clears a prior save alert and ignores late save responses', async (t) => {
+  let finishBlocked;
+  const h = await composerHarness(t, {
+    saveHandler: async () => new Promise((resolve) => {
+      finishBlocked = () => resolve({
+        ok: false,
+        error: 'content_safety_blocked',
+        userMessage: 'Draft A blocked after generate started.',
+        httpStatus: 403,
+      });
+    }),
+  });
+
+  await h.setBodyText('Draft A blocked save.');
+  await h.clickSave();
+  await h.setPromptText('Launch a spring promo');
+  await h.clickGenerate();
+  await act(async () => {
+    for (let i = 0; i < 40 && !h.text().includes('Generated campaign'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  });
+
+  assert.equal(h.document.querySelector('[role="alert"]'), null);
+  await act(async () => finishBlocked());
+  await act(async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 25));
+  });
+  assert.equal(h.document.querySelector('[role="alert"]'), null);
+  assert.match(h.text(), /Generated campaign/);
 });
