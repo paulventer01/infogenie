@@ -10,6 +10,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
 interface ResearchSegment {
   name?: string;
@@ -49,6 +50,15 @@ interface AdPackage {
   cta_button?: string;
   notes?: string;
   hashtags?: string[];
+}
+
+interface AdPackageResult {
+  ok: boolean;
+  error?: string;
+  userMessage?: string;
+  packages?: AdPackage[];
+  source?: string;
+  content_safety_warnings?: string[];
 }
 
 type Tab = "preview" | "ab" | "leads" | "ads";
@@ -142,6 +152,8 @@ export default function LandingPages() {
   const [adError, setAdError] = useState("");
   const [adPackages, setAdPackages] = useState<AdPackage[] | null>(null);
   const [adSource, setAdSource] = useState("");
+  const [adWarnings, setAdWarnings] = useState<string[]>([]);
+  const adRequest = useRef(0);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -190,6 +202,9 @@ export default function LandingPages() {
       toast("⚠️ Page title required");
       return;
     }
+    adRequest.current += 1;
+    setAdBusy(false);
+    setAdError("");
     setGenBusy(true);
     setGenError("");
     setHtml(null);
@@ -215,6 +230,8 @@ export default function LandingPages() {
     setAbStats(null);
     setLeadsData(null);
     setAdPackages(null);
+    setAdWarnings([]);
+    setAdSource("");
     setTimeout(() => {
       if (iframeRef.current) iframeRef.current.srcdoc = newHtml;
     }, 0);
@@ -281,13 +298,16 @@ export default function LandingPages() {
     }
     setAdBusy(true);
     setAdError("");
-    const r = await apiPost("/api/ad-creative/from-landing-page", { page_id: pageId });
+    const request = ++adRequest.current;
+    const r = await apiPost<AdPackageResult>("/api/ad-creative/from-landing-page", { page_id: pageId });
+    if (request !== adRequest.current) return;
     setAdBusy(false);
     if (!r.ok) {
-      setAdError(r.error || "failed");
+      setAdError(r.userMessage || r.error || "failed");
       return;
     }
-    setAdPackages((r.packages as AdPackage[]) || []);
+    setAdPackages(r.packages || []);
+    setAdWarnings(r.content_safety_warnings || []);
     setAdSource((r.source as string) || "");
   }, [pageId]);
 
@@ -1019,12 +1039,13 @@ export default function LandingPages() {
                       Analysing landing page and generating ad copy for all platforms…
                     </div>
                   )}
-                  {adError && <div style={{ color: "#EF4444", fontSize: "0.8rem" }}>⚠️ {adError}</div>}
+                  {adError && <div role="alert" style={{ color: "#EF4444", fontSize: "0.8rem" }}>⚠️ {adError}</div>}
                   {adPackages && !adBusy && (
                     <>
+                      <ContentSafetyWarnings warnings={adWarnings} />
                       <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#1E293B", marginBottom: 12 }}>
                         ✅ Ad Package Ready{" "}
-                        <span style={{ fontSize: "0.7rem", fontWeight: 500, color: "#64748B" }}>{adSource} · 3 platforms</span>
+                        <span style={{ fontSize: "0.7rem", fontWeight: 500, color: "#64748B" }}>{adSource} · {adPackages.length} platforms</span>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                         {adPackages.map((pkg, i) => (
