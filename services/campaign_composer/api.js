@@ -23,6 +23,7 @@ function _testOnlyMax(envName, fallback) {
 }
 
 const COMPOSER_DRAFT_UPDATE_MAX = _testOnlyMax('CAMPAIGN_COMPOSER_DRAFT_UPDATE_RATE_LIMIT_MAX', 30);
+const COMPOSER_DRAFT_APPROVE_MAX = _testOnlyMax('CAMPAIGN_COMPOSER_DRAFT_APPROVE_RATE_LIMIT_MAX', 10);
 
 const composerDraftUpdateLimiter = createRateLimiter({
   name: 'campaign-composer-draft-update',
@@ -33,6 +34,19 @@ const composerDraftUpdateLimiter = createRateLimiter({
     const tid = req.tenant?.id;
     const uid = req.user?.id;
     if (tid != null && uid != null) return `campaign-composer|${tid}|${uid}`;
+    return null;
+  },
+});
+
+const composerDraftApproveLimiter = createRateLimiter({
+  name: 'campaign-composer-draft-approve',
+  windowMs: 60_000,
+  max: COMPOSER_DRAFT_APPROVE_MAX,
+  failClosed: true,
+  keyFn: (req) => {
+    const tid = req.tenant?.id;
+    const uid = req.user?.id;
+    if (tid != null && uid != null) return `campaign-composer-approve|${tid}|${uid}`;
     return null;
   },
 });
@@ -239,31 +253,60 @@ router.put('/drafts/:id', composerDraftUpdateLimiter, async (req, res) => {
   } catch (err) { _err(res, 500, err.message); }
 });
 
-router.post('/drafts/:id/approve', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/drafts/:id/approve', composerDraftApproveLimiter, async (req, res) => {
+  const p = _db.getPool();
+  const client = await p.connect();
   try {
     const tid = await _tid(req, 'campaign-composer:approve');
     const id = parseInt(req.params.id, 10);
-    const p = _db.getPool();
 
-    const check = await p.query(
-      `SELECT * FROM campaign_composer_drafts WHERE id = $1 AND tenant_id = $2`,
+    await client.query('BEGIN');
+    const locked = await client.query(
+      `SELECT * FROM campaign_composer_drafts WHERE id = $1 AND tenant_id = $2 AND status = 'draft' FOR UPDATE`,
       [id, tid]
     );
-    if (!check.rows.length) return _err(res, 404, 'draft not found');
-    const row = check.rows[0];
-    if (row.status !== 'draft') return _err(res, 400, 'already approved or launched');
+    if (!locked.rows.length) {
+      await client.query('ROLLBACK');
+      const existing = await p.query(
+        `SELECT * FROM campaign_composer_drafts WHERE id = $1 AND tenant_id = $2`,
+        [id, tid]
+      );
+      if (existing.rows.length && existing.rows[0].status !== 'draft') {
+        const row = existing.rows[0];
+        row.content_safety_warnings = _parseWarnings(row.content_safety_warnings);
+        return res.status(409).json({ ok: false, error: 'already_approved', draft: row, segment_id: row.segment_id });
+      }
+      return _err(res, 404, 'draft not found or not approvable');
+    }
 
-    const draft = row.draft;
-    const segResult = await p.query(
+    const row = locked.rows[0];
+    const draft = normalizeComposerDraft(row.draft, row.draft?.source || 'template');
+    const gated = await _gateDraft(req, tid, draft, 'campaign-composer:approve');
+    if (!gated.ok) {
+      await client.query('ROLLBACK');
+      const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json(contentSafetyHttpBody(gated));
+    }
+
+    const warnings = gated.warnings || gated.content_safety_warnings || [];
+    const segResult = await client.query(
       `INSERT INTO audience_segments (tenant_id, name, description, rules) VALUES ($1, $2, $3, $4) RETURNING id`,
       [tid, draft.campaign_name || 'Composer Segment', draft.audience_description || '', JSON.stringify(draft.audience_rules || { match: 'all', conditions: [] })]
     );
     const segmentId = segResult.rows[0].id;
 
-    const updateResult = await p.query(
-      `UPDATE campaign_composer_drafts SET status = 'approved', segment_id = $1, updated_at = now() WHERE id = $2 RETURNING *`,
-      [segmentId, id]
+    const updateResult = await client.query(
+      `UPDATE campaign_composer_drafts SET status = 'approved', segment_id = $1, content_safety_warnings = $2, updated_at = now()
+       WHERE id = $3 AND tenant_id = $4 AND status = 'draft' RETURNING *`,
+      [segmentId, JSON.stringify(warnings), id, tid]
     );
+    if (!updateResult.rows.length) {
+      await client.query('ROLLBACK');
+      return _err(res, 409, 'already approved or launched');
+    }
+
+    await client.query('COMMIT');
 
     try {
       const { governSafe } = require('../ai_governance/hooks');
@@ -285,8 +328,13 @@ router.post('/drafts/:id/approve', async (req, res) => {
 
     const out = updateResult.rows[0];
     out.content_safety_warnings = _parseWarnings(out.content_safety_warnings);
-    res.json({ ok: true, draft: out, segment_id: segmentId });
-  } catch (err) { _err(res, 500, err.message); }
+    res.json(attachContentSafetyWarnings({ ok: true, draft: out, segment_id: segmentId }, warnings));
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    _err(res, 500, err.message);
+  } finally {
+    client.release();
+  }
 });
 
 module.exports = router;
