@@ -14,6 +14,45 @@ module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
   const { _chargeBudget, anthropic, callDataForSEO, callRapidAPI, https, openai, openaiChatWithRetry } = ctx;
+  const _tenantCtx = require('./services/tenants/context');
+  const {
+    gateRouteText,
+    contentSafetyHttpBody,
+    attachContentSafetyWarnings,
+  } = require('./services/ai_governance/route_gate');
+
+  async function _resolveTenant(req, label) {
+    try {
+      return await _tenantCtx.resolveTenantId(req, { label });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function _gateMarketText(req, text, label) {
+    const tid = await _resolveTenant(req, label);
+    try {
+      return await gateRouteText({
+        tenantId: tid,
+        userId: req.user?.id || null,
+        surface: 'market_signals',
+        action: 'generate_content',
+        text: String(text || ''),
+      });
+    } catch (_) {
+      return {
+        ok: false,
+        error: 'content_safety_unavailable',
+        userMessage: 'Content safety checks are temporarily unavailable. Generation was stopped to protect your brand.',
+        warnings: [],
+      };
+    }
+  }
+
+  function _gateBlocked(res, gated) {
+    const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+    return res.status(status).json(contentSafetyHttpBody(gated));
+  }
 
 app.post('/api/competitor-news', async (req, res) => {
   try {
@@ -393,8 +432,23 @@ Make titles highly specific and realistic — they should mention real concerns,
       fetchHN(queries[0]),
       fetchAISignals()
     ]);
-    const aiPosts = aiResult.posts || [];
-    const aiError = aiResult.error || null;
+    let aiPosts = aiResult.posts || [];
+    let aiError = aiResult.error || null;
+    let aiGateWarnings = [];
+
+    if (aiPosts.length > 0) {
+      const aiText = aiPosts.map((p) => `${p.title || ''}\n${p.opportunity || ''}`).join('\n\n');
+      const gated = await _gateMarketText(req, aiText, 'reddit-monitor:ai-signals');
+      if (!gated.ok) {
+        aiPosts = [];
+        aiError = gated.error || 'content_safety_blocked';
+        if (gated.error === 'content_safety_unavailable' && hnPosts.length === 0) {
+          return _gateBlocked(res, gated);
+        }
+      } else {
+        aiGateWarnings = gated.warnings || gated.content_safety_warnings || [];
+      }
+    }
 
     // Score HN posts with GPT-4o
     let scoredHN = hnPosts;
@@ -428,11 +482,16 @@ Each item: { "relevance": 0-100, "sentiment": "positive"|"neutral"|"negative", "
       else if (scoredHN.length === 0 && aiPosts.length === 0) topError = 'No live HN matches and AI returned no posts. Try broader keywords or different competitors.';
     }
 
-    res.json({
+    const payload = {
       posts: all,
       sources: { hn: scoredHN.length, ai: aiPosts.length },
-      error: topError
-    });
+      error: topError,
+    };
+    if (aiError && aiPosts.length === 0 && aiResult.posts?.length > 0) {
+      payload.ai_blocked = true;
+      payload.ai_error = aiError;
+    }
+    res.json(attachContentSafetyWarnings(payload, aiGateWarnings));
   } catch(err) {
     console.error('/api/reddit-monitor error:', err.message);
     res.json({ posts: [], error: `Server error: ${err.message}` });
@@ -466,7 +525,11 @@ Return JSON only: { "reply": "...", "tone_note": "brief note on how this matches
     const raw = completion.choices[0]?.message?.content || '{}';
     let result;
     try { result = JSON.parse(raw); } catch { result = { reply: raw.replace(/[{}'"]/g, ''), tone_note: '' }; }
-    res.json(result);
+
+    const gated = await _gateMarketText(req, result.reply || '', 'reddit-reply:generate');
+    if (!gated.ok) return _gateBlocked(res, gated);
+
+    res.json(attachContentSafetyWarnings(result, gated.warnings));
   } catch(err) {
     console.error('/api/reddit-reply error:', err.message);
     res.json({ reply: '', error: err.message });
@@ -547,7 +610,12 @@ Rules:
     let result;
     try { result = JSON.parse(raw); } catch { result = {}; }
     const titles = Array.isArray(result.titles) ? result.titles.filter(t => typeof t === 'string' && t.trim()).slice(0, 3) : [];
-    res.json({ persona: (result.persona || '').toString().trim(), titles });
+    const persona = (result.persona || '').toString().trim();
+    const gateText = [persona, ...titles].join('\n');
+    const gated = await _gateMarketText(req, gateText, 'reddit-studio-suggest:generate');
+    if (!gated.ok) return _gateBlocked(res, gated);
+
+    res.json(attachContentSafetyWarnings({ persona, titles }, gated.warnings));
   } catch(err) {
     console.error('/api/reddit-studio-suggest error:', err.message);
     res.json({ persona: '', titles: [], error: err.message });
@@ -1310,9 +1378,34 @@ Return JSON: { "headline": "...", "body": "...", "cta": "...", "hashtags": "..."
 Headline: 5-10 words. Body: 1-3 sentences. CTA: 3-5 words. Hashtags: 3-5 relevant (for social platforms).`;
     const completion = await openai.chat.completions.create({ model:'gpt-5', messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}], max_tokens:300, response_format:{type:'json_object'} });
     const ad = JSON.parse(completion.choices[0]?.message?.content||'{}');
-    res.json({ ad });
+    const gateText = [ad.headline, ad.body, ad.cta, ad.hashtags].filter(Boolean).join('\n');
+    const gated = await _gateMarketText(req, gateText, 'ai-channel-ad:generate');
+    if (!gated.ok) return _gateBlocked(res, gated);
+    res.json(attachContentSafetyWarnings({ ad }, gated.warnings));
   } catch(err) {
-    res.json({ ad: { headline:`Grow with ${req.body?.domain||'us'}`, body:`The smart way to drive leads in ${req.body?.industry||'your industry'}. Start your campaign today.`, cta:'Get Started Free', hashtags:'#marketing #growth #leads' }, error: err.message });
+    const fallbackAd = {
+      headline: `Grow with ${req.body?.domain || 'us'}`,
+      body: `The smart way to drive leads in ${req.body?.industry || 'your industry'}. Start your campaign today.`,
+      cta: 'Get Started Free',
+      hashtags: '#marketing #growth #leads',
+      _estimated: true,
+      source: 'template',
+    };
+    try {
+      const gated = await _gateMarketText(
+        req,
+        [fallbackAd.headline, fallbackAd.body, fallbackAd.cta].join('\n'),
+        'ai-channel-ad:template-fallback',
+      );
+      if (!gated.ok) return _gateBlocked(res, gated);
+      res.json(attachContentSafetyWarnings({ ad: fallbackAd, error: err.message }, gated.warnings));
+    } catch (gateErr) {
+      return _gateBlocked(res, {
+        ok: false,
+        error: 'content_safety_unavailable',
+        userMessage: 'Content safety checks are temporarily unavailable. Generation was stopped to protect your brand.',
+      });
+    }
   }
 });
 
@@ -1369,7 +1462,15 @@ Return ONLY raw JSON: {
       } catch {}
     }
 
-    res.json({ cluster });
+    const gateText = JSON.stringify({
+      pillar: cluster.pillar,
+      topics: cluster.topics,
+      questions: cluster.questions,
+      aiNote: cluster.aiNote,
+    });
+    const gated = await _gateMarketText(req, gateText, 'ai-content-clusters:generate');
+    if (!gated.ok) return _gateBlocked(res, gated);
+    res.json(attachContentSafetyWarnings({ cluster }, gated.warnings));
   } catch(err) {
     res.json({ cluster: null, error: err.message });
   }

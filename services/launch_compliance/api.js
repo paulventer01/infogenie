@@ -2,11 +2,44 @@ const express = require('express');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { DEFAULT_ITEMS } = require('./schema');
+const {
+  gateRouteText,
+  contentSafetyHttpBody,
+  attachContentSafetyWarnings,
+} = require('../ai_governance/route_gate');
 
 const router = express.Router();
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
+
+function _feedbackGateText(feedback) {
+  if (!feedback || typeof feedback !== 'object') return '';
+  const issueText = Array.isArray(feedback.issues)
+    ? feedback.issues.map((i) => (typeof i === 'string' ? i : i?.text || '')).join('\n')
+    : '';
+  return [feedback.summary, feedback.improved_copy, issueText].filter(Boolean).join('\n');
+}
+
+async function _gateFeedback(req, tid, feedback, label) {
+  try {
+    return await gateRouteText({
+      tenantId: tid,
+      userId: req.user?.id || null,
+      surface: 'launch_compliance',
+      action: 'generate_content',
+      text: _feedbackGateText(feedback),
+      label,
+    });
+  } catch (_) {
+    return {
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: 'Content safety checks are temporarily unavailable. Generation was stopped to protect your brand.',
+      warnings: [],
+    };
+  }
+}
 
 // GET /api/launch-compliance/checklists
 router.get('/checklists', async (req, res) => {
@@ -162,11 +195,17 @@ router.post('/checklists/:id/proofread', async (req, res) => {
       };
     }
 
+    const gated = await _gateFeedback(req, tid, feedback, 'compliance:proofread');
+    if (!gated.ok) {
+      const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json(contentSafetyHttpBody(gated));
+    }
+
     await p.query(
       'UPDATE campaign_compliance_checklists SET ai_feedback=$1,updated_at=NOW() WHERE id=$2 AND tenant_id=$3',
       [JSON.stringify(feedback), rows[0].id, tid]
     );
-    res.json({ ok: true, feedback });
+    res.json(attachContentSafetyWarnings({ ok: true, feedback }, gated.warnings));
   } catch (e) { _err(res, 500, e.message); }
 });
 
@@ -230,6 +269,24 @@ router.post('/checklists/:id/brand-check', async (req, res) => {
       'UPDATE campaign_compliance_checklists SET brand_score=$1,updated_at=NOW() WHERE id=$2 AND tenant_id=$3',
       [score, checklist.id, tid]
     );
+
+    try {
+      const { governSafe } = require('../ai_governance/hooks');
+      await governSafe({
+        tenantId: tid,
+        userId: req.user?.id || null,
+        surface: 'launch_compliance',
+        action: 'generate_analysis',
+        payload: {
+          title: checklist.campaign_name || 'Brand alignment check',
+          preview: `score=${score}; issues=${issues.length}`,
+          hasContext: !!brand,
+        },
+      });
+    } catch (e) {
+      console.warn('[launch-compliance] governance audit failed open:', e.message);
+    }
+
     res.json({ ok: true, brand_score: score, issues, brand_found: !!brand });
   } catch (e) { _err(res, 500, e.message); }
 });
