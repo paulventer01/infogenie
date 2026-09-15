@@ -14,15 +14,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
 interface AdResult {
   ok: boolean;
+  userMessage?: string;
+  content_safety_warnings?: string[];
   error?: string;
   image_url: string;
   prompt: string;
   source?: string;
 }
 interface AdHistoryItem {
+  content_safety_warnings?: string[];
   id: number;
   image_url: string;
   headline?: string;
@@ -229,12 +233,10 @@ export default function AdCreative() {
   async function generate() {
     if (!headline.trim()) {
       setGenError("Please enter a headline first.");
-      setGenResult(null);
       return;
     }
     setGenLoading(true);
     setGenError("");
-    setGenResult(null);
     const r = await apiPost<AdResult>("/api/ad-creative/generate", {
       platform,
       format,
@@ -248,7 +250,7 @@ export default function AdCreative() {
     });
     setGenLoading(false);
     if (!r.ok) {
-      setGenError(`Error: ${r.error || "generation failed"}`);
+      setGenError(r.userMessage || r.error || "generation failed");
       return;
     }
     setGenResult(r);
@@ -578,12 +580,13 @@ export default function AdCreative() {
                 </div>
               )}
               {!genLoading && genError && (
-                <p style={{ color: "#EF4444", fontSize: "0.8rem" }}>
+                <p role="alert" style={{ color: "#EF4444", fontSize: "0.8rem" }}>
                   {genError}
                 </p>
               )}
               {!genLoading && genResult && (
                 <div style={card}>
+                  <ContentSafetyWarnings warnings={genResult.content_safety_warnings} />
                   <div
                     style={{
                       display: "flex",
@@ -749,6 +752,7 @@ export default function AdCreative() {
                         }}
                       />
                       <div style={{ padding: 10 }}>
+                        <ContentSafetyWarnings warnings={it.content_safety_warnings} />
                         <div
                           style={{
                             fontSize: "0.72rem",

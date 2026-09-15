@@ -2,6 +2,9 @@ const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { gateRouteText, contentSafetyHttpBody, contentSafetyUnavailableBody,
+  attachContentSafetyWarnings } = require('../ai_governance/route_gate');
+const { normalizePressRelease, pressReleaseGateText } = require('../ai_governance/content_schemas');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -82,12 +85,13 @@ router.post('/generate', async (req, res) => {
   const headline_hint = String(req.body?.headline_hint || '').slice(0, 200);
   if (!brand) return _err(res, 400, 'brand required');
   if (!context) return _err(res, 400, 'context required');
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'press_release:generate' });
+  if (!tid) return _err(res, 400, 'no_tenant');
 
   // Optional: hydrate from a crisis_incident or battle_card — tenant-scoped lookup
   let hydratedContext = context;
   if (_db.hasDb() && (req.body?.from_incident_id || req.body?.from_battle_card_id)) {
     try {
-      const tid = await _tenantCtx.resolveTenantId(req, { label:'press_release:hydrate' });
       if (req.body?.from_incident_id) {
         const r = await _db.getPool().query('SELECT headline, detail FROM crisis_incidents WHERE id=$1 AND tenant_id=$2', [Number(req.body.from_incident_id), tid]);
         if (r.rows[0]) hydratedContext = `Crisis incident: ${r.rows[0].headline}\n${r.rows[0].detail}\n\nAdditional context: ${context}`;
@@ -101,7 +105,22 @@ router.post('/generate', async (req, res) => {
   let release = await _aiPress({ kind, brand, headline_hint, context: hydratedContext, spokesperson, quote_hint });
   let source = 'openai';
   if (!release) { release = _templatePress({ kind, brand, context: hydratedContext, spokesperson }); source = 'template'; }
-  res.json({ ok:true, source, kind, brand, release });
+  release = normalizePressRelease(release);
+  if (!release.headline && !release.body) return _err(res, 502, 'generation produced no release');
+  try {
+    const gated = await gateRouteText({
+      tenantId: tid, userId: req.user?.id || null, surface: 'press_release',
+      action: 'generate_content', text: [brand, pressReleaseGateText(release)].join('\n'),
+    });
+    if (!gated.ok) {
+      return res.status(gated.error === 'content_safety_unavailable' ? 503 : 403)
+        .json(contentSafetyHttpBody(gated));
+    }
+    res.json(attachContentSafetyWarnings({ ok:true, source, kind, brand, release },
+      gated.warnings || gated.content_safety_warnings || []));
+  } catch (_) {
+    return res.status(503).json(contentSafetyUnavailableBody());
+  }
 });
 
 module.exports = router;

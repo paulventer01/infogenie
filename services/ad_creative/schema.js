@@ -23,6 +23,8 @@ async function ensureAdCreativeSchema() {
     )
   `);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_ad_creatives_tenant ON ad_creatives(tenant_id)`);
+  await p.query(`ALTER TABLE ad_creatives
+    ADD COLUMN IF NOT EXISTS content_safety_warnings JSONB NOT NULL DEFAULT '[]'::jsonb`);
   console.log('[ad-creative] schema ready');
 }
 
