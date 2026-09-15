@@ -9,102 +9,13 @@ const crypto = require('node:crypto');
 
 require('./helpers/env');
 
-
-const PROHIBITED = 'guaranteed 100% returns with zero risk';
-
-const BASE_DRAFT = {
-  campaign_name: 'Onboarding nurture',
-  audience_description: 'Recent signups',
-  audience_rules: { match: 'all', conditions: [] },
-  channel: 'email',
-  subject: 'Your onboarding guide',
-  body: 'Here is a helpful walkthrough of our product.',
-  recommended_send_time: 'Tuesday 10am',
-  rationale: 'Target engaged signups',
-  source: 'openai',
-};
-
-function makeTxPool(state) {
-  const tx = {
-    active: false,
-    locked: false,
-  };
-
-  const client = {
-    query: async (sql, params) => {
-      if (sql === 'BEGIN') {
-        tx.active = true;
-        return { rows: [] };
-      }
-      if (sql === 'ROLLBACK' || sql === 'COMMIT') {
-        tx.active = false;
-        tx.locked = false;
-        return { rows: [] };
-      }
-      if (sql.includes('FOR UPDATE')) {
-        const id = params[0];
-        const tid = params[1];
-        if (
-          state.row.id === id
-          && state.row.tenant_id === tid
-          && state.row.status === 'draft'
-          && !tx.locked
-        ) {
-          tx.locked = true;
-          return { rows: [{ ...state.row, draft: { ...state.row.draft } }] };
-        }
-        return { rows: [] };
-      }
-      if (sql.includes('INSERT INTO audience_segments')) {
-        state.segmentInserts.push({ sql, params });
-        const segmentId = ++state.nextSegmentId;
-        return { rows: [{ id: segmentId }] };
-      }
-      if (sql.includes('SELECT * FROM campaign_composer_drafts') && !sql.includes('FOR UPDATE')) {
-        const id = params[0];
-        const tid = params[1];
-        if (state.row.id === id && state.row.tenant_id === tid) {
-          return { rows: [{ ...state.row, draft: { ...state.row.draft } }] };
-        }
-        return { rows: [] };
-      }
-      if (sql.includes("UPDATE campaign_composer_drafts SET status = 'approved'")) {
-        state.approveUpdates.push({ sql, params });
-        const id = params[2];
-        const tid = params[3];
-        if (state.row.id === id && state.row.tenant_id === tid && state.row.status === 'draft') {
-          state.row = {
-            ...state.row,
-            status: 'approved',
-            segment_id: params[0],
-            content_safety_warnings: JSON.parse(params[1]),
-            updated_at: new Date().toISOString(),
-          };
-          return { rows: [{ ...state.row }] };
-        }
-        return { rows: [] };
-      }
-      return { rows: [] };
-    },
-    release: () => {},
-  };
-
-  return {
-    query: async (sql, params) => {
-      if (sql.includes('SELECT * FROM campaign_composer_drafts') && !sql.includes('FOR UPDATE')) {
-        const id = params[0];
-        const tid = params[1];
-        if (state.row.id === id && state.row.tenant_id === tid) {
-          return { rows: [{ ...state.row, draft: { ...state.row.draft } }] };
-        }
-        return { rows: [] };
-      }
-      return { rows: [] };
-    },
-    connect: async () => client,
-    tx,
-  };
-}
+const { BASE_DRAFT, PROHIBITED } = require('./helpers/composer-draft-fixtures');
+const {
+  createApproveMockState,
+  mountApproveRouter,
+  listenApproveApp,
+  postApprove,
+} = require('./helpers/composer-approve-test-helpers');
 
 describe('PR10H.11 scope — composer draft approve gate (Step 6 partial)', () => {
   it('documents gated approve path in campaign_composer api', () => {
@@ -123,6 +34,7 @@ describe('PR10H.11 scope — composer draft approve gate (Step 6 partial)', () =
 });
 
 describe('PR10H.11 composer draft approve gate', () => {
+  const apiPath = require.resolve('../services/campaign_composer/api');
   let server;
   let baseUrl;
   let gatePath;
@@ -135,65 +47,18 @@ describe('PR10H.11 composer draft approve gate', () => {
     require(gatePath);
     gateCached = require.cache[gatePath];
     realGate = gateCached.exports.gateRouteText;
-
-    const tenantCtx = require('../services/tenants/context');
-    tenantCtx.resolveTenantId = async (req) => req.headers['x-test-tenant']
-      ? Number(req.headers['x-test-tenant'])
-      : 11;
-
-    state = {
-      row: {
-        id: 42,
-        tenant_id: 11,
-        prompt: 'Nurture recent signups',
-        draft: { ...BASE_DRAFT },
-        content_safety_warnings: ['Existing warning should remain on block'],
-        status: 'draft',
-        segment_id: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      segmentInserts: [],
-      approveUpdates: [],
-      nextSegmentId: 500,
-    };
-
-    const _db = require('../db');
-    _db.getPool = () => makeTxPool(state);
-
-    delete require.cache[require.resolve('../services/campaign_composer/api')];
-    const router = require('../services/campaign_composer/api');
-    const app = express();
-    app.use(express.json());
-    app.use((req, _res, next) => {
-      const tid = Number(req.headers['x-test-tenant'] || 11);
-      req.user = { id: 3 };
-      req.tenant = tid ? { id: tid, name: 'Test', slug: 'test', status: 'active' } : null;
-      next();
-    });
-    app.use('/api/campaign-composer', router);
-
-    server = await new Promise((resolve) => {
-      const s = app.listen(0, '127.0.0.1', () => resolve(s));
-    });
-    baseUrl = `http://127.0.0.1:${server.address().port}`;
+    state = createApproveMockState();
+    ({ server, baseUrl } = await listenApproveApp(mountApproveRouter(state, apiPath)));
   });
 
   after(async () => {
     if (server) await new Promise((r) => server.close(r));
     if (gateCached && realGate) gateCached.exports.gateRouteText = realGate;
-    delete require.cache[require.resolve('../services/campaign_composer/api')];
+    delete require.cache[apiPath];
   });
 
-  async function postApprove(tenant = 11, draftId = 42) {
-    return fetch(`${baseUrl}/api/campaign-composer/drafts/${draftId}/approve`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-test-tenant': String(tenant),
-      },
-      body: JSON.stringify({}),
-    });
+  async function approve(tenant = 11, draftId = 42) {
+    return postApprove(baseUrl, draftId, tenant);
   }
 
   it('blocks prohibited saved draft body before segment creation', async () => {
@@ -206,7 +71,7 @@ describe('PR10H.11 composer draft approve gate', () => {
     state.segmentInserts.length = 0;
     state.approveUpdates.length = 0;
 
-    const res = await postApprove();
+    const res = await approve();
     const body = await res.json();
     assert.equal(res.status, 403);
     assert.equal(body.ok, false);
@@ -275,7 +140,7 @@ describe('PR10H.11 composer draft approve gate', () => {
     state.segmentInserts.length = 0;
     state.approveUpdates.length = 0;
 
-    const res = await postApprove();
+    const res = await approve();
     const body = await res.json();
     assert.equal(res.status, 200);
     assert.equal(body.ok, true);
@@ -306,7 +171,7 @@ describe('PR10H.11 composer draft approve gate', () => {
       state.segmentInserts.length = 0;
       state.approveUpdates.length = 0;
 
-      const res = await postApprove();
+      const res = await approve();
       const body = await res.json();
       assert.equal(res.status, 200);
       assert.equal(body.ok, true);
@@ -337,7 +202,7 @@ describe('PR10H.11 composer draft approve gate', () => {
     state.approveUpdates.length = 0;
     const beforeStatus = state.row.status;
 
-    const res = await postApprove(99);
+    const res = await approve(99);
     const body = await res.json();
     assert.equal(res.status, 404);
     assert.equal(body.ok, false);
@@ -356,12 +221,12 @@ describe('PR10H.11 composer draft approve gate', () => {
     state.segmentInserts.length = 0;
     state.approveUpdates.length = 0;
 
-    const first = await postApprove();
+    const first = await approve();
     assert.equal(first.status, 200);
 
     state.segmentInserts.length = 0;
     state.approveUpdates.length = 0;
-    const second = await postApprove();
+    const second = await approve();
     const body = await second.json();
     assert.equal(second.status, 409);
     assert.equal(body.error, 'already_approved');
@@ -408,63 +273,11 @@ describe('PR10H.11 composer draft approve rate limit', () => {
   let baseUrl;
   let state;
 
-  function mountRouter() {
-    delete require.cache[apiPath];
-    const tenantCtx = require('../services/tenants/context');
-    tenantCtx.resolveTenantId = async (req) => Number(req.headers['x-test-tenant'] || 11);
-
-    state = {
-      row: {
-        id: 42,
-        tenant_id: 11,
-        prompt: 'Nurture recent signups',
-        draft: { ...BASE_DRAFT },
-        content_safety_warnings: [],
-        status: 'draft',
-        segment_id: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      segmentInserts: [],
-      approveUpdates: [],
-      nextSegmentId: 700,
-    };
-
-    const _db = require('../db');
-    _db.getPool = () => makeTxPool(state);
-
-    const router = require(apiPath);
-    const app = express();
-    app.use(express.json());
-    app.use((req, _res, next) => {
-      const tid = Number(req.headers['x-test-tenant'] || 11);
-      req.user = { id: 3 };
-      req.tenant = tid ? { id: tid, name: 'Test', slug: 'test', status: 'active' } : null;
-      next();
-    });
-    app.use('/api/campaign-composer', router);
-    return app;
-  }
-
-  async function postApprove(tenant = 11) {
-    return fetch(`${baseUrl}/api/campaign-composer/drafts/42/approve`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-test-tenant': String(tenant),
-      },
-      body: JSON.stringify({}),
-    });
-  }
-
   before(async () => {
     process.env.NODE_ENV = 'test';
     process.env.CAMPAIGN_COMPOSER_DRAFT_APPROVE_RATE_LIMIT_MAX = '2';
-    const app = mountRouter();
-    server = await new Promise((resolve) => {
-      const s = app.listen(0, '127.0.0.1', () => resolve(s));
-    });
-    baseUrl = `http://127.0.0.1:${server.address().port}`;
+    state = createApproveMockState({ nextSegmentId: 700, row: { content_safety_warnings: [] } });
+    ({ server, baseUrl } = await listenApproveApp(mountApproveRouter(state, apiPath)));
   });
 
   after(async () => {
@@ -474,19 +287,23 @@ describe('PR10H.11 composer draft approve rate limit', () => {
     else process.env.CAMPAIGN_COMPOSER_DRAFT_APPROVE_RATE_LIMIT_MAX = prevEnv;
   });
 
+  async function approve(tenant = 11) {
+    return postApprove(baseUrl, 42, tenant);
+  }
+
   it('returns 429 without approving after the tenant bucket is exhausted', async () => {
     state.row.status = 'draft';
     state.row.segment_id = null;
     state.segmentInserts.length = 0;
     state.approveUpdates.length = 0;
 
-    assert.equal((await postApprove()).status, 200);
+    assert.equal((await approve()).status, 200);
     state.row.status = 'draft';
     state.row.segment_id = null;
-    assert.equal((await postApprove()).status, 200);
+    assert.equal((await approve()).status, 200);
     state.row.status = 'draft';
     state.row.segment_id = null;
-    const limited = await postApprove();
+    const limited = await approve();
     const body = await limited.json();
     assert.equal(limited.status, 429);
     assert.equal(body.ok, false);
@@ -505,9 +322,9 @@ describe('PR10H.11 composer draft approve rate limit', () => {
     state.segmentInserts.length = 0;
     state.approveUpdates.length = 0;
 
-    assert.equal((await postApprove(11)).status, 429);
-    assert.equal((await postApprove(11)).status, 429);
-    const tenantB = await postApprove(12);
+    assert.equal((await approve(11)).status, 429);
+    assert.equal((await approve(11)).status, 429);
+    const tenantB = await approve(12);
     const body = await tenantB.json();
     assert.equal(tenantB.status, 200);
     assert.equal(body.ok, true);
@@ -585,16 +402,8 @@ describe('PR10H.11 composer draft approve postgres', { skip: pgSkip }, () => {
     await p.query('DELETE FROM tenants WHERE id = $1', [tenantId]).catch(() => {});
   });
 
-  async function postApprove(id, opts = {}) {
-    return fetch(`${baseUrl}/api/campaign-composer/drafts/${id}/approve`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-test-tenant': String(tenantId),
-        ...(opts.failAfterSegment ? { 'x-test-fail-after-segment': '1' } : {}),
-      },
-      body: JSON.stringify({}),
-    });
+  async function approveDraft(id, opts = {}) {
+    return postApprove(baseUrl, id, tenantId, opts.failAfterSegment ? { 'x-test-fail-after-segment': '1' } : {});
   }
 
   it('creates exactly one segment when two approvals run simultaneously', async () => {
@@ -609,7 +418,7 @@ describe('PR10H.11 composer draft approve postgres', { skip: pgSkip }, () => {
       `SELECT count(*)::int AS c FROM audience_segments WHERE tenant_id = $1 AND name = $2`,
       [tenantId, segName],
     )).rows[0].c;
-    const [first, second] = await Promise.all([postApprove(localDraftId), postApprove(localDraftId)]);
+    const [first, second] = await Promise.all([approveDraft(localDraftId), approveDraft(localDraftId)]);
     assert.equal([first, second].filter((r) => r.status === 200).length, 1);
     assert.equal([first, second].filter((r) => r.status === 409).length, 1);
     const after = (await p.query(
@@ -638,7 +447,7 @@ describe('PR10H.11 composer draft approve postgres', { skip: pgSkip }, () => {
       [tenantId, segName],
     )).rows[0].c;
 
-    const res = await postApprove(rollbackDraftId, { failAfterSegment: true });
+    const res = await approveDraft(rollbackDraftId, { failAfterSegment: true });
     const body = await res.json();
     assert.equal(res.status, 500);
     assert.equal(body.ok, false);
