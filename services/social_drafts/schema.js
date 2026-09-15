@@ -16,9 +16,12 @@ async function ensureSocialDraftsSchema() {
       zernio_post_id VARCHAR(80),
       meta JSONB NOT NULL DEFAULT '{}',
       created_by VARCHAR(255),
+      content_safety_warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
+    ALTER TABLE social_post_drafts
+      ADD COLUMN IF NOT EXISTS content_safety_warnings JSONB NOT NULL DEFAULT '[]'::jsonb;
     CREATE INDEX IF NOT EXISTS idx_social_drafts_tenant_sched
       ON social_post_drafts(tenant_id, scheduled_for);
     CREATE INDEX IF NOT EXISTS idx_social_drafts_tenant_profile

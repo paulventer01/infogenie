@@ -365,6 +365,34 @@ function carouselGateText(slidesOrRaw, structureKey) {
     .join('\n');
 }
 
+function _collectMediaAltText(meta) {
+  const m = meta && typeof meta === 'object' ? meta : {};
+  const alts = [];
+  if (m.alt_text) alts.push(_str(m.alt_text, 2000));
+  if (m.media_alt) alts.push(_str(m.media_alt, 2000));
+  if (Array.isArray(m.media_alts)) {
+    for (const item of m.media_alts) {
+      if (typeof item === 'string') alts.push(_str(item, 2000));
+      else if (item && typeof item === 'object' && item.alt) alts.push(_str(item.alt, 2000));
+    }
+  }
+  return alts.filter(Boolean);
+}
+
+function normalizeSocialDraft(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const meta = src.meta && typeof src.meta === 'object' ? src.meta : {};
+  return {
+    text: _str(src.text, 10000),
+    media_alts: _collectMediaAltText(meta),
+  };
+}
+
+function socialDraftGateText(draft) {
+  const n = normalizeSocialDraft(draft);
+  return [n.text, ...n.media_alts].filter((part) => part != null && part !== '').join('\n');
+}
+
 module.exports = {
   adCopyGateText,
   normalizeAdScore,
@@ -395,4 +423,6 @@ module.exports = {
   normalizeCarouselSlideItem,
   normalizeCarouselSlides,
   carouselGateText,
+  normalizeSocialDraft,
+  socialDraftGateText,
 };
