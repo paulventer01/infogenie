@@ -50,7 +50,7 @@ const COMPOSER_CHANNELS = new Set(['email', 'sms', 'whatsapp']);
 
 function _conditionGateText(conditions) {
   return (conditions || [])
-    .map((c) => [c.field, c.event, c.metric, c.source, c.value]
+    .map((c) => [c.type, c.op, c.field, c.event, c.metric, c.source, c.value]
       .filter((v) => v != null && v !== '')
       .join(' '))
     .filter(Boolean)

@@ -94,6 +94,34 @@ describe('content_schemas normalization', () => {
     assert.match(text, /guaranteed 100% returns with zero risk/);
   });
 
+  it('composerDraftGateText includes retained condition type and op for gating', () => {
+    const typeText = composerDraftGateText({
+      campaign_name: 'Safe campaign',
+      subject: 'Hello',
+      body: 'Welcome aboard.',
+      audience_rules: {
+        match: 'all',
+        conditions: [
+          { type: 'guaranteed 100% returns', field: 'tier', op: 'eq', value: 'active' },
+        ],
+      },
+    });
+    assert.match(typeText, /guaranteed 100% returns/);
+
+    const opText = composerDraftGateText({
+      campaign_name: 'Safe campaign',
+      subject: 'Hello',
+      body: 'Welcome aboard.',
+      audience_rules: {
+        match: 'all',
+        conditions: [
+          { type: 'property', field: 'tier', op: 'guaranteed roi', value: 'active' },
+        ],
+      },
+    });
+    assert.match(opText, /guaranteed roi/);
+  });
+
   it('normalizeChannelAd sets source from server arg, not model payload', () => {
     const out = normalizeChannelAd({
       headline: 'Grow',
