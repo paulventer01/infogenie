@@ -527,47 +527,40 @@ describe('PR-1b social draft publish safety postgres', { skip: pgSkip }, () => {
     assert.equal(row.meta?.publishing_claim || null, null);
   });
 
-  it('parallel submit-approval retains a single pending row under postgres locking', async () => {
+  it('postgres versioned submit write rejects stale updated_at', async () => {
     const row = (await db.getPool().query(
       `INSERT INTO social_post_drafts
          (tenant_id, profile_id, status, text, media_urls, platforms, meta)
        VALUES ($1,$2,'draft',$3,'[]'::jsonb,$4::jsonb,'{}'::jsonb)
-       RETURNING id`,
+       RETURNING *`,
       [tenantId, 'p1', SAFE_TEXT, JSON.stringify(['linkedin'])],
     )).rows[0];
     gateCached.exports.gateRouteText = async () => ({ ok: true, warnings: [] });
     delete require.cache[require.resolve('../services/social_drafts/api')];
-    const openServer = await listen(mountApp({ useDb: true }).app);
-    try {
-      const results = await Promise.all([
-        jsonFetch(openServer, 'POST', `/api/social-drafts/${row.id}/submit-approval`, {
-          tid: tenantId,
-          body: { skip_self_heal: true },
-        }),
-        jsonFetch(openServer, 'POST', `/api/social-drafts/${row.id}/submit-approval`, {
-          tid: tenantId,
-          body: { skip_self_heal: true },
-        }),
-      ]);
-      assert.equal(results.filter((r) => r.status === 200).length, 1);
-      const loser = results.find((r) => r.status !== 200);
-      assert.ok(loser);
-      assert.ok([400, 409].includes(loser.status));
-      const finalRow = (await db.getPool().query(
-        `SELECT status, text FROM social_post_drafts WHERE id=$1 AND tenant_id=$2`,
-        [row.id, tenantId],
-      )).rows[0];
-      assert.equal(finalRow.status, 'pending_approval');
-      assert.equal(finalRow.text, SAFE_TEXT);
-    } finally {
-      gateCached.exports.gateRouteText = async () => ({
-        ok: false,
-        error: 'content_safety_blocked',
-        userMessage: 'blocked',
-      });
-      delete require.cache[require.resolve('../services/social_drafts/api')];
-      await new Promise((r) => openServer.close(r));
-    }
+    const draftsRouter = require('../services/social_drafts/api');
+    const snapshot = await draftsRouter._getDraft(tenantId, row.id);
+    await db.getPool().query(
+      `UPDATE social_post_drafts SET text=$3, updated_at=NOW() WHERE id=$1 AND tenant_id=$2`,
+      [row.id, tenantId, 'Concurrent postgres edit'],
+    );
+    const write = await draftsRouter._updateDraftAtVersion(tenantId, row.id, snapshot, {
+      status: 'pending_approval',
+      text: SAFE_TEXT,
+    }, { requireStatuses: ['draft', 'approved'] });
+    assert.equal(write.ok, false);
+    assert.equal(write.error, 'conflict');
+    const finalRow = (await db.getPool().query(
+      `SELECT status, text FROM social_post_drafts WHERE id=$1 AND tenant_id=$2`,
+      [row.id, tenantId],
+    )).rows[0];
+    assert.equal(finalRow.status, 'draft');
+    assert.equal(finalRow.text, 'Concurrent postgres edit');
+    gateCached.exports.gateRouteText = async () => ({
+      ok: false,
+      error: 'content_safety_blocked',
+      userMessage: 'blocked',
+    });
+    delete require.cache[require.resolve('../services/social_drafts/api')];
   });
 
   it('leaves no claim and zero provider calls when approve gate is unavailable', async () => {
