@@ -55,12 +55,126 @@ function safetyStatus(response) {
   return response.httpStatus || (response.ok ? 200 : response.error === 'content_safety_unavailable' ? 503 : 403);
 }
 
+function uiDraft(id, text, opts = {}) {
+  return {
+    id,
+    profile_id: 'prof1',
+    status: 'draft',
+    text,
+    platforms: opts.platforms || ['instagram'],
+    meta: opts.meta || {},
+    content_safety_warnings: opts.warnings || [],
+  };
+}
+
+function saveOk(draft) {
+  return async () => ({ ok: true, draft });
+}
+
+function safetyBlocked(userMessage, error = 'content_safety_blocked') {
+  return { ok: false, error, userMessage, httpStatus: error === 'content_safety_unavailable' ? 503 : 403 };
+}
+
+async function testInflightEditPreserved(t, { id, snippet, editedCaption, loadingText, actionKey, click, resolve }) {
+  const draft = uiDraft(id, snippet);
+  const pending = deferred(resolve);
+  const h = await publisherHarness(t, {
+    drafts: { [id]: draft },
+    saveHandler: saveOk(draft),
+    [`${actionKey}Handler`]: pending.handler,
+  });
+  await openEditorDraft(h, id, snippet);
+  await click(h);
+  await waitFor(() => h.text().includes(loadingText), 20, loadingText);
+  await h.setCaption(editedCaption);
+  await act(async () => pending.finish());
+  await waitFor(() => h.captionInput().value === editedCaption, 20, 'preserved caption');
+}
+
+async function testUnsavedCreateThenAction(t, { actionKey, switchAway = false }) {
+  const created = uiDraft(201, 'Unsaved compose caption');
+  const draftB = uiDraft(80, 'Draft B caption', { platforms: ['linkedin'] });
+  const create = deferred(() => ({ ok: true, draft: created }));
+  const h = await publisherHarness(t, {
+    drafts: switchAway ? { 80: draftB } : {},
+    saveHandler: async ({ method }) => (method === 'POST' ? create.handler() : { ok: true, draft: switchAway ? draftB : created }),
+    [`${actionKey}Handler`]: async ({ draftId }) => ({
+      ok: true, draft: { ...created, id: draftId, status: actionKey === 'submit' ? 'pending_approval' : 'draft' },
+    }),
+  });
+  await h.setCaption(created.text);
+  await h.selectInstagram();
+  await (actionKey === 'submit' ? h.clickSubmitApproval() : h.clickSelfHeal());
+  await waitFor(() => h.state.postCalls.length === 1, 20, 'create started');
+  if (switchAway) await openEditorDraft(h, 80, draftB.text);
+  await act(async () => create.finish());
+  const calls = h.state[`${actionKey}Calls`];
+  if (switchAway) {
+    await waitFor(() => h.captionInput().value === draftB.text, 20, 'draft B editor');
+    assert.equal(calls.length, 0);
+    assert.doesNotMatch(h.text(), /Submitting|Self-healing/);
+    return;
+  }
+  await waitFor(() => calls[0]?.draftId === 201, 20, `${actionKey} once`);
+  await waitFor(() => !/Submitting|Self-healing/.test(h.text()), 20, 'loading cleared');
+  assert.equal(h.state.postCalls.length, 1);
+  assert.equal(calls.length, 1);
+}
+
+async function testLateResponseIgnored(t, { idA, idB, snippetA, snippetB, actionKey, callsKey, finish, assertQuiet }) {
+  const draftA = uiDraft(idA, snippetA);
+  const draftB = uiDraft(idB, snippetB, { platforms: ['linkedin'] });
+  const pending = deferred(finish);
+  const h = await publisherHarness(t, {
+    drafts: { [idA]: draftA, [idB]: draftB },
+    saveHandler: async ({ method, draftId }) => ({ ok: true, draft: method === 'PATCH' ? { ...draftA, id: draftId } : draftA }),
+    [`${actionKey}Handler`]: async ({ draftId }) => (draftId === idA
+      ? pending.handler()
+      : { ok: true, draft: { id: draftId, status: 'pending_approval', text: draftB.text, content_safety_warnings: [] } }),
+  });
+  await openEditorDraft(h, idA, snippetA);
+  await (actionKey === 'submit' ? h.clickSubmitApproval() : h.clickSelfHeal());
+  await waitFor(() => h.state[callsKey].length === 1, 20, `${actionKey} initiation`);
+  await openEditorDraft(h, idB, snippetB);
+  await act(async () => pending.finish());
+  await waitFor(() => h.captionInput().value === snippetB, 20, 'draft B editor');
+  assertQuiet(h);
+}
+
+function deferred(build) {
+  let finish;
+  const handler = async () => new Promise((resolve) => {
+    finish = () => resolve(build());
+  });
+  return { handler, finish: () => { assert.ok(finish, 'deferred handler not started'); finish(); } };
+}
+
+async function openEditorDraft(h, id, snippet) {
+  await h.openCalendar();
+  await h.waitForCalendarDrafts();
+  await h.editDraftFromCalendar(snippet);
+  await h.waitForDraftEditor(id);
+}
+
+function installGlobals(dom, values) {
+  const previous = new Map(Object.keys(values).map((k) => [k, Object.getOwnPropertyDescriptor(global, k)]));
+  Object.entries(values).forEach(([k, v]) => Object.defineProperty(global, k, { configurable: true, writable: true, value: v }));
+  return () => {
+    dom.window.close();
+    previous.forEach((d, k) => { if (d) Object.defineProperty(global, k, d); else delete global[k]; });
+  };
+}
+
 async function publisherHarness(t, opts = {}) {
   const state = {
     drafts: opts.drafts || {},
     saveHandler: opts.saveHandler || null,
+    selfHealHandler: opts.selfHealHandler || null,
+    submitHandler: opts.submitHandler || null,
     postCalls: [],
     patchCalls: [],
+    selfHealCalls: [],
+    submitCalls: [],
     nextDraftId: 200,
   };
   const dom = new JSDOM('<div id="root"></div>', {
@@ -70,7 +184,7 @@ async function publisherHarness(t, opts = {}) {
   dom.window.alert = () => {};
   dom.window.confirm = () => true;
   dom.window.localStorage.setItem('ig-social-drafts-imported:prof1', '1');
-  const values = {
+  const restoreGlobals = installGlobals(dom, {
     window: dom.window,
     document: dom.window.document,
     navigator: dom.window.navigator,
@@ -107,16 +221,25 @@ async function publisherHarness(t, opts = {}) {
         return json(response, safetyStatus(response));
       }
       if (url.includes('/api/social-drafts/list')) return json({ ok: true, drafts: Object.values(state.drafts) });
+      const actionMatch = url.match(/\/api\/social-drafts\/(\d+)\/(self-heal|submit-approval)$/);
+      if (actionMatch && method === 'POST') {
+        const draftId = Number(actionMatch[1]);
+        const kind = actionMatch[2] === 'self-heal' ? 'selfHeal' : 'submit';
+        state[`${kind}Calls`].push({ draftId });
+        const handler = state[`${kind}Handler`];
+        const fallback = kind === 'selfHeal'
+          ? { ok: true, draft: { id: draftId, text: 'Healed caption', content_safety_warnings: [] }, content_safety_warnings: [] }
+          : { ok: true, draft: { id: draftId, status: 'pending_approval', text: state.drafts[draftId]?.text || 'Submitted', content_safety_warnings: [] }, content_safety_warnings: [] };
+        const response = handler ? await handler({ draftId }, state) : fallback;
+        return json(response, safetyStatus(response));
+      }
       return json({ ok: true });
     },
-  };
-  const previous = new Map(Object.keys(values).map((k) => [k, Object.getOwnPropertyDescriptor(global, k)]));
-  Object.entries(values).forEach(([k, v]) => Object.defineProperty(global, k, { configurable: true, writable: true, value: v }));
+  });
   const root = require('react-dom/client').createRoot(dom.window.document.getElementById('root'));
   t.after(async () => {
     await act(async () => root.unmount());
-    dom.window.close();
-    previous.forEach((d, k) => { if (d) Object.defineProperty(global, k, d); else delete global[k]; });
+    restoreGlobals();
   });
   await act(async () => root.render(React.createElement(load('components/features/reach/SocialPublisher.tsx').default, { embedded: true })));
   await waitFor(() => dom.window.document.body.textContent.includes('Compose'), 40);
@@ -127,6 +250,10 @@ async function publisherHarness(t, opts = {}) {
   });
   await clickTab('Compose');
   await waitFor(() => !!dom.window.document.querySelector('textarea'), 40);
+  await waitFor(() => {
+    const sel = dom.window.document.querySelector('select');
+    return sel && String(sel.value || '').length > 0;
+  }, 40, 'profile selected');
   const captionInput = () => dom.window.document.querySelector('textarea');
   const setCaption = async (value) => act(async () => {
     const el = captionInput();
@@ -147,6 +274,13 @@ async function publisherHarness(t, opts = {}) {
     assert.ok(btn, 'Save draft');
     btn.click();
   });
+  const clickBy = (re, label) => async () => act(async () => {
+    const btn = [...dom.window.document.querySelectorAll('button')].find((b) => re.test(b.textContent || ''));
+    assert.ok(btn, label);
+    btn.click();
+  });
+  const clickSelfHeal = clickBy(/Self-heal|Self-healing/, 'Self-heal');
+  const clickSubmitApproval = clickBy(/Submit for approval|Submitting…/, 'Submit for approval');
   const editDraftFromCalendar = async (snippet) => act(async () => {
     const editBtn = [...dom.window.document.querySelectorAll('button')]
       .find((b) => b.textContent === 'Edit' && b.closest('div')?.textContent?.includes(snippet));
@@ -163,6 +297,8 @@ async function publisherHarness(t, opts = {}) {
     setCaption,
     selectInstagram,
     clickSaveDraft,
+    clickSelfHeal,
+    clickSubmitApproval,
     openCalendar: () => clickTab('Calendar'),
     editDraftFromCalendar,
     waitForAlert: () => waitFor(() => !!dom.window.document.querySelector('[role="alert"]'), 20, 'role=alert'),
@@ -173,4 +309,64 @@ async function publisherHarness(t, opts = {}) {
   };
 }
 
-module.exports = { publisherHarness, waitFor };
+async function approvalsHarness(t, opts = {}) {
+  const state = { approveHandler: opts.approveHandler || null, drafts: opts.drafts || [] };
+  const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/reach/social-publisher', pretendToBeVisual: true });
+  const restoreGlobals = installGlobals(dom, {
+    window: dom.window,
+    document: dom.window.document,
+    navigator: dom.window.navigator,
+    IS_REACT_ACT_ENVIRONMENT: true,
+    fetch: async (url, options = {}) => {
+      const method = options.method || 'GET';
+      if (url.includes('/api/social-drafts/approvals/queue')) {
+        return json({ ok: true, drafts: state.drafts });
+      }
+      if (url.includes('/api/social-drafts/settings')) {
+        return json({ ok: true, settings: { require_approval: true } });
+      }
+      const approveMatch = url.match(/\/api\/social-drafts\/(\d+)\/approve$/);
+      if (approveMatch && method === 'POST') {
+        const response = state.approveHandler
+          ? await state.approveHandler(Number(approveMatch[1]))
+          : { ok: true, draft: { id: Number(approveMatch[1]), status: 'published' }, content_safety_warnings: [] };
+        return json(response, safetyStatus(response));
+      }
+      return json({ ok: true });
+    },
+  });
+  const root = require('react-dom/client').createRoot(dom.window.document.getElementById('root'));
+  t.after(async () => {
+    await act(async () => root.unmount());
+    restoreGlobals();
+  });
+  const Panel = load('components/features/reach/SocialApprovalsPanel.tsx').default;
+  await act(async () => root.render(React.createElement(Panel)));
+  await waitFor(() => dom.window.document.body.textContent.includes('Approvals'), 40, 'approvals panel');
+  return {
+    document: dom.window.document,
+    text: () => dom.window.document.body.textContent,
+    clickApprove: async () => act(async () => {
+      const btn = [...dom.window.document.querySelectorAll('button')]
+        .find((b) => b.textContent?.includes('Approve') && !b.disabled);
+      assert.ok(btn, 'approve button');
+      btn.click();
+    }),
+    waitForAlert: () => waitFor(() => !!dom.window.document.querySelector('[role="alert"]'), 20, 'role=alert'),
+    state,
+  };
+}
+
+module.exports = {
+  publisherHarness,
+  approvalsHarness,
+  waitFor,
+  uiDraft,
+  saveOk,
+  safetyBlocked,
+  deferred,
+  openEditorDraft,
+  testInflightEditPreserved,
+  testLateResponseIgnored,
+  testUnsavedCreateThenAction,
+};
