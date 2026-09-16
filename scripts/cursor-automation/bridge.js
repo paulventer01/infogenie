@@ -488,7 +488,11 @@ class Bridge {
 
   async status(state, cmd = {}) {
     if (cmd.key && state.handled.includes(cmd.key)) return 'Command already processed; use status.';
-    if (cmd.key) state.handled.push(cmd.key);
+    if (cmd.key) {
+      state.handled.push(cmd.key);
+      // Persist consumption before refresh: an unchanged snapshot would otherwise skip save().
+      await this.save(state, 'Recorded authorised status command.');
+    }
     return this.refresh(state);
   }
 

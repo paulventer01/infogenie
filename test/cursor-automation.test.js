@@ -553,3 +553,22 @@ test('secret-bearing workflow definition stays on default-branch events', () => 
   const target = live.replace(/^on:\n/m, 'on:\n  pull_request_target:\n    types: [opened]\n');
   assert.throws(() => assertTrustedAutomationWorkflow(target), /PR-controlled|pull_request_target/);
 });
+
+test('status key is persisted in steady state and kept if refresh later fails', async () => {
+  const f = fixture(); await f.start();
+  const issue = f.issueId();
+  await f.bridge.refresh(await f.bridge.state(issue));
+  await f.bridge.status(await f.bridge.state(issue), { key: 'comment:88' });
+  assert.ok((await f.bridge.state(issue)).handled.includes('comment:88'));
+  f.comments.get(issue).push({
+    id: 88, body: '/cursor status', user: { login: 'paulventer01' },
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  });
+  const gets = f.runGets();
+  await f.bridge.run('schedule', f.event({}));
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal(f.runGets(), gets + 2);
+  [...f.agents.values()][0].failGet = true;
+  await assert.rejects(f.bridge.status(await f.bridge.state(issue), { key: 'comment:89' }), /500/);
+  assert.ok((await f.bridge.state(issue)).handled.includes('comment:89'));
+});
