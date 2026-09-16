@@ -23,7 +23,12 @@ function memHarness() {
   const drafts = require('../services/social_drafts/api');
   const app = express();
   app.use(express.json());
-  app.use((req, _res, next) => { req.user = { email: 'pub@test.local' }; next(); });
+  app.use((req, _res, next) => {
+    const tid = req.headers['x-test-tid'] ? parseInt(req.headers['x-test-tid'], 10) : 1;
+    req.user = { id: 1, email: 'pub@test.local' };
+    req.tenant = { id: tid, name: 'Test', slug: 'test', status: 'active' };
+    next();
+  });
   app.use('/api/social-drafts', drafts);
   return { drafts, app };
 }

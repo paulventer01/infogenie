@@ -7,13 +7,17 @@ on:
       - 'services/press_release/**'
       - 'services/ad_creative/**'
       - 'services/campaign_composer/**'
+      - 'services/social_drafts/**'
       - 'components/features/create/PressRelease.tsx'
       - 'components/features/create/AdCreative.tsx'
       - 'components/features/reach/CampaignComposer.tsx'
+      - 'components/features/reach/SocialPublisher.tsx'
+      - 'components/features/reach/SocialCalendarView.tsx'
       - 'components/layout/ContentSafetyWarnings.tsx'
       - 'test/pr10h8-*.test.js'
       - 'test/pr10h9-*.test.js'
       - 'test/pr10h10-*.test.js'
+      - 'test/pr10h1a-*.test.js'
       - 'test/pr10h11-*.test.js'
       - 'test/pr10h12-*.test.js'
       - 'test/pr10h13-*.test.js'
@@ -60,6 +64,8 @@ jobs:
         run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h9-ad-copy-safety.test.js test/pr10h9-ad-copy-safety-ui.test.js
       - name: Verify campaign composer draft save safety
         run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h10-composer-draft-save-safety.test.js test/pr10h10-composer-draft-save-safety-ui.test.js
+      - name: Verify social draft save safety (PR-1a)
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h1a-social-draft-save-safety.test.js test/pr10h1a-social-draft-save-safety-ui.test.js
       - name: Verify campaign composer draft approve safety
         run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h11-composer-draft-approve-safety.test.js test/pr10h11-composer-draft-approve-safety-ui.test.js
       - name: Verify video script generate safety
@@ -144,6 +150,20 @@ jobs:
           grep -Eq '^# tests [1-9][0-9]*$' /tmp/pr10h11-postgres.tap
           grep -Eq '^# fail 0$' /tmp/pr10h11-postgres.tap
           grep -Eq '^# skipped 0$' /tmp/pr10h11-postgres.tap
+      - name: Verify social draft bulk atomicity (PostgreSQL)
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/infogenie_content_safety
+          NODE_ENV: test
+          PR10H1_REQUIRE_INTEGRATION: '1'
+          CREDENTIAL_ENCRYPTION_KEY: Mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq=
+          SESSION_SECRET: pr10h1-integration-session
+          INFOGENIE_API_KEY: pr10h1-integration-api-key
+        run: |
+          set -o pipefail
+          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit --test-name-pattern "social draft bulk postgres" test/pr10h1a-social-draft-save-safety.test.js | tee /tmp/pr10h1a-postgres.tap
+          grep -Eq '^# tests [1-9][0-9]*$' /tmp/pr10h1a-postgres.tap
+          grep -Eq '^# fail 0$' /tmp/pr10h1a-postgres.tap
+          grep -Eq '^# skipped 0$' /tmp/pr10h1a-postgres.tap
 
   browser-postgres:
     name: AI Governance Hub Chromium + PostgreSQL (zero skips)

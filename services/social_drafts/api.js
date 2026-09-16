@@ -6,6 +6,39 @@ const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const _publishApproval = require('./publish_approval');
+const {
+  gateRouteText,
+  contentSafetyHttpBody,
+  attachContentSafetyWarnings,
+} = require('../ai_governance/route_gate');
+const {
+  socialDraftGateText,
+  socialDraftScanSizeError,
+} = require('../ai_governance/content_schemas');
+const { MAX_OUTPUT_SCAN_CHARS } = require('../ai_governance/output_gate');
+const { createRateLimiter } = require('../security/rate_limit');
+
+function _testOnlyMax(envName, fallback) {
+  if (process.env.NODE_ENV !== 'test') return fallback;
+  const n = Number.parseInt(String(process.env[envName] || ''), 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  return fallback;
+}
+
+const SOCIAL_DRAFT_WRITE_MAX = _testOnlyMax('SOCIAL_DRAFT_WRITE_RATE_LIMIT_MAX', 60);
+
+const socialDraftWriteLimiter = createRateLimiter({
+  name: 'social-drafts-write',
+  windowMs: 60_000,
+  max: SOCIAL_DRAFT_WRITE_MAX,
+  failClosed: true,
+  keyFn: (req) => {
+    const tid = req.tenant?.id;
+    const uid = req.user?.id;
+    if (tid != null && uid != null) return `social-drafts|${tid}|${uid}`;
+    return null;
+  },
+});
 
 const STATUSES = ['draft', 'pending_approval', 'approved', 'scheduled', 'published', 'failed', 'delivery_unknown'];
 const PLATFORMS = [
@@ -37,6 +70,47 @@ async function _withDraftPublishLock(tid, draftId, fn) {
 
 const _safeAsync = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const _err = (res, code, msg) => res.status(code).json({ ok: false, error: msg });
+
+function _parseWarnings(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return []; }
+  }
+  return [];
+}
+
+function _oversizedDraftResponse(draft) {
+  const oversized = socialDraftScanSizeError(draft, MAX_OUTPUT_SCAN_CHARS);
+  if (!oversized) return null;
+  return oversized;
+}
+
+async function _gateSocialDraft(req, tid, draft, label) {
+  const oversized = _oversizedDraftResponse(draft);
+  if (oversized) return oversized;
+  try {
+    return await gateRouteText({
+      tenantId: tid,
+      userId: req.user?.id || null,
+      surface: 'social_drafts',
+      action: 'generate_content',
+      text: socialDraftGateText(draft),
+      label,
+    });
+  } catch (_) {
+    return {
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: 'Content safety checks are temporarily unavailable. Save was stopped to protect your brand.',
+      warnings: [],
+    };
+  }
+}
+
+function _safetyBlockResponse(res, gated) {
+  const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+  return res.status(status).json(contentSafetyHttpBody(gated));
+}
 
 async function _tid(req, label) {
   const tid = await _tenantCtx.resolveTenantId(req, { label });
@@ -75,6 +149,7 @@ function _rowOut(r) {
     scheduled_for: r.scheduled_for || null,
     zernio_post_id: r.zernio_post_id || null,
     meta: r.meta && typeof r.meta === 'object' ? r.meta : (typeof r.meta === 'string' ? JSON.parse(r.meta || '{}') : {}),
+    content_safety_warnings: _parseWarnings(r.content_safety_warnings),
     created_by: r.created_by || null,
     created_at: r.created_at,
     updated_at: r.updated_at,
@@ -139,12 +214,13 @@ async function _getDraft(tid, id) {
 
 async function _insertDraft(tid, fields) {
   const now = new Date().toISOString();
+  const warnings = _parseWarnings(fields.content_safety_warnings);
   if (_db.hasDb()) {
     const p = await _db.getPool();
     const r = await p.query(
       `INSERT INTO social_post_drafts
-        (tenant_id, profile_id, status, text, media_urls, platforms, scheduled_for, zernio_post_id, meta, created_by)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9::jsonb,$10)
+        (tenant_id, profile_id, status, text, media_urls, platforms, scheduled_for, zernio_post_id, meta, created_by, content_safety_warnings)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9::jsonb,$10,$11::jsonb)
        RETURNING *`,
       [
         tid,
@@ -157,6 +233,7 @@ async function _insertDraft(tid, fields) {
         fields.zernio_post_id || null,
         JSON.stringify(fields.meta || {}),
         fields.created_by || null,
+        JSON.stringify(warnings),
       ],
     );
     return _rowOut(r.rows[0]);
@@ -172,6 +249,7 @@ async function _insertDraft(tid, fields) {
     scheduled_for: fields.scheduled_for || null,
     zernio_post_id: fields.zernio_post_id || null,
     meta: fields.meta || {},
+    content_safety_warnings: warnings,
     created_by: fields.created_by || null,
     created_at: now,
     updated_at: now,
@@ -180,10 +258,75 @@ async function _insertDraft(tid, fields) {
   return _rowOut(row);
 }
 
+async function _insertDraftWithClient(client, tid, fields) {
+  const warnings = _parseWarnings(fields.content_safety_warnings);
+  const r = await client.query(
+    `INSERT INTO social_post_drafts
+      (tenant_id, profile_id, status, text, media_urls, platforms, scheduled_for, zernio_post_id, meta, created_by, content_safety_warnings)
+     VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9::jsonb,$10,$11::jsonb)
+     RETURNING *`,
+    [
+      tid,
+      fields.profile_id,
+      fields.status || 'draft',
+      fields.text || '',
+      JSON.stringify(fields.media_urls || []),
+      JSON.stringify(fields.platforms || []),
+      fields.scheduled_for || null,
+      fields.zernio_post_id || null,
+      JSON.stringify(fields.meta || {}),
+      fields.created_by || null,
+      JSON.stringify(warnings),
+    ],
+  );
+  return _rowOut(r.rows[0]);
+}
+
+async function _insertDraftsBulk(tid, items, opts = {}) {
+  if (!items.length) return [];
+  if (!_db.hasDb()) {
+    const listBefore = _memList(tid).length;
+    const created = [];
+    try {
+      for (let i = 0; i < items.length; i++) {
+        if (opts.failAfterIndex != null && i >= opts.failAfterIndex) {
+          throw new Error('bulk_insert_test_failure');
+        }
+        created.push(await _insertDraft(tid, items[i]));
+      }
+      return created;
+    } catch (e) {
+      _mem.set(tid, _memList(tid).slice(0, listBefore));
+      throw e;
+    }
+  }
+  const client = await _db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const created = [];
+    for (let i = 0; i < items.length; i++) {
+      if (opts.failAfterIndex != null && i >= opts.failAfterIndex) {
+        throw new Error('bulk_insert_test_failure');
+      }
+      created.push(await _insertDraftWithClient(client, tid, items[i]));
+    }
+    await client.query('COMMIT');
+    return created;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 async function _updateDraft(tid, id, patch) {
   const existing = await _getDraft(tid, id);
   if (!existing) return null;
   const next = _applyDraftPatch(existing, patch);
+  const warnings = patch.content_safety_warnings !== undefined
+    ? _parseWarnings(patch.content_safety_warnings)
+    : existing.content_safety_warnings || [];
   if (_db.hasDb()) {
     const p = await _db.getPool();
     const r = await p.query(
@@ -191,8 +334,9 @@ async function _updateDraft(tid, id, patch) {
          profile_id=$1, status=$2, text=$3,
          media_urls=$4::jsonb, platforms=$5::jsonb,
          scheduled_for=$6, zernio_post_id=$7, meta=$8::jsonb,
+         content_safety_warnings=$9::jsonb,
          updated_at=NOW()
-       WHERE id=$9 AND tenant_id=$10 RETURNING *`,
+       WHERE id=$10 AND tenant_id=$11 RETURNING *`,
       [
         next.profile_id,
         next.status,
@@ -202,6 +346,7 @@ async function _updateDraft(tid, id, patch) {
         next.scheduled_for || null,
         next.zernio_post_id || null,
         JSON.stringify(next.meta || {}),
+        JSON.stringify(warnings),
         id,
         tid,
       ],
@@ -211,8 +356,8 @@ async function _updateDraft(tid, id, patch) {
   const list = _memList(tid);
   const idx = list.findIndex((r) => String(r.id) === String(id));
   if (idx < 0) return null;
-  list[idx] = next;
-  return _rowOut(next);
+  list[idx] = { ...next, content_safety_warnings: warnings };
+  return _rowOut(list[idx]);
 }
 
 async function _deleteDraft(tid, id) {
@@ -306,6 +451,9 @@ async function _updateUserDraft(tid, id, expected, patch) {
     Object.assign(patch, _publishApproval.invalidateApprovalPatch(existing));
   }
   const next = _applyDraftPatch(existing, patch);
+  const warnings = patch.content_safety_warnings !== undefined
+    ? _parseWarnings(patch.content_safety_warnings)
+    : existing.content_safety_warnings || [];
   if (_db.hasDb()) {
     const expectedAt = existing.updated_at;
     const p = await _db.getPool();
@@ -314,14 +462,15 @@ async function _updateUserDraft(tid, id, expected, patch) {
          profile_id=$1, status=$2, text=$3,
          media_urls=$4::jsonb, platforms=$5::jsonb,
          scheduled_for=$6, meta=$7::jsonb,
+         content_safety_warnings=$8::jsonb,
          updated_at=NOW()
-       WHERE id=$8 AND tenant_id=$9
+       WHERE id=$9 AND tenant_id=$10
          AND status NOT IN ('published', 'scheduled', 'delivery_unknown')
          AND zernio_post_id IS NULL
          AND COALESCE(meta->>'published_at', '') = ''
          AND COALESCE(meta->>'delivery_outcome', '') <> 'unknown'
          AND COALESCE(meta->>'publishing_claim', '') = ''
-         AND FLOOR(EXTRACT(EPOCH FROM updated_at) * 1000) = $10::bigint
+         AND FLOOR(EXTRACT(EPOCH FROM updated_at) * 1000) = $11::bigint
        RETURNING *`,
       [
         next.profile_id,
@@ -331,6 +480,7 @@ async function _updateUserDraft(tid, id, expected, patch) {
         JSON.stringify(next.platforms || []),
         next.scheduled_for || null,
         JSON.stringify(next.meta || {}),
+        JSON.stringify(warnings),
         id,
         tid,
         _updatedAtMs({ updated_at: expectedAt }),
@@ -350,9 +500,88 @@ async function _updateUserDraft(tid, id, expected, patch) {
   if (stale) return { ok: false, error: stale, draft: _rowOut(current) };
   const currentBlocked = _userPatchBlockedReason(current);
   if (currentBlocked) return { ok: false, error: currentBlocked, draft: _rowOut(current) };
-  const written = _applyDraftPatch(current, patch);
+  const written = {
+    ..._applyDraftPatch(current, patch),
+    content_safety_warnings: warnings,
+  };
   list[idx] = written;
   return { ok: true, draft: _rowOut(written) };
+}
+
+function _draftShapeForGate(fields) {
+  return {
+    text: fields.text || '',
+    media_urls: fields.media_urls || [],
+    platforms: fields.platforms || [],
+    meta: fields.meta || {},
+  };
+}
+
+function _fieldsFromCreateBody(body) {
+  const profile_id = String(body.profile_id || body.profileId || '').trim();
+  const platforms = _normalizePlatforms(body.platforms);
+  const text = String(body.text || '');
+  const media_urls = _normalizeMedia(body.media_urls || body.mediaUrls || []);
+  const scheduled_for = _parseDate(body.scheduled_for || body.scheduledFor);
+  const status = _publishApproval.sanitizeUserStatus(body.status, 'draft');
+  const meta = _publishApproval.sanitizeUserMeta(body.meta);
+  return {
+    profile_id,
+    platforms,
+    text,
+    media_urls,
+    scheduled_for,
+    status,
+    meta,
+  };
+}
+
+function _fieldsFromBulkItem(it, profile_id) {
+  const platforms = _normalizePlatforms(it.platforms || (it.platform ? [it.platform] : []));
+  const text = String(it.text || it.caption || it.copy || '');
+  const media_urls = _normalizeMedia(it.media_urls || it.mediaUrls || []);
+  let scheduled_for = _parseDate(it.scheduled_for || it.scheduledFor);
+  if (!scheduled_for && it.scheduledDate) {
+    const t = it.scheduledTime || '09:00';
+    scheduled_for = _parseDate(`${it.scheduledDate}T${t}`);
+  }
+  const meta = _publishApproval.sanitizeUserMeta({
+    imported: true,
+    funnel_stage: it.funnelStage || it.funnel_stage || null,
+    archetype_id: it.archetypeId || it.archetype_id || null,
+    alt_text: it.alt_text || it.altText || null,
+    media_alt: it.media_alt || it.mediaAlt || null,
+    ...(it.meta || {}),
+  });
+  return {
+    profile_id,
+    status: 'draft',
+    text,
+    media_urls,
+    platforms,
+    scheduled_for,
+    meta,
+  };
+}
+
+function _buildPatchFromBody(body) {
+  const patch = {};
+  if (body.profile_id != null || body.profileId != null) {
+    patch.profile_id = String(body.profile_id || body.profileId).trim();
+  }
+  if (body.text != null) patch.text = String(body.text);
+  if (body.media_urls != null || body.mediaUrls != null) {
+    patch.media_urls = _normalizeMedia(body.media_urls || body.mediaUrls);
+  }
+  if (body.platforms != null) patch.platforms = _normalizePlatforms(body.platforms);
+  if (body.scheduled_for !== undefined || body.scheduledFor !== undefined) {
+    patch.scheduled_for = _parseDate(body.scheduled_for !== undefined ? body.scheduled_for : body.scheduledFor);
+  }
+  if (body.status != null) patch.status = body.status;
+  if (body.meta != null && typeof body.meta === 'object') {
+    patch.meta = _publishApproval.sanitizeUserMeta(body.meta);
+  }
+  return patch;
 }
 
 async function _releasePublishingClaim(tid, id, token) {
@@ -578,68 +807,81 @@ router.get('/list', _safeAsync(async (req, res) => {
   res.json({ ok: true, drafts, source: _db.hasDb() ? 'db' : 'memory' });
 }));
 
-router.post('/', _safeAsync(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/', socialDraftWriteLimiter, _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-drafts:create');
   if (!tid) return _err(res, 400, 'no_tenant');
   const body = req.body || {};
-  const profile_id = String(body.profile_id || body.profileId || '').trim();
-  if (!profile_id) return _err(res, 400, 'profile_id required');
-  const platforms = _normalizePlatforms(body.platforms);
-  const text = String(body.text || '').trim();
-  const media_urls = _normalizeMedia(body.media_urls || body.mediaUrls || []);
-  if (!text && !media_urls.length) return _err(res, 400, 'text or media_urls required');
-  const scheduled_for = _parseDate(body.scheduled_for || body.scheduledFor);
-  const status = _publishApproval.sanitizeUserStatus(body.status, 'draft');
-  const meta = _publishApproval.sanitizeUserMeta(body.meta);
+  const fields = _fieldsFromCreateBody(body);
+  if (!fields.profile_id) return _err(res, 400, 'profile_id required');
+  if (!fields.text.trim() && !fields.media_urls.length) return _err(res, 400, 'text or media_urls required');
+
+  const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(fields), 'social-drafts:create');
+  if (!gated.ok) {
+    if (gated.error === 'content_too_long') {
+      return res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
+    }
+    return _safetyBlockResponse(res, gated);
+  }
+
+  const warnings = gated.warnings || gated.content_safety_warnings || [];
   const draft = await _insertDraft(tid, {
-    profile_id,
-    status,
-    text,
-    media_urls,
-    platforms,
-    scheduled_for,
-    meta,
+    ...fields,
+    content_safety_warnings: warnings,
     created_by: req.user?.email || req.user?.id || null,
   });
-  res.json({ ok: true, draft });
+  res.json(attachContentSafetyWarnings({ ok: true, draft }, warnings));
 }));
 
-router.post('/bulk', _safeAsync(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/bulk', socialDraftWriteLimiter, _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-drafts:bulk');
   if (!tid) return _err(res, 400, 'no_tenant');
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
   const profile_id = String(req.body?.profile_id || req.body?.profileId || '').trim();
   if (!profile_id) return _err(res, 400, 'profile_id required');
   if (!items.length) return _err(res, 400, 'items required');
-  const created = [];
+
+  const prepared = [];
   for (const it of items.slice(0, 100)) {
-    const platforms = _normalizePlatforms(it.platforms || (it.platform ? [it.platform] : []));
-    const text = String(it.text || it.caption || it.copy || '').trim();
-    const media_urls = _normalizeMedia(it.media_urls || it.mediaUrls || []);
-    if (!text && !media_urls.length) continue;
-    let scheduled_for = _parseDate(it.scheduled_for || it.scheduledFor);
-    if (!scheduled_for && it.scheduledDate) {
-      const t = it.scheduledTime || '09:00';
-      scheduled_for = _parseDate(`${it.scheduledDate}T${t}`);
+    const fields = _fieldsFromBulkItem(it, profile_id);
+    if (!fields.text.trim() && !fields.media_urls.length) continue;
+    const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(fields), 'social-drafts:bulk');
+    if (!gated.ok) {
+      if (gated.error === 'content_too_long') {
+        return res.status(400).json({
+          ok: false,
+          error: gated.error,
+          userMessage: gated.userMessage,
+        });
+      }
+      return _safetyBlockResponse(res, gated);
     }
-    const draft = await _insertDraft(tid, {
-      profile_id,
-      status: 'draft',
-      text,
-      media_urls,
-      platforms,
-      scheduled_for,
-      meta: _publishApproval.sanitizeUserMeta({
-        imported: true,
-        funnel_stage: it.funnelStage || it.funnel_stage || null,
-        archetype_id: it.archetypeId || it.archetype_id || null,
-        ...(it.meta || {}),
-      }),
+    prepared.push({
+      ...fields,
+      content_safety_warnings: gated.warnings || gated.content_safety_warnings || [],
       created_by: req.user?.email || req.user?.id || null,
     });
-    created.push(draft);
   }
-  res.json({ ok: true, created: created.length, drafts: created });
+
+  const failAfterIndex = (
+    process.env.NODE_ENV === 'test'
+    && req.headers['x-test-bulk-fail-after-index'] != null
+  )
+    ? Number.parseInt(String(req.headers['x-test-bulk-fail-after-index']), 10)
+    : null;
+
+  try {
+    const created = await _insertDraftsBulk(tid, prepared, {
+      failAfterIndex: Number.isFinite(failAfterIndex) ? failAfterIndex : null,
+    });
+    res.json({ ok: true, created: created.length, drafts: created });
+  } catch (e) {
+    if (e.message === 'bulk_insert_test_failure') {
+      return _err(res, 500, 'bulk_insert_failed');
+    }
+    throw e;
+  }
 }));
 
 router.get('/settings', _safeAsync(async (req, res) => {
@@ -679,7 +921,8 @@ router.get('/:id', _safeAsync(async (req, res) => {
   res.json({ ok: true, draft });
 }));
 
-router.patch('/:id', _safeAsync(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.patch('/:id', socialDraftWriteLimiter, _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-drafts:patch');
   if (!tid) return _err(res, 400, 'no_tenant');
   const existing = await _getDraft(tid, req.params.id);
@@ -691,36 +934,34 @@ router.patch('/:id', _safeAsync(async (req, res) => {
     return _err(res, 409, existing.status === 'delivery_unknown' ? 'delivery_unknown' : 'publish_in_progress');
   }
   const body = req.body || {};
-  const patch = {};
-  if (body.profile_id != null || body.profileId != null) {
-    patch.profile_id = String(body.profile_id || body.profileId).trim();
-  }
-  if (body.text != null) patch.text = String(body.text);
-  if (body.media_urls != null || body.mediaUrls != null) {
-    patch.media_urls = _normalizeMedia(body.media_urls || body.mediaUrls);
-  }
-  if (body.platforms != null) patch.platforms = _normalizePlatforms(body.platforms);
-  if (body.scheduled_for !== undefined || body.scheduledFor !== undefined) {
-    patch.scheduled_for = _parseDate(body.scheduled_for !== undefined ? body.scheduled_for : body.scheduledFor);
-  }
+  const patch = _buildPatchFromBody(body);
   if (body.status != null) {
     if (!_publishApproval.USER_WRITABLE_STATUSES.includes(body.status)) {
       return _err(res, 400, 'status is server-controlled');
     }
     patch.status = body.status;
   }
-  if (body.meta != null && typeof body.meta === 'object') {
-    patch.meta = _publishApproval.sanitizeUserMeta(body.meta);
-  }
   if (_publishApproval.patchInvalidatesApproval(existing, patch)) {
     Object.assign(patch, _publishApproval.invalidateApprovalPatch(existing));
   }
+
+  const mergedForGate = _applyDraftPatch(existing, patch);
+  const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(mergedForGate), 'social-drafts:patch');
+  if (!gated.ok) {
+    if (gated.error === 'content_too_long') {
+      return res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
+    }
+    return _safetyBlockResponse(res, gated);
+  }
+
+  patch.content_safety_warnings = gated.warnings || gated.content_safety_warnings || [];
   const updated = await _updateUserDraft(tid, req.params.id, existing, patch);
   if (!updated.ok) {
     const code = updated.error === 'not found' ? 404 : 409;
     return res.status(code).json({ ok: false, error: updated.error, draft: updated.draft || undefined });
   }
-  res.json({ ok: true, draft: updated.draft });
+  const warnings = updated.draft?.content_safety_warnings || patch.content_safety_warnings || [];
+  res.json(attachContentSafetyWarnings({ ok: true, draft: updated.draft }, warnings));
 }));
 
 router.post('/:id/publish', _safeAsync(async (req, res) => {
@@ -1210,6 +1451,7 @@ router._publishLockChainSize = () => _publishLockChains.size;
 router._rejectDraft = _rejectDraft;
 router._getDraft = _getDraft;
 router._insertDraft = _insertDraft;
+router._insertDraftsBulk = _insertDraftsBulk;
 router._updateDraft = _updateDraft;
 router._updateUserDraft = _updateUserDraft;
 router._releasePublishingClaim = _releasePublishingClaim;

@@ -13,6 +13,7 @@ export interface SocialDraft {
   scheduled_for: string | null;
   zernio_post_id?: string | null;
   meta?: Record<string, unknown>;
+  content_safety_warnings?: string[];
 }
 
 interface Platform {

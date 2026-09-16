@@ -32,7 +32,12 @@ function memHarness() {
   const workflows = require('../services/social_workflows/api');
   const app = express();
   app.use(express.json());
-  app.use((req, _res, next) => { req.user = { email: 'h6@test.local' }; next(); });
+  app.use((req, _res, next) => {
+    const tid = req.headers['x-test-tid'] ? parseInt(req.headers['x-test-tid'], 10) : 1;
+    req.user = { id: 1, email: 'h6@test.local' };
+    req.tenant = { id: tid, name: 'Test', slug: 'test', status: 'active' };
+    next();
+  });
   app.use('/api/social-drafts', drafts);
   app.use('/api/social-publisher', publisher);
   app.use('/api/social-workflows', workflows);

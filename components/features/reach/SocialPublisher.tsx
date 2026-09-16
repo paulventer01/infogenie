@@ -4,8 +4,9 @@
 // Publishing goes through Zernio (`/api/social-publisher/*`); planning drafts
 // live in `/api/social-drafts/*` so the calendar and AI ideas share one path.
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 import SocialCalendarView, { type SocialDraft } from "./SocialCalendarView";
 import SocialIdeasPanel from "./SocialIdeasPanel";
 import SocialApprovalsPanel from "./SocialApprovalsPanel";
@@ -135,9 +136,37 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null);
   const [draftMeta, setDraftMeta] = useState<Record<string, unknown>>({});
   const [result, setResult] = useState<{ color: string; text: string; html?: boolean } | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [contentSafetyWarnings, setContentSafetyWarnings] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
   const [calRefresh, setCalRefresh] = useState(0);
   const [importNote, setImportNote] = useState<string | null>(null);
   const [bestTimes, setBestTimes] = useState<Array<{ label: string; hour: number; dow: number; default?: boolean }>>([]);
+  const saveRequestRef = useRef(0);
+  const editingDraftIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    editingDraftIdRef.current = editingDraftId;
+  }, [editingDraftId]);
+
+  function clearSaveError() {
+    setSaveError(null);
+  }
+
+  function handleSafetyBlock(
+    resp: { error?: string; userMessage?: string },
+    priorWarnings: string[],
+  ): boolean {
+    const code = resp.error || "";
+    if (
+      code !== "content_safety_blocked"
+      && code !== "content_safety_block"
+      && code !== "content_safety_unavailable"
+    ) return false;
+    setSaveError(String(resp.userMessage || resp.error || "Save blocked by content safety checks."));
+    setContentSafetyWarnings(priorWarnings);
+    return true;
+  }
 
   function setStatusMsg(msg: string | null, kind: StatusKind = "info") {
     if (!msg) setStatus(null);
@@ -329,14 +358,14 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
   }
 
   async function saveDraft(andPublish = false) {
-    const t = text.trim();
+    const t = text;
     const platforms = Array.from(selected);
     const m = media.trim();
     if (!profileId) {
       setResult({ color: "#991B1B", text: "⚠ Pick a profile first." });
       return;
     }
-    if (!t && !m) {
+    if (!t.trim() && !m) {
       setResult({ color: "#991B1B", text: "⚠ Enter text or a media URL." });
       return;
     }
@@ -344,6 +373,13 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
       setResult({ color: "#991B1B", text: "⚠ Select at least one platform." });
       return;
     }
+    const reqSeq = saveRequestRef.current + 1;
+    saveRequestRef.current = reqSeq;
+    const draftIdAtStart = editingDraftId;
+    const textSnapshot = text;
+    const priorWarnings = contentSafetyWarnings;
+    clearSaveError();
+    setSaving(true);
     setResult({ color: "#6B7280", text: andPublish ? "📤 Saving & publishing…" : "💾 Saving draft…" });
 
     const body: Record<string, unknown> = {
@@ -355,23 +391,48 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     if (schedule) body.scheduled_for = new Date(schedule).toISOString();
     if (m) body.media_urls = [m];
 
-    let draftId = editingDraftId;
-    if (editingDraftId) {
-      const pr = await apiPatch<{ ok: boolean; error?: string; draft?: SocialDraft }>(
-        `/api/social-drafts/${editingDraftId}`,
-        body,
-      );
+    let draftId = draftIdAtStart;
+    if (draftIdAtStart) {
+      const pr = await apiPatch<{
+        ok: boolean;
+        error?: string;
+        userMessage?: string;
+        draft?: SocialDraft;
+        content_safety_warnings?: string[];
+      }>(`/api/social-drafts/${draftIdAtStart}`, body);
+      if (saveRequestRef.current !== reqSeq || editingDraftIdRef.current !== draftIdAtStart) return;
+      setSaving(false);
       if (!pr.ok) {
+        if (handleSafetyBlock(pr, priorWarnings)) {
+          setResult(null);
+          return;
+        }
         setResult({ color: "#991B1B", text: `❌ ${pr.error}` });
         return;
       }
-      draftId = editingDraftId;
+      const warnings = pr.content_safety_warnings || pr.draft?.content_safety_warnings || [];
+      if (text === textSnapshot) setContentSafetyWarnings(warnings);
+      draftId = draftIdAtStart;
     } else {
-      const r = await apiPost<{ ok: boolean; error?: string; draft?: SocialDraft }>("/api/social-drafts", body);
+      const r = await apiPost<{
+        ok: boolean;
+        error?: string;
+        userMessage?: string;
+        draft?: SocialDraft;
+        content_safety_warnings?: string[];
+      }>("/api/social-drafts", body);
+      if (saveRequestRef.current !== reqSeq || editingDraftIdRef.current !== draftIdAtStart) return;
+      setSaving(false);
       if (!r.ok || !r.draft) {
+        if (handleSafetyBlock(r, priorWarnings)) {
+          setResult(null);
+          return;
+        }
         setResult({ color: "#991B1B", text: `❌ ${r.error || "save failed"}` });
         return;
       }
+      const warnings = r.content_safety_warnings || r.draft?.content_safety_warnings || [];
+      if (text === textSnapshot) setContentSafetyWarnings(warnings);
       draftId = r.draft.id;
       setEditingDraftId(draftId);
     }
@@ -382,9 +443,11 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
         {},
       );
       if (!pub.ok) {
+        if (saveRequestRef.current !== reqSeq) return;
         setResult({ color: "#991B1B", html: true, text: `❌ ${pub.error}` });
         return;
       }
+      if (saveRequestRef.current !== reqSeq) return;
       setResult({
         color: "#065F46",
         html: true,
@@ -396,8 +459,11 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
       setSelected(new Set());
       setEditingDraftId(null);
       setDraftMeta({});
+      setContentSafetyWarnings([]);
+      clearSaveError();
       setTimeout(() => loadPosts(profileId), 700);
     } else {
+      if (saveRequestRef.current !== reqSeq) return;
       setResult({ color: "#065F46", text: `✅ Draft saved (#${draftId}).` });
     }
     setCalRefresh((n) => n + 1);
@@ -572,12 +638,16 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
   }
 
   function loadDraftIntoCompose(d: SocialDraft) {
+    saveRequestRef.current += 1;
+    setSaving(false);
+    clearSaveError();
     setText(d.text || "");
     setSchedule(d.scheduled_for ? toDatetimeLocal(d.scheduled_for) : "");
     setMedia((d.media_urls || [])[0] || "");
     setSelected(new Set(d.platforms || []));
     setEditingDraftId(d.id);
     setDraftMeta(d.meta || {});
+    setContentSafetyWarnings(d.content_safety_warnings || []);
     setTab("compose");
     setResult({ color: "#1E40AF", text: `Editing draft #${d.id}` });
   }
@@ -806,6 +876,23 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
               <h3 style={{ margin: "0 0 10px", color: "#0A1628", fontSize: "0.95rem", fontFamily: "Sora,sans-serif" }}>
                 ✍️ Compose {editingDraftId ? <span style={{ fontSize: "0.72rem", color: "#FF5722" }}>· draft #{editingDraftId}</span> : null}
               </h3>
+              <ContentSafetyWarnings warnings={contentSafetyWarnings} />
+              {saveError ? (
+                <div
+                  role="alert"
+                  style={{
+                    background: "#FEF2F2",
+                    border: "1px solid #FECACA",
+                    color: "#991B1B",
+                    padding: 10,
+                    borderRadius: 6,
+                    fontSize: "0.82rem",
+                    marginBottom: 10,
+                  }}
+                >
+                  {saveError}
+                </div>
+              ) : null}
               <textarea
                 rows={5}
                 value={text}
@@ -867,8 +954,8 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
-                <button onClick={() => saveDraft(false)} style={{ background: "#F3F4F6", color: "#0A1628", border: "1px solid #E5E7EB", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
-                  💾 Save draft
+                <button onClick={() => saveDraft(false)} disabled={saving} style={{ background: "#F3F4F6", color: "#0A1628", border: "1px solid #E5E7EB", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: saving ? "wait" : "pointer", opacity: saving ? 0.7 : 1 }}>
+                  {saving ? "Saving…" : "💾 Save draft"}
                 </button>
                 <button onClick={runSelfHeal} style={{ background: "#ECFDF5", color: "#065F46", border: "1px solid #A7F3D0", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
                   🩹 Self-heal

@@ -365,6 +365,53 @@ function carouselGateText(slidesOrRaw, structureKey) {
     .join('\n');
 }
 
+function _rawStr(v) {
+  return v == null ? '' : String(v);
+}
+
+function _collectMediaAltText(meta) {
+  const m = meta && typeof meta === 'object' ? meta : {};
+  const alts = [];
+  if (m.alt_text) alts.push(_rawStr(m.alt_text));
+  if (m.media_alt) alts.push(_rawStr(m.media_alt));
+  if (Array.isArray(m.media_alts)) {
+    for (const item of m.media_alts) {
+      if (typeof item === 'string') alts.push(_rawStr(item));
+      else if (item && typeof item === 'object' && item.alt) alts.push(_rawStr(item.alt));
+    }
+  }
+  return alts.filter(Boolean);
+}
+
+function normalizeSocialDraft(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const meta = src.meta && typeof src.meta === 'object' ? src.meta : {};
+  return {
+    text: _rawStr(src.text),
+    media_alts: _collectMediaAltText(meta),
+  };
+}
+
+function socialDraftGateText(draft) {
+  const n = normalizeSocialDraft(draft);
+  return [n.text, ...n.media_alts].filter((part) => part != null && part !== '').join('\n');
+}
+
+function socialDraftScanSizeError(draft, maxChars) {
+  const limit = Number(maxChars);
+  if (!Number.isFinite(limit) || limit <= 0) return null;
+  const length = socialDraftGateText(draft).length;
+  if (length <= limit) return null;
+  return {
+    ok: false,
+    error: 'content_too_long',
+    userMessage: 'Draft text exceeds supported content safety scan limits.',
+    warnings: [],
+    length,
+    max: limit,
+  };
+}
+
 module.exports = {
   adCopyGateText,
   normalizeAdScore,
@@ -395,4 +442,7 @@ module.exports = {
   normalizeCarouselSlideItem,
   normalizeCarouselSlides,
   carouselGateText,
+  normalizeSocialDraft,
+  socialDraftGateText,
+  socialDraftScanSizeError,
 };
