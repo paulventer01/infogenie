@@ -85,6 +85,16 @@ function _oversizedDraftResponse(draft) {
   return oversized;
 }
 
+const _SAFETY_UNAVAILABLE_MSG = {
+  'social-drafts:create': 'Content safety checks are temporarily unavailable. Save was stopped to protect your brand.',
+  'social-drafts:patch': 'Content safety checks are temporarily unavailable. Save was stopped to protect your brand.',
+  'social-drafts:bulk': 'Content safety checks are temporarily unavailable. Bulk save was stopped to protect your brand.',
+  'social-drafts:self-heal': 'Content safety checks are temporarily unavailable. Self-heal was stopped to protect your brand.',
+  'social-drafts:submit-approval': 'Content safety checks are temporarily unavailable. Approval submit was stopped to protect your brand.',
+  'social-drafts:approve': 'Content safety checks are temporarily unavailable. Approval was stopped to protect your brand.',
+  'social-drafts:publish': 'Content safety checks are temporarily unavailable. Publish was stopped to protect your brand.',
+};
+
 async function _gateSocialDraft(req, tid, draft, label) {
   const oversized = _oversizedDraftResponse(draft);
   if (oversized) return oversized;
@@ -101,10 +111,20 @@ async function _gateSocialDraft(req, tid, draft, label) {
     return {
       ok: false,
       error: 'content_safety_unavailable',
-      userMessage: 'Content safety checks are temporarily unavailable. Save was stopped to protect your brand.',
+      userMessage: _SAFETY_UNAVAILABLE_MSG[label] || 'Content safety checks are temporarily unavailable.',
       warnings: [],
     };
   }
+}
+
+function _safetyGateFailure(gated) {
+  return {
+    ok: false,
+    safety_blocked: true,
+    error: gated.error,
+    userMessage: gated.userMessage,
+    warnings: gated.warnings || [],
+  };
 }
 
 function _safetyBlockResponse(res, gated) {
@@ -969,16 +989,24 @@ router.post('/:id/publish', _safeAsync(async (req, res) => {
   if (!tid) return _err(res, 400, 'no_tenant');
   const result = await _executePublishDraft(tid, req.params.id, { mode: 'direct', req });
   if (!result.ok) {
+    if (result.safety_blocked) {
+      if (result.error === 'content_too_long') {
+        return res.status(400).json({ ok: false, error: result.error, userMessage: result.userMessage });
+      }
+      const status = result.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json(contentSafetyHttpBody(result));
+    }
     if (result.error === 'not found') return _err(res, 404, result.error);
     const code = result.error === 'delivery_unknown' ? 409 : 400;
     return res.status(code).json({ ok: false, error: result.error, draft: result.draft || undefined });
   }
-  res.json({
+  const warnings = result.draft?.content_safety_warnings || [];
+  res.json(attachContentSafetyWarnings({
     ok: true,
     draft: result.draft,
     post: result.post,
     scheduled: !!result.draft?.scheduled_for,
-  });
+  }, warnings));
 }));
 
 // ── Approval settings + queue (works with or without approval_workflows DB) ──
@@ -1041,7 +1069,8 @@ async function _setSettings(tid, patch) {
 router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-drafts:submit-approval');
   if (!tid) return _err(res, 400, 'no_tenant');
-  let draft = await _getDraft(tid, req.params.id);
+  const draftId = req.params.id;
+  let draft = await _getDraft(tid, draftId);
   if (!draft) return _err(res, 404, 'not found');
   if (!['draft', 'approved'].includes(draft.status)) {
     return _err(res, 400, `Cannot submit approval from status "${draft.status}"`);
@@ -1050,41 +1079,13 @@ router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
 
   // Loop must-have: self-heal before human review (verify → fix → re-verify)
   let self_heal = null;
+  let candidateText = draft.text || '';
   const skipHeal = req.body?.skip_self_heal === true;
   if (!skipHeal && draft.text) {
     try {
       const { selfHealDraft } = require('./self_heal');
       self_heal = await selfHealDraft(tid, draft.text, { maxAttempts: 3 });
-      if (self_heal.text && self_heal.text !== draft.text) {
-        draft = await _updateDraft(tid, draft.id, {
-          text: self_heal.text,
-          meta: {
-            ...(draft.meta || {}),
-            self_heal: {
-              healed: true,
-              passed: self_heal.passed,
-              final_verdict: self_heal.final_verdict,
-              attempts: self_heal.attempts?.length || 0,
-              at: new Date().toISOString(),
-            },
-            original_text: draft.text,
-          },
-        });
-      } else {
-        draft = await _updateDraft(tid, draft.id, {
-          meta: {
-            ...(draft.meta || {}),
-            self_heal: {
-              healed: false,
-              passed: self_heal.passed,
-              final_verdict: self_heal.final_verdict,
-              attempts: self_heal.attempts?.length || 0,
-              at: new Date().toISOString(),
-            },
-          },
-        });
-      }
-      // Block submission if still failing critically unless force=true
+      candidateText = self_heal.text || candidateText;
       if (!self_heal.passed && self_heal.final_verdict === 'fail' && req.body?.force !== true) {
         return res.status(400).json({
           ok: false,
@@ -1099,8 +1100,38 @@ router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
     }
   }
 
-  const updated = await _updateDraft(tid, draft.id, {
+  const candidateForGate = _applyDraftPatch(draft, { text: candidateText });
+  const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(candidateForGate), 'social-drafts:submit-approval');
+  if (!gated.ok) {
+    if (gated.error === 'content_too_long') {
+      return res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
+    }
+    return _safetyBlockResponse(res, gated);
+  }
+  const warnings = gated.warnings || gated.content_safety_warnings || [];
+
+  const selfHealMeta = self_heal ? {
+    healed: candidateText !== draft.text,
+    passed: self_heal.passed,
+    final_verdict: self_heal.final_verdict,
+    attempts: self_heal.attempts?.length || 0,
+    at: new Date().toISOString(),
+  } : (draft.meta?.self_heal || null);
+
+  const healPatch = {
+    text: candidateText,
+    content_safety_warnings: warnings,
+    meta: {
+      ...(draft.meta || {}),
+      ...(selfHealMeta ? { self_heal: selfHealMeta } : {}),
+      ...(selfHealMeta?.healed ? { original_text: draft.meta?.original_text || draft.text } : {}),
+    },
+  };
+  draft = await _updateDraft(tid, draftId, healPatch) || candidateForGate;
+
+  const updated = await _updateDraft(tid, draftId, {
     status: 'pending_approval',
+    content_safety_warnings: warnings,
     meta: {
       ...(draft.meta || {}),
       submitted_for_approval_at: new Date().toISOString(),
@@ -1143,7 +1174,7 @@ router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
     } catch (_) { /* table may not exist yet */ }
   }
 
-  res.json({ ok: true, draft: updated, approval_request, self_heal });
+  res.json(attachContentSafetyWarnings({ ok: true, draft: updated, approval_request, self_heal }, warnings));
 }));
 
 router.post('/:id/self-heal', _safeAsync(async (req, res) => {
@@ -1156,8 +1187,18 @@ router.post('/:id/self-heal', _safeAsync(async (req, res) => {
   }
   const { selfHealDraft } = require('./self_heal');
   const result = await selfHealDraft(tid, draft.text || '', { maxAttempts: Number(req.body?.max_attempts) || 3 });
+  const candidate = _applyDraftPatch(draft, { text: result.text });
+  const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(candidate), 'social-drafts:self-heal');
+  if (!gated.ok) {
+    if (gated.error === 'content_too_long') {
+      return res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
+    }
+    return _safetyBlockResponse(res, gated);
+  }
+  const warnings = gated.warnings || gated.content_safety_warnings || [];
   const updated = await _updateDraft(tid, draft.id, {
     text: result.text,
+    content_safety_warnings: warnings,
     meta: {
       ...(draft.meta || {}),
       self_heal: {
@@ -1170,7 +1211,7 @@ router.post('/:id/self-heal', _safeAsync(async (req, res) => {
       original_text: draft.meta?.original_text || draft.text,
     },
   });
-  res.json({ ok: true, draft: updated, self_heal: result });
+  res.json(attachContentSafetyWarnings({ ok: true, draft: updated, self_heal: result }, warnings));
 }));
 
 router.post('/:id/withdraw-approval', _safeAsync(async (req, res) => {
@@ -1189,12 +1230,24 @@ router.post('/:id/withdraw-approval', _safeAsync(async (req, res) => {
 router.post('/:id/approve', _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-drafts:approve');
   if (!tid) return _err(res, 400, 'no_tenant');
-  const result = await _approveAndPublish(tid, req.params.id, { notes: req.body?.notes || null, skipZernio: !!req.body?.skip_publish });
+  const result = await _approveAndPublish(tid, req.params.id, {
+    notes: req.body?.notes || null,
+    skipZernio: !!req.body?.skip_publish,
+    req,
+  });
   if (!result.ok) {
+    if (result.safety_blocked) {
+      if (result.error === 'content_too_long') {
+        return res.status(400).json({ ok: false, error: result.error, userMessage: result.userMessage });
+      }
+      const status = result.error === 'content_safety_unavailable' ? 503 : 403;
+      return res.status(status).json(contentSafetyHttpBody(result));
+    }
     const code = result.error === 'delivery_unknown' ? 409 : 400;
     return res.status(code).json({ ok: false, error: result.error, draft: result.draft || undefined });
   }
-  res.json(result);
+  const warnings = result.draft?.content_safety_warnings || [];
+  res.json(attachContentSafetyWarnings(result, warnings));
 }));
 
 router.post('/:id/reject', _safeAsync(async (req, res) => {
@@ -1259,13 +1312,24 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
 
   if (opts.skipZernio || opts.skip_publish) {
     if (mode === 'approval') {
+      const gated = await _gateSocialDraft(
+        opts.req || {},
+        tid,
+        _draftShapeForGate(draft),
+        'social-drafts:approve',
+      );
+      if (!gated.ok) return _safetyGateFailure(gated);
+      const warnings = gated.warnings || gated.content_safety_warnings || [];
       await updateDraft(tid, draftId, {
         status: 'approved',
+        content_safety_warnings: warnings,
         meta: {
           ...(draft.meta || {}),
           ..._publishApproval.recordApprovalMeta(draft, opts.notes || null),
         },
       });
+      const approved = await _getDraft(tid, draftId);
+      return attachContentSafetyWarnings({ ok: true, draft: approved, published: false }, warnings);
     }
     return { ok: true, draft: await _getDraft(tid, draftId), published: false };
   }
@@ -1294,6 +1358,14 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
       return { ok: false, error: claimedAuthz.error, hint: claimedAuthz.hint, draft: released || claim.draft };
     }
 
+    const gateLabel = mode === 'approval' ? 'social-drafts:approve' : 'social-drafts:publish';
+    const gated = await _gateSocialDraft(opts.req || {}, tid, _draftShapeForGate(claim.draft), gateLabel);
+    if (!gated.ok) {
+      await _releasePublishingClaim(tid, draftId, token);
+      return _safetyGateFailure(gated);
+    }
+    const gateWarnings = gated.warnings || gated.content_safety_warnings || [];
+
     const approvedMeta = {
       ...(claim.draft.meta || {}),
       publishing_claim: token,
@@ -1304,6 +1376,7 @@ async function _executePublishDraft(tid, draftId, opts = {}) {
     }
     let fresh = await updateDraft(tid, draftId, {
       status: mode === 'approval' ? 'approved' : claim.draft.status,
+      content_safety_warnings: gateWarnings,
       meta: approvedMeta,
     });
 

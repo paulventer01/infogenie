@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 import type { SocialDraft } from "./SocialCalendarView";
 
 interface Props {
@@ -20,15 +21,26 @@ export default function SocialApprovalsPanel({ onEditDraft, refreshKey = 0 }: Pr
   const [requireApproval, setRequireApproval] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [draftWarnings, setDraftWarnings] = useState<Record<number, string[]>>({});
   const [note, setNote] = useState("");
+  const approveRequestRef = useRef(0);
 
   const load = useCallback(async () => {
     const [q, s] = await Promise.all([
       apiGet<{ ok: boolean; drafts?: SocialDraft[]; error?: string }>("/api/social-drafts/approvals/queue"),
       apiGet<{ ok: boolean; settings?: { require_approval?: boolean } }>("/api/social-drafts/settings"),
     ]);
-    if (q.ok) setDrafts(q.drafts || []);
-    else setError(q.error || "Failed to load queue");
+    if (q.ok) {
+      const rows = q.drafts || [];
+      setDrafts(rows);
+      setDraftWarnings((prev) => {
+        const next = { ...prev };
+        for (const d of rows) {
+          if (d.content_safety_warnings?.length) next[d.id] = d.content_safety_warnings;
+        }
+        return next;
+      });
+    } else setError(q.error || "Failed to load queue");
     if (s.ok) setRequireApproval(!!s.settings?.require_approval);
   }, []);
 
@@ -42,14 +54,33 @@ export default function SocialApprovalsPanel({ onEditDraft, refreshKey = 0 }: Pr
   }
 
   async function approve(id: number) {
+    const reqSeq = approveRequestRef.current + 1;
+    approveRequestRef.current = reqSeq;
+    const priorWarnings = draftWarnings[id] || drafts.find((d) => d.id === id)?.content_safety_warnings || [];
     setBusy(id);
     setError(null);
-    const r = await apiPost<{ ok: boolean; error?: string }>(`/api/social-drafts/${id}/approve`, { notes: note || null });
+    const r = await apiPost<{
+      ok: boolean;
+      error?: string;
+      userMessage?: string;
+      content_safety_warnings?: string[];
+      draft?: SocialDraft;
+    }>(`/api/social-drafts/${id}/approve`, { notes: note || null });
+    if (approveRequestRef.current !== reqSeq) return;
     setBusy(null);
     if (!r.ok) {
+      const code = r.error || "";
+      if (code === "content_safety_blocked" || code === "content_safety_block" || code === "content_safety_unavailable") {
+        setError(String(r.userMessage || r.error || "Approval blocked by content safety checks."));
+        setDraftWarnings((prev) => ({ ...prev, [id]: priorWarnings }));
+        return;
+      }
       setError(r.error || "Approve failed");
+      setDraftWarnings((prev) => ({ ...prev, [id]: priorWarnings }));
       return;
     }
+    const warnings = r.content_safety_warnings || r.draft?.content_safety_warnings || [];
+    if (warnings.length) setDraftWarnings((prev) => ({ ...prev, [id]: warnings }));
     setNote("");
     load();
   }
@@ -83,7 +114,11 @@ export default function SocialApprovalsPanel({ onEditDraft, refreshKey = 0 }: Pr
         </label>
       </div>
 
-      {error && <div style={{ color: "#991B1B", fontSize: "0.78rem", marginBottom: 8 }}>⚠ {error}</div>}
+      {error ? (
+        <div role="alert" style={{ color: "#991B1B", background: "#FEF2F2", border: "1px solid #FECACA", padding: 8, borderRadius: 6, fontSize: "0.78rem", marginBottom: 8 }}>
+          ⚠ {error}
+        </div>
+      ) : null}
 
       <div style={{ marginBottom: 12 }}>
         <input
@@ -130,6 +165,7 @@ export default function SocialApprovalsPanel({ onEditDraft, refreshKey = 0 }: Pr
                     {sh.attempts != null ? ` · ${sh.attempts} attempt(s)` : ""}
                   </div>
                 )}
+                <ContentSafetyWarnings warnings={draftWarnings[d.id] || d.content_safety_warnings || []} />
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button type="button" disabled={busy === d.id} onClick={() => approve(d.id)} style={btn("#0D9488", "#fff")}>
                     Approve &amp; publish

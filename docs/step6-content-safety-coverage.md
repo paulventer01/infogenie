@@ -1,7 +1,7 @@
 # Step 6 — Content Safety Coverage Audit
 
 **Status:** Partial  
-**Audited from:** `main` @ `a96d4a69` (2026-09-15)  
+**Audited from:** `main` @ `7804cbe9` (2026-09-16)  
 **Scope:** Routes that generate, regenerate, save/edit, approve, or publish marketing copy toward external delivery.
 
 One **canonical row** per `method + path`. Lifecycle sections below reference these rows by **ID** only — they do not assign separate classifications.
@@ -16,15 +16,15 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Classification | Count | Meaning |
 |----------------|------:|---------|
-| **covered** | 26 | Gate before side effect; field scan complete |
+| **covered** | 30 | Gate before side effect; field scan complete |
 | **partial** | 16 | Gate present but incomplete scan, timing, status, or warning handling |
-| **gap** | 53 | In-scope lifecycle step with no Step 6 gate |
+| **gap** | 49 | In-scope lifecycle step with no Step 6 gate |
 | **out of scope** | 30 | Deferred with explicit justification (§5) |
 | **Total** | **125** | One row per `method + path` (CR-001–CR-124, CR-128) |
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **22** batches covering all **69** gap/partial rows |
+| Implementation batches (§4) | **22** batches covering all **65** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
@@ -153,10 +153,10 @@ Routes using `JSON.stringify` for gate text without flattening are **`partial`**
 | CR-055 | POST | `/api/social-drafts/` | save | covered | `gateRouteText` + `socialDraftGateText` | complete | — | pr10h1a |
 | CR-056 | POST | `/api/social-drafts/bulk` | save | covered | `gateRouteText` + `socialDraftGateText` (atomic) | complete | — | pr10h1a |
 | CR-057 | PATCH | `/api/social-drafts/:id` | save | covered | `gateRouteText` on merged draft | complete | — | pr10h1a |
-| CR-058 | POST | `/api/social-drafts/:id/self-heal` | regen | gap | heuristic + indirect `chatForCategory` | n/a | PR-1b | — |
-| CR-059 | POST | `/api/social-drafts/:id/submit-approval` | approve | gap | heuristic `selfHealDraft` only | n/a | PR-1b | pr10h6 |
-| CR-060 | POST | `/api/social-drafts/:id/approve` | approve, publish | gap | none | n/a | PR-1b | pr10h6 |
-| CR-061 | POST | `/api/social-drafts/:id/publish` | publish | gap | approval authz only | n/a | PR-1b | pr10h6 |
+| CR-058 | POST | `/api/social-drafts/:id/self-heal` | regen | covered | `gateRouteText` + `socialDraftGateText` on healed candidate | complete | — | pr10h1b |
+| CR-059 | POST | `/api/social-drafts/:id/submit-approval` | approve | covered | `gateRouteText` on final copy (post self-heal) | complete | — | pr10h1b, pr10h6 |
+| CR-060 | POST | `/api/social-drafts/:id/approve` | approve, publish | covered | `gateRouteText` re-scan before approve/publish | complete | — | pr10h1b, pr10h6 |
+| CR-061 | POST | `/api/social-drafts/:id/publish` | publish | covered | `gateRouteText` re-scan before delivery | complete | — | pr10h1b, pr10h6 |
 | CR-062 | POST | `/api/social-publisher/post` | publish | gap | approval block only | n/a | PR-1c | pr10h6 |
 
 ### 2.6 WordPress, review rules, tier-2 generate
@@ -396,7 +396,9 @@ Aligned with §2 **Field scan** column. `complete` ↔ `covered`; `partial:*` �
 | `test/pr10h5-content-schemas.test.js` | CR-001,024 normalizers |
 | `test/pr10h1a-social-draft-save-safety.test.js` | CR-055,056,057 |
 | `test/pr10h1a-social-draft-save-safety-ui.test.js` | CR-055,057 UI |
-| `test/pr10h6-social-publish-approval.test.js` | CR-059–062 (approval only, not safety) |
+| `test/pr10h1b-social-draft-approval-publish-safety.test.js` | CR-058–061 |
+| `test/pr10h1b-social-draft-approval-publish-safety-ui.test.js` | CR-058–061 UI |
+| `test/pr10h6-social-publish-approval.test.js` | CR-059–062 (approval authz; safety in pr10h1b for CR-059–061) |
 | `test/pr10h7-cold-email-review-reply-safety.test.js` | CR-009,012 |
 | `test/pr10h8`–`pr10h13` | CR-004–011,001–003 |
 | `test/site-builder-isolation.test.js` | CR-100,101 (tenant isolation, not safety) |
