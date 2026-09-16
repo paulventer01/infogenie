@@ -1120,3 +1120,154 @@ test('PR base retarget during evaluation invalidates evidence and does not corre
   assert.doesNotMatch(state.ci[0], /CI passed/);
   assert.equal(f.runPosts().length, 0);
 });
+
+const { policyClient } = require('../scripts/cursor-automation/policy-client');
+const { execute } = require('../scripts/cursor-automation/run');
+const POLICY_SENTINEL = 'policy-test-sentinel-not-a-real-token';
+
+test('dedicated policy credential is restricted to canonical same-repo GET endpoints', async () => {
+  const seen = [];
+  const read = policyClient(POLICY_SENTINEL, () => { throw new Error('No fallback'); }, async (url, options) => {
+    seen.push({ url, options }); return { ok: true, status: 200, json: async () => ({ checks: [] }) };
+  });
+  for (const path of [`${ROOT}/branches/main/protection/required_status_checks`, `${ROOT}/rules/branches/release%2Fv1`]) {
+    await read('GET', path);
+  }
+  for (const path of [`${ROOT}/pulls`, '/repos/other/repo/rules/branches/main',
+    `${ROOT}/rules/branches/..`, `${ROOT}/rules/branches/%2e%2e`,
+    `${ROOT}/rules/branches/main?secret=x`, `${ROOT}/rules/branches/main#x`,
+    `${ROOT}/rules/branches/main/extra`, '//evil.example/']) {
+    await assert.rejects(read('GET', path), /permits only/);
+  }
+  for (const method of ['POST', 'PATCH', 'DELETE', 'PUT']) {
+    await assert.rejects(read(method, `${ROOT}/rules/branches/main`), /permits only/);
+  }
+  await assert.rejects(read('GET', `${ROOT}/rules/branches/main`, {}), /permits only/);
+  assert.equal(seen.length, 2);
+  for (const {url, options} of seen) {
+    assert.ok(url.startsWith(`https://api.github.com${ROOT}/`));
+    assert.equal(options.headers.Authorization, `Bearer ${POLICY_SENTINEL}`);
+    assert.equal(options.redirect, 'error'); assert.ok(options.signal);
+    assert.equal(options.body, undefined);
+  }
+});
+
+test('policy credentials and remote error bodies never enter policy errors', async () => {
+  for (const mode of ['network', 'body', 401, 403, 404, 429, 500]) {
+    const read = policyClient(POLICY_SENTINEL, () => assert.fail('must not fallback'), async () => {
+      if (mode === 'network') throw new Error(POLICY_SENTINEL);
+      return {ok: mode === 'body', status: mode === 'body' ? 200 : mode,
+        json: async () => ({context: POLICY_SENTINEL}), text: async () => POLICY_SENTINEL};
+    });
+    await assert.rejects(read('GET', `${ROOT}/rules/branches/main`), error => {
+      assert.ok(!error.message.includes(POLICY_SENTINEL));
+      if (mode === 404) assert.equal(error.status, 403);
+      return true;
+    });
+  }
+});
+
+test('missing policy secret retains normal credential and fails closed on forbidden policy', async () => {
+  const f = fixture();
+  f.bridge.policyGithub = policyClient(undefined, f.bridge.github);
+  assert.equal((await f.bridge.evaluateSha('a'.repeat(40))).verdict, 'blocked');
+  assert.equal(f.bridge.policyGithub.credentialSource, 'GITHUB_TOKEN');
+});
+
+test('dedicated policy reads restore completeness without omitting an extra required check', async () => {
+  const f = fixture(); let reads = 0;
+  f.bridge.policyGithub = policyClient(POLICY_SENTINEL, f.bridge.github, async (url) => {
+    reads++;
+    return {ok: true, status: 200, json: async () => url.includes('/protection/')
+      ? {checks: [{context: 'extra-required', app_id: 15368}]} : []};
+  });
+  const result = await f.bridge.evaluateSha('a'.repeat(40));
+  assert.equal(result.policyComplete, true); assert.equal(result.verdict, 'missing');
+  assert.ok(result.missing.includes('extra-required')); assert.equal(reads, 2);
+  assert.ok(!f.calls.some(c => /protection|rules\/branches/.test(c[2])));
+  await f.start(); await finishBoundPr(f);
+  assert.ok(!JSON.stringify([...f.comments.values()]).includes(POLICY_SENTINEL));
+  assert.ok(!JSON.stringify(f.runPosts()).includes(POLICY_SENTINEL));
+});
+
+test('invalid or malformed dedicated policy never downgrades to a successful floor', async () => {
+  for (const status of [401, 403, 404, 200]) {
+    const f = fixture(); readablePolicy(f);
+    f.bridge.policyGithub = policyClient(POLICY_SENTINEL, f.bridge.github, async () => ({
+      ok: status === 200, status, json: async () => ({checks: [{}]}),
+    }));
+    const result = await f.bridge.evaluateSha('a'.repeat(40));
+    assert.equal(result.verdict, 'blocked'); assert.equal(result.policyComplete, false);
+    assert.match(result.summary, /verify-policy/);
+    assert.ok(!JSON.stringify(result).includes(POLICY_SENTINEL));
+  }
+});
+
+test('verify-policy entrypoint works disabled and without Cursor credentials, using only GETs', async () => {
+  const seen = [];
+  const env = {GITHUB_TOKEN: 'ordinary-test-token', CURSOR_POLICY_READ_TOKEN: POLICY_SENTINEL};
+  const fetchImpl = async (url, options) => {
+    seen.push({url, options});
+    const policy = url.includes('/protection/') || url.includes('/rules/');
+    assert.equal(options.headers.Authorization, `Bearer ${policy ? POLICY_SENTINEL : env.GITHUB_TOKEN}`);
+    assert.equal(options.method, 'GET');
+    assert.ok(url.startsWith(`https://api.github.com${ROOT}`));
+    return {ok: true, status: 200, json: async () => url.endsWith(ROOT) ? {default_branch:'main'}
+      : url.includes('/protection/') ? {checks:[{context:'required-qa',app_id:15368}]} : []};
+  };
+  const event = {repository:{full_name:REPO},sender:{login:'paulventer01'},inputs:{action:'verify-policy'}};
+  const result = await execute('workflow_dispatch', event, env, fetchImpl);
+  assert.match(result, /"complete": true/); assert.match(result, /required-qa/);
+  assert.ok(!result.includes(POLICY_SENTINEL)); assert.ok(!result.includes(env.GITHUB_TOKEN));
+  assert.equal(seen.length, 3);
+  await assert.rejects(execute('workflow_dispatch', {...event,sender:{login:'attacker'}},env,fetchImpl), /not authorised/);
+  assert.equal(seen.length, 3);
+});
+
+test('verify-policy reports sanitized blocked state and makes no Cursor request', async () => {
+  const env = {GITHUB_TOKEN:'ordinary-test-token',CURSOR_POLICY_READ_TOKEN:POLICY_SENTINEL};
+  const event = {repository:{full_name:REPO},sender:{login:'paulventer01'},inputs:{action:'verify-policy'}};
+  for (const status of [401, 403, 404, 500]) {
+    const result = await execute('workflow_dispatch',event,env,async(url,options)=>{
+      assert.equal(options.method,'GET'); assert.equal(new URL(url).origin,'https://api.github.com');
+      return url.endsWith(ROOT) ? {ok:true,status:200,json:async()=>({default_branch:'main'})}
+        : {ok:false,status,json:async()=>({secret:POLICY_SENTINEL})};
+    });
+    assert.match(result,/blocked|BLOCKED/); assert.ok(!result.includes(POLICY_SENTINEL));
+  }
+});
+
+test('policy secret is scoped to trusted controller step, never PR test workflow', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/cursor-automation.yml'),'utf8');
+  const tests = fs.readFileSync(path.join(__dirname, '../.github/workflows/cursor-automation-tests.yml'),'utf8');
+  assert.equal((workflow.match(/secrets.CURSOR_POLICY_READ_TOKEN/g)||[]).length,1);
+  assert.match(workflow,/options: \[verify, verify-policy,/);
+  assert.doesNotMatch(tests,/CURSOR_POLICY_READ_TOKEN|CURSOR_API_KEY/);
+});
+
+test('policy client reads later rules pages and refuses incomplete pagination', async () => {
+  const f = fixture(); readablePolicy(f);
+  let full = false;
+  f.bridge.policyGithub = policyClient(POLICY_SENTINEL, f.bridge.github, async url => ({
+    ok:true,status:200,json:async()=>url.includes('/protection/') ? {checks:[]} :
+      full || url.endsWith('page=1') ? Array.from({length:100},()=>({type:'deletion'})) :
+      [{type:'required_status_checks',parameters:{required_status_checks:[{context:'later-required'}]}}],
+  }));
+  const result = await f.bridge.evaluateSha('a'.repeat(40));
+  assert.equal(result.verdict,'missing'); assert.ok(result.missing.includes('later-required'));
+  full = true;
+  const truncated = await f.bridge.evaluateSha('a'.repeat(40));
+  assert.equal(truncated.verdict,'blocked'); assert.equal(truncated.policySources.rules,'incomplete');
+});
+
+ test('fallback policy refuses a missing later rules page', async () => {
+  const f = fixture(); readablePolicy(f);
+  f.bridge.policyGithub = policyClient('', async (method, path) => {
+    if (path.includes('/protection/')) return {checks:[]};
+    if (path.endsWith('page=1')) return Array.from({length:100},()=>({type:'deletion'}));
+    throw new ApiError('GitHub',404);
+  });
+  const result = await f.bridge.evaluateSha('a'.repeat(40));
+  assert.equal(result.verdict,'blocked');
+  assert.equal(result.policySources.rules,'incomplete');
+});

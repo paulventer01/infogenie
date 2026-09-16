@@ -187,10 +187,10 @@ function bindPr(pr, expectedBranch) {
 
 class Bridge {
   constructor({
-    github, cursor, secret, actors = 'paulventer01', enabled = false, now = () => Date.now(),
+    github, policyGithub = github, cursor, secret, actors = 'paulventer01', enabled = false, now = () => Date.now(),
     trustedPolicyComplete = ci.TRUSTED_POLICY_COMPLETE,
   }) {
-    this.github = github; this.cursor = cursor; this.secret = secret;
+    this.github = github; this.policyGithub = policyGithub; this.cursor = cursor; this.secret = secret;
     this.actors = actors.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
     this.enabled = enabled;
     this.now = now;
@@ -345,29 +345,59 @@ class Bridge {
     const live = [];
     const sources = { protection: 'unread', rules: 'unread' };
     try {
-      const body = await this.github('GET', `${this.root}/branches/${encodeURIComponent(baseBranch)}/protection/required_status_checks`);
+      const body = await this.policyGithub('GET', `${this.root}/branches/${encodeURIComponent(baseBranch)}/protection/required_status_checks`);
       live.push(...ci.liveRequiredFromProtection(body));
       sources.protection = 'ok';
     } catch (e) {
       if (e.message === 'malformed required-check policy') sources.protection = 'malformed';
       else if (e.status === 404) sources.protection = 'absent';
       else if (e.status === 403) sources.protection = 'forbidden';
+      else if (e.status === 401) sources.protection = 'unauthorized';
       else throw e;
     }
+    let rulesPage = 1;
     try {
-      const rules = await this.github('GET', `${this.root}/rules/branches/${encodeURIComponent(baseBranch)}`);
-      live.push(...ci.liveRequiredFromRules(rules));
-      sources.rules = 'ok';
+      sources.rules = 'incomplete';
+      for (let page = 1; page <= 20; page++) {
+        rulesPage = page;
+        const rules = await this.policyGithub('GET', `${this.root}/rules/branches/${encodeURIComponent(baseBranch)}?per_page=100&page=${page}`);
+        live.push(...ci.liveRequiredFromRules(rules));
+        if (rules.length < 100) { sources.rules = 'ok'; break; }
+      }
     } catch (e) {
       if (e.message === 'malformed required-check policy') sources.rules = 'malformed';
-      else if (e.status === 404) sources.rules = 'absent';
+      else if (e.status === 404) sources.rules = rulesPage === 1 ? 'absent' : 'incomplete';
       else if (e.status === 403) sources.rules = 'forbidden';
+      else if (e.status === 401) sources.rules = 'unauthorized';
       else throw e;
     }
     const complete = ci.trustedPolicyValid(this.trustedPolicyComplete)
       || (ci.policyReadable(sources.protection) && ci.policyReadable(sources.rules)
         && sources.protection !== 'malformed' && sources.rules !== 'malformed');
     return { required: ci.unionRequired(live), sources, complete };
+  }
+
+  async verifyPolicy() {
+    const base = (await this.repoInfo()).default_branch;
+    if (typeof base !== 'string' || !base) throw new Error('Default branch unavailable.');
+    let policy;
+    try {
+      policy = await this.loadRequiredPolicy(base);
+    } catch (_) {
+      return 'Policy verification blocked: API/network/response failure. Check CURSOR_POLICY_READ_TOKEN scope, expiry and read permissions. No changes made.';
+    }
+    const report = {
+      repository: REPO, base,
+      credential: this.policyGithub.credentialSource || 'GITHUB_TOKEN',
+      sources: policy.sources, complete: policy.complete,
+      required: policy.required.map(({ context, appId }) => ({ context, appId })),
+    };
+    // JSON is escaped for Markdown so remote names cannot inject summary markup.
+    const json = JSON.stringify(report, null, 2).replace(/`/g, '\\u0060').replace(/</g, '\\u003c');
+    return ['Required-check policy verification (read-only)', '```json', json, '```',
+      policy.complete ? 'Policy readable. This is not a CI pass or merge approval.'
+        : 'BLOCKED: check CURSOR_POLICY_READ_TOKEN repository selection, expiry and Administration: read / Metadata: read. No fallback to a complete floor.',
+      'No Cursor request or GitHub mutation was made.'].join('\n');
   }
 
   compactEval(result, policy) {
@@ -396,7 +426,7 @@ class Bridge {
     const base = (await this.repoInfo()).default_branch || 'main';
     const policy = await this.loadRequiredPolicy(base);
     if (!policy.complete) {
-      return this.blockedEval(sha, 'required-check policy unreadable or incomplete', policy);
+      return this.blockedEval(sha, 'required-check policy unreadable or incomplete. Run verify-policy; check CURSOR_POLICY_READ_TOKEN repository scope, expiry and read permissions.', policy);
     }
     const classified = ci.classify({
       sha,
@@ -855,6 +885,7 @@ class Bridge {
     if (!MONITOR_EVENTS.has(eventName) && !this.actors.includes((event.sender?.login || '').toLowerCase())) {
       throw new Error('Actor not authorised for Cursor automation.');
     }
+    if (cmd.action === 'verify-policy') return this.verifyPolicy();
     if (cmd.action === 'verify') return this.verify();
     if (!this.enabled) return 'Automation is disabled. Set CURSOR_AUTOMATION_ENABLED=true after verifying the connection.';
     if (cmd.action === 'monitor') return this.monitor();
