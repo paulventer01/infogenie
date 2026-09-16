@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const dedicatedUrl = process.env.PR10E9_TEST_DATABASE_URL;
 const required = process.env.PR10G3_REQUIRE_BROWSER === '1';
-const PANEL = '#ig-react-panel';
+const { PANEL, agencyBrowserLogin } = require('../helpers/agency-browser-login');
 const GOALS_ROUTE = '/grow/goals';
 const OKR_ROUTE = '/manage/marketing-okr';
 
@@ -72,17 +72,6 @@ function makeOkrFixture(overrides = {}) {
 }
 
 let okrState = makeOkrFixture();
-
-async function login(page, baseUrl, actors) {
-  await page.goto(`${baseUrl}/login?next=${encodeURIComponent(GOALS_ROUTE)}`, { waitUntil: 'domcontentloaded' });
-  await page.locator('#email').fill(actors.owner.email);
-  await page.locator('#pass').fill(actors.owner.password);
-  const [login] = await Promise.all([
-    page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/auth/login'),
-    page.locator('form button[type="submit"]').click(),
-  ]);
-  assert.equal(login.status(), 200);
-}
 
 test('PR10G.3 goals and OKR availability browser acceptance', {
   skip: !dedicatedUrl && !required ? 'optional local run: no PR10E9_TEST_DATABASE_URL' : false,
@@ -203,8 +192,8 @@ test('PR10G.3 goals and OKR availability browser acceptance', {
     }
   });
 
-  await login(page, baseUrl, actors);
-  await page.waitForSelector(`${PANEL}`, { visible: true });
+  await agencyBrowserLogin(page, baseUrl, actors, { next: GOALS_ROUTE, waitForPanel: false });
+  await page.waitForSelector(`${PANEL}`, { visible: true, timeout: 90_000 });
   await page.waitForFunction((panel, zeroLabel) => {
     const el = document.querySelector(panel);
     return el?.innerText.includes(zeroLabel) && el.innerText.includes('$0');

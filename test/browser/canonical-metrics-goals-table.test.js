@@ -5,7 +5,12 @@ const assert = require('node:assert/strict');
 
 const dedicatedUrl = process.env.PR10E9_TEST_DATABASE_URL;
 const required = process.env.PR10G7_REQUIRE_BROWSER === '1' || process.env.PR10G8_REQUIRE_BROWSER === '1';
-const PANEL = '#ig-react-panel';
+const {
+  PANEL,
+  agencyBrowserLogin,
+  wireBrowserDiagnostics,
+  dumpBrowserFailureState,
+} = require('../helpers/agency-browser-login');
 const CANONICAL_ROUTE = '/manage/canonical-metrics';
 
 const canonicalFixture = {
@@ -82,25 +87,15 @@ const canonicalFixture = {
   definition_version: '2026.09.1',
 };
 
-async function login(page, baseUrl, actors) {
-  await page.goto(`${baseUrl}/login?next=${encodeURIComponent('/grow/goals')}`, { waitUntil: 'domcontentloaded' });
-  await page.locator('#email').fill(actors.owner.email);
-  await page.locator('#pass').fill(actors.owner.password);
-  const [login] = await Promise.all([
-    page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/auth/login'),
-    page.locator('form button[type="submit"]').click(),
-  ]);
-  assert.equal(login.status(), 200);
-  await page.waitForSelector(PANEL, { visible: true, timeout: 90_000 });
-}
-
 test('PR10G.8 canonical metrics goals vs actuals table browser acceptance', {
   skip: !dedicatedUrl && !required ? 'optional local run: no PR10E9_TEST_DATABASE_URL' : false,
   timeout: 600_000,
 }, async (t) => {
   assert.ok(dedicatedUrl, 'PR10E9_TEST_DATABASE_URL is required');
   const errors = [];
+  const diagnostics = { console: [], pageErrors: [], requestFailed: [], httpErrors: [] };
   let browser;
+  let page;
   let closing = false;
   t.after(async () => {
     closing = true;
@@ -117,9 +112,10 @@ test('PR10G.8 canonical metrics goals vs actuals table browser acceptance', {
     args: ['--disable-dev-shm-usage', '--disable-background-networking', '--lang=en-US'],
   });
   const context = await browser.createBrowserContext();
-  const page = await context.newPage();
+  page = await context.newPage();
   page.setDefaultTimeout(45_000);
   page.setDefaultNavigationTimeout(90_000);
+  wireBrowserDiagnostics(page, diagnostics);
   await page.setViewport({ width: 1440, height: 1050 });
   await page.setBypassServiceWorker(true);
   await page.setCacheEnabled(false);
@@ -156,24 +152,29 @@ test('PR10G.8 canonical metrics goals vs actuals table browser acceptance', {
     }
   });
 
-  await login(page, baseUrl, actors);
-  const nav = await page.goto(`${baseUrl}${CANONICAL_ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
-  assert.ok(nav && nav.status() < 400, `canonical-metrics navigation failed: ${nav?.status()}`);
-  await page.waitForFunction(
-    (panel) => document.querySelector(panel)?.innerText.includes('Goals vs actuals'),
-    { timeout: 90_000 },
-    PANEL,
-  );
+  try {
+    await agencyBrowserLogin(page, baseUrl, actors, { next: '/grow/goals' });
+    const nav = await page.goto(`${baseUrl}${CANONICAL_ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+    assert.ok(nav && nav.status() < 400, `canonical-metrics navigation failed: ${nav?.status()}`);
+    await page.waitForFunction(
+      (panel) => document.querySelector(panel)?.innerText.includes('Goals vs actuals'),
+      { timeout: 90_000 },
+      PANEL,
+    );
 
-  const text = await page.$eval(PANEL, (el) => el.innerText);
-  assert.match(text, /Meta ROAS/);
-  assert.match(text, /1\.5x \(stored\)/);
-  assert.match(text, /unverified \(stored\)/);
-  assert.doesNotMatch(text, /unverified \(stored\).*partial/i);
-  assert.match(text, /complete/);
-  assert.match(text, /period mismatch/i);
-  assert.match(text, /Spend cap/);
-  assert.match(text, /quarter-to-date through 2026-06-15/);
-  assert.match(text, /2026-Q2/);
-  assert.doesNotMatch(text, /Last 30 days \(rolling\)/i);
+    const text = await page.$eval(PANEL, (el) => el.innerText);
+    assert.match(text, /Meta ROAS/);
+    assert.match(text, /1\.5x \(stored\)/);
+    assert.match(text, /unverified \(stored\)/);
+    assert.doesNotMatch(text, /unverified \(stored\).*partial/i);
+    assert.match(text, /complete/);
+    assert.match(text, /period mismatch/i);
+    assert.match(text, /Spend cap/);
+    assert.match(text, /quarter-to-date through 2026-06-15/);
+    assert.match(text, /2026-Q2/);
+    assert.doesNotMatch(text, /Last 30 days \(rolling\)/i);
+  } catch (error) {
+    await dumpBrowserFailureState(page, diagnostics, 'PR10G.8');
+    throw error;
+  }
 });
