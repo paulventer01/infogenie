@@ -71,8 +71,10 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
   stage='load saved report';
   await page.waitForSelector('#report-review [aria-label="Client report preview"]');
   fs.mkdirSync('/tmp/preview-artifacts',{recursive:true});
+  await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
   await page.screenshot({path:'/tmp/preview-artifacts/reporting-desktop.png',fullPage:true});
   await page.setViewport({width:390,height:844});
+  await page.waitForFunction(()=>document.querySelector('#report-client').getBoundingClientRect().right<=innerWidth && document.documentElement.scrollWidth<=innerWidth+1,{timeout:5000});
   const geometry=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,
     overflowing:[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,15).map(e=>({tag:e.tagName,id:e.id,classes:e.className,right:e.getBoundingClientRect().right}))}));
   t.diagnostic(JSON.stringify(geometry));
