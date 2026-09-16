@@ -24,7 +24,7 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **21** remaining batches covering all **64** gap/partial rows |
+| Implementation batches (§4) | **20** remaining after this PR covering all **64** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
@@ -288,13 +288,13 @@ References **CR-###** from §2. No separate classifications here.
 
 ## 4. Implementation batches
 
-**23 batches** covering all **72** gap/partial rows (every gap/partial row maps to exactly one batch in §4). Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
+**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a and PR-1b are merged. **PR-1c is this draft** (CR-062). **20** batches remain after this PR, covering **64** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
 
 | Batch | Routes (IDs) | Est. size | Risk |
 |-------|----------------|----------:|------|
 | **PR-1a** | — (merged) | — | High |
 | **PR-1b** | — (merged) | — | High |
-| **PR-1c** | — (merged) | — | High |
+| **PR-1c** | CR-062 (this draft) | — | High |
 | **PR-2** | CR-063 | ~300 lines | High |
 | **PR-3a** | CR-013 | ~200 lines | High |
 | **PR-3b** | CR-019 | ~200 lines | High |

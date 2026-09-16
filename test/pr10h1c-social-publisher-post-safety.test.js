@@ -206,59 +206,79 @@ const PG_REQUIRED = process.env.PR10H1_REQUIRE_INTEGRATION === '1';
 const pgSkip = !PG_URL ? (PG_REQUIRED ? false : 'no DATABASE_URL') : false;
 
 describe('PR-1c social publisher post safety postgres', { skip: pgSkip }, () => {
-  it('approval and safety blocks make zero provider calls', async () => {
+  const fx = {};
+
+  before(async () => {
     assert.ok(PG_URL, 'DATABASE_URL is required when PR10H1_REQUIRE_INTEGRATION=1');
+    fx.prevKey = process.env.ZERNIO_API_KEY;
+    // Dummy harness key — not `_DUMMY*` so production `_hasCreds` still applies.
+    process.env.ZERNIO_API_KEY = 'test-key-live';
     for (const mod of [
       '../db', '../services/tenants/schema', '../services/social_drafts/schema',
       '../services/social_drafts/api', '../services/social_publisher/api', '../services/tenants/context',
     ]) delete require.cache[require.resolve(mod)];
-    const db = require('../db');
+    fx.db = require('../db');
     await require('../services/tenants/schema').ensureTenantSchema();
     await require('../services/social_drafts/schema').ensureSocialDraftsSchema();
     const tag = `pr10h1c-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-    const tenantA = (await db.getPool().query(
+    fx.tenantA = (await fx.db.getPool().query(
       `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
       [`PR10H1C A ${tag}`, `${tag}-a`],
     )).rows[0].id;
-    const tenantB = (await db.getPool().query(
+    fx.tenantB = (await fx.db.getPool().query(
       `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
       [`PR10H1C B ${tag}`, `${tag}-b`],
     )).rows[0].id;
-    require('../services/tenants/context').resolveTenantId = async (req) => Number(req.headers['x-test-tid'] || tenantB);
-    const mounted = mountPublisherApp({ useDb: true });
-    const server = await listen(mounted.app);
-    try {
-      await mounted.draftsRouter._setSettings(tenantA, { require_approval: true });
-      await mounted.draftsRouter._setSettings(tenantB, { require_approval: false });
-      const approval = await jsonFetch(server, 'POST', '/api/social-publisher/post', {
-        tid: tenantA,
-        body: postBody({ text: 'Needs approval' }),
-      });
-      assert.equal(approval.status, 403);
-      assert.equal(approval.body.error, 'approval_required');
-      assert.equal(mounted.zernioCalls.length, 0);
-      const blocked = await jsonFetch(server, 'POST', '/api/social-publisher/post', {
-        tid: tenantB,
-        body: postBody({ text: PROHIBITED }),
-      });
-      assert.equal(blocked.status, 403);
-      assertNoUsableCopy(blocked.body);
-      assert.equal(mounted.zernioCalls.length, 0);
-      const ok = await jsonFetch(server, 'POST', '/api/social-publisher/post', {
-        tid: tenantB,
-        body: postBody(),
-      });
-      assert.equal(ok.status, 200);
-      assert.equal(mounted.zernioCalls.length, 1);
-    } finally {
-      mounted.restore();
-      await new Promise((r) => server.close(r));
-      const p = db.getPool();
-      await p.query('DELETE FROM social_publisher_settings WHERE tenant_id = ANY($1::int[])', [[tenantA, tenantB]]).catch(() => {});
-      await p.query('DELETE FROM social_post_drafts WHERE tenant_id = ANY($1::int[])', [[tenantA, tenantB]]).catch(() => {});
-      await p.query('DELETE FROM tenants WHERE id = ANY($1::int[])', [[tenantA, tenantB]]).catch(() => {});
-      delete require.cache[require.resolve('../services/social_publisher/api')];
-      delete require.cache[require.resolve('../services/social_drafts/api')];
+    require('../services/tenants/context').resolveTenantId = async (req) => Number(req.headers['x-test-tid'] || fx.tenantB);
+    fx.mounted = mountPublisherApp({ useDb: true });
+    fx.server = await listen(fx.mounted.app);
+  });
+
+  after(async () => {
+    if (fx.mounted) fx.mounted.restore();
+    if (fx.server) await new Promise((r) => fx.server.close(r));
+    if (fx.prevKey === undefined) delete process.env.ZERNIO_API_KEY;
+    else process.env.ZERNIO_API_KEY = fx.prevKey;
+    if (fx.db && fx.tenantA && fx.tenantB) {
+      const p = fx.db.getPool();
+      await p.query('DELETE FROM social_publisher_settings WHERE tenant_id = ANY($1::int[])', [[fx.tenantA, fx.tenantB]]).catch(() => {});
+      await p.query('DELETE FROM social_post_drafts WHERE tenant_id = ANY($1::int[])', [[fx.tenantA, fx.tenantB]]).catch(() => {});
+      await p.query('DELETE FROM tenants WHERE id = ANY($1::int[])', [[fx.tenantA, fx.tenantB]]).catch(() => {});
     }
+    delete require.cache[require.resolve('../services/social_publisher/api')];
+    delete require.cache[require.resolve('../services/social_drafts/api')];
+  });
+
+  it('approval and safety blocks make zero provider calls', async () => {
+    const { mounted, server, tenantA, tenantB } = fx;
+    await mounted.draftsRouter._setSettings(tenantA, { require_approval: true });
+    await mounted.draftsRouter._setSettings(tenantB, { require_approval: false });
+    mounted.zernioCalls.length = 0;
+    mounted.ingestCalls.length = 0;
+
+    const approval = await jsonFetch(server, 'POST', '/api/social-publisher/post', {
+      tid: tenantA,
+      body: postBody({ text: 'Needs approval' }),
+    });
+    assert.equal(approval.status, 403);
+    assert.equal(approval.body.error, 'approval_required');
+    assert.equal(mounted.zernioCalls.length, 0);
+
+    const blocked = await jsonFetch(server, 'POST', '/api/social-publisher/post', {
+      tid: tenantB,
+      body: postBody({ text: PROHIBITED }),
+    });
+    assert.equal(blocked.status, 403);
+    assertNoUsableCopy(blocked.body);
+    assert.equal(mounted.zernioCalls.length, 0);
+
+    const ok = await jsonFetch(server, 'POST', '/api/social-publisher/post', {
+      tid: tenantB,
+      body: postBody(),
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(mounted.zernioCalls.length, 1);
+    assert.equal(mounted.zernioCalls[0].path, '/posts');
+    assert.equal(mounted.ingestCalls.length, 1);
   });
 });
