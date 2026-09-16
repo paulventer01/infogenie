@@ -1,8 +1,10 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { Bridge, command, prompt, readState, signState, REPO, LABEL, NOTIFY_MARKER } = require('../scripts/cursor-automation/bridge');
+const { Bridge, command, prompt, readState, signState, REPO, LABEL, NOTIFY_MARKER, MONITOR_EVENTS } = require('../scripts/cursor-automation/bridge');
 const { client, ApiError } = require('../scripts/cursor-automation/client');
+const fs = require('node:fs');
+const path = require('node:path');
 const SECRET = 'unit-test-placeholder';
 const ROOT = `/repos/${REPO}`;
 const REPO_URL = `https://github.com/${REPO}`;
@@ -11,7 +13,7 @@ function fixture() {
   const calls = []; const comments = new Map(); const issues = new Map(); const agents = new Map();
   const pulls = new Map(); const branches = new Map();
   let seq = 10; let runSeq = 0; let loseCreate = false; let loseFollowup = false; let losePrCreate = false;
-  let rejectCreate = 0; let rejectFollowup = 0; let rejectPrCreate = 0;
+  let loseCancel = false; let rejectCreate = 0; let rejectFollowup = 0; let rejectPrCreate = 0;
   pulls.set(999, {
     number: 999, state: 'open', draft: true, merged: false,
     head: { sha: 'a'.repeat(40), ref: 'cursor/legacy', repo: { full_name: REPO } },
@@ -106,7 +108,13 @@ function fixture() {
     assert.ok(m, path); const agent = agents.get(m[1]);
     if (!agent) throw new ApiError('Cursor', 404);
     if (agent.failGet) throw new ApiError('Cursor', 500);
-    if (m[3]) { agent.run.status = 'CANCELLED'; agent.status = 'IDLE'; return {}; }
+    if (m[3]) {
+      if (loseCancel) throw new ApiError('Cursor', 0);
+      agent.cancelled = agent.cancelled || [];
+      agent.cancelled.push(m[2]);
+      if (agent.run?.id === m[2]) { agent.run.status = 'CANCELLED'; agent.status = 'IDLE'; }
+      return {};
+    }
     if (m[2]) return agent.run;
     if (method === 'POST') {
       if (rejectFollowup) throw new ApiError('Cursor', rejectFollowup);
@@ -125,11 +133,14 @@ function fixture() {
   const finish = () => { for (const a of agents.values()) { a.status = 'IDLE'; a.run.status = 'FINISHED'; } };
   const prPosts = () => calls.filter((c) => c[0] === 'github' && c[1] === 'POST' && c[2] === `${ROOT}/pulls`).length;
   const notices = () => [...comments.values()].flat().filter((c) => c.body?.includes(NOTIFY_MARKER));
+  const cancelPosts = () => calls.filter((c) => c[0] === 'cursor' && c[1] === 'POST' && String(c[2] || '').endsWith('/cancel'));
+  const runGets = () => calls.filter((c) => c[0] === 'cursor' && c[1] === 'GET' && /\/runs\//.test(c[2] || '')).length;
   return { bridge, event, start, finish, calls, comments, issues, agents, pulls, branches, issueId, prPosts, notices,
+    cancelPosts, runGets,
     rejectCreate: (status) => { rejectCreate = status; }, rejectFollowup: (status) => { rejectFollowup = status; },
     rejectPrCreate: (status) => { rejectPrCreate = status; },
     loseCreate: () => { loseCreate = true; }, loseFollowup: () => { loseFollowup = true; },
-    losePrCreate: () => { losePrCreate = true; } };
+    losePrCreate: () => { losePrCreate = true; }, loseCancel: () => { loseCancel = true; } };
 }
 
 function seedTask(f, { issue, agentId, phase = 'RUNNING', failGet = false } = {}) {
@@ -166,7 +177,8 @@ test('commands must be explicit; PR comments and edited comments do not execute'
   assert.equal(command('issues', { action: 'opened', issue: { body: 'please /cursor start\ncode' } }), null);
   assert.equal(command('issues', { action: 'opened', issue: { number: 2, id: 5, body: '/cursor start\nDo this' } }).text, 'Do this');
   assert.equal(command('check_suite', { action: 'completed' }).action, 'monitor');
-  assert.equal(command('pull_request', { action: 'opened' }).action, 'monitor');
+  assert.equal(command('pull_request', { action: 'opened' }), null);
+  assert.equal(MONITOR_EVENTS.has('pull_request'), false);
   assert.throws(() => prompt(' '.repeat(3)), /Task must/);
   assert.throws(() => prompt('x'.repeat(12001)), /Task must/);
 });
@@ -403,11 +415,141 @@ test('monitor ignores untrusted comments and reconciles a coalesced authorised f
   const f = fixture(); await f.start(); f.finish();
   const issue = f.issueId();
   f.comments.get(issue).push({ id: 500, body: '/cursor cancel', user: { login: 'outsider' } });
-  const before = f.calls.filter((c) => String(c[2] || '').endsWith('/cancel')).length;
+  const before = f.cancelPosts().length;
   await f.bridge.run('schedule', f.event({}));
-  assert.equal(f.calls.filter((c) => String(c[2] || '').endsWith('/cancel')).length, before);
-  f.comments.get(issue).push({ id: 501, body: '/cursor follow-up\nFix the bounded issue.', user: { login: 'paulventer01' } });
+  assert.equal(f.cancelPosts().length, before);
+  f.comments.get(issue).push({
+    id: 501, body: '/cursor follow-up\nFix the bounded issue.', user: { login: 'paulventer01' },
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  });
   await f.bridge.run('schedule', f.event({}));
   assert.equal((await f.bridge.state(issue)).runId, 'run-2');
   assert.ok((await f.bridge.state(issue)).handled.includes('comment:501'));
+});
+
+function workflowOnBlock(text) {
+  const start = text.search(/^on:\s*$/m);
+  if (start < 0) throw new Error('missing on:');
+  const rest = text.slice(start);
+  const end = rest.search(/\n(?:permissions:|concurrency:|jobs:)/);
+  return end < 0 ? rest : rest.slice(0, end);
+}
+
+function assertTrustedAutomationWorkflow(text) {
+  if (!text.includes('CURSOR_API_KEY')) throw new Error('expected CURSOR_API_KEY');
+  const events = [...workflowOnBlock(text).matchAll(/^  ([A-Za-z_]+):/gm)].map((m) => m[1]);
+  if (events.includes('pull_request') || events.includes('pull_request_target')) {
+    throw new Error('PR-controlled workflow definition is not allowed for CURSOR_API_KEY jobs');
+  }
+  if (/\bpull_request_target\b/.test(workflowOnBlock(text).split('\n').filter((l) => !l.trim().startsWith('#')).join('\n'))) {
+    throw new Error('pull_request_target is not allowed');
+  }
+  if (!events.includes('schedule') || !events.includes('check_suite') || !events.includes('status')) {
+    throw new Error('expected default-branch CI wakeup events');
+  }
+  if (!/ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/.test(text)) {
+    throw new Error('must check out the default branch');
+  }
+  if (!/persist-credentials:\s*false/.test(text)) throw new Error('must disable persisted git credentials');
+  if (/github\.event\.pull_request\.head/.test(text)) throw new Error('must not checkout PR head with automation secrets');
+}
+
+test('status and cancel persist handled on event delivery and missed-event replay', async () => {
+  const f = fixture(); await f.start();
+  const issue = f.issueId();
+  await f.bridge.run('issue_comment', {
+    repository: { full_name: REPO }, sender: { login: 'paulventer01' }, action: 'created',
+    issue: { number: issue }, comment: { id: 77, body: '/cursor status' },
+  });
+  assert.ok((await f.bridge.state(issue)).handled.includes('comment:77'));
+  const afterStatus = f.runGets();
+  f.comments.get(issue).push({
+    id: 77, body: '/cursor status', user: { login: 'paulventer01' },
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  });
+  await f.bridge.run('schedule', f.event({}));
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal(f.runGets(), afterStatus + 2);
+  await f.bridge.run('issue_comment', {
+    repository: { full_name: REPO }, sender: { login: 'paulventer01' }, action: 'created',
+    issue: { number: issue }, comment: { id: 78, body: '/cursor cancel' },
+  });
+  assert.ok((await f.bridge.state(issue)).handled.includes('comment:78'));
+  assert.deepEqual([...f.agents.values()][0].cancelled, ['run-1']);
+  const cancels = f.cancelPosts().length;
+  f.comments.get(issue).push({
+    id: 78, body: '/cursor cancel', user: { login: 'paulventer01' },
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  });
+  await f.bridge.run('schedule', f.event({}));
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal(f.cancelPosts().length, cancels);
+});
+
+test('historic cancel of run A is not retargeted after follow-up B', async () => {
+  const f = fixture(); await f.start();
+  const issue = f.issueId();
+  f.comments.get(issue).push({
+    id: 80, body: '/cursor cancel', user: { login: 'paulventer01' },
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  });
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal((await f.bridge.state(issue)).phase, 'CANCELLED');
+  assert.equal((await f.bridge.state(issue)).cancelIntent.runId, 'run-1');
+  f.finish();
+  f.comments.get(issue).push({
+    id: 81, body: '/cursor follow-up\nContinue the bounded task.', user: { login: 'paulventer01' },
+    created_at: '2026-01-02T00:00:00Z', updated_at: '2026-01-02T00:00:00Z',
+  });
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal((await f.bridge.state(issue)).runId, 'run-2');
+  assert.deepEqual([...f.agents.values()][0].cancelled, ['run-1']);
+  await f.bridge.run('schedule', f.event({}));
+  assert.deepEqual([...f.agents.values()][0].cancelled, ['run-1']);
+  assert.equal((await f.bridge.state(issue)).phase, 'CREATING');
+});
+
+test('uncertain cancel is bound to the accepted run and never retried against a later run', async () => {
+  const f = fixture(); await f.start();
+  const issue = f.issueId();
+  f.loseCancel();
+  await assert.rejects(f.bridge.cancel(await f.bridge.state(issue), { key: 'comment:90' }), /network/);
+  const state = await f.bridge.state(issue);
+  assert.equal(state.cancelIntent.status, 'uncertain');
+  assert.equal(state.cancelIntent.runId, 'run-1');
+  assert.ok(state.handled.includes('comment:90'));
+  assert.equal(f.cancelPosts().length, 1);
+  [...f.agents.values()][0].run.status = 'FINISHED';
+  [...f.agents.values()][0].status = 'IDLE';
+  await f.bridge.followup(await f.bridge.state(issue), { text: 'Continue', key: 'comment:91' });
+  assert.equal((await f.bridge.state(issue)).runId, 'run-2');
+  f.comments.get(issue).push({
+    id: 90, body: '/cursor cancel', user: { login: 'paulventer01' },
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  });
+  await f.bridge.run('schedule', f.event({}));
+  assert.deepEqual([...f.agents.values()][0].cancelled || [], []);
+  assert.equal((await f.bridge.state(issue)).runId, 'run-2');
+  assert.equal(f.cancelPosts().length, 1);
+});
+
+test('edited historic command text is not executed as a new authorised command', async () => {
+  const f = fixture(); await f.start(); f.finish();
+  const issue = f.issueId();
+  f.comments.get(issue).push({
+    id: 95, body: '/cursor follow-up\nHacked instruction.', user: { login: 'paulventer01' },
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-02T00:00:00Z',
+  });
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal((await f.bridge.state(issue)).runId, 'run-1');
+  assert.equal(f.calls.filter((c) => c[0] === 'cursor' && c[1] === 'POST' && /\/runs$/.test(c[2] || '')).length, 0);
+});
+
+test('secret-bearing workflow definition stays on default-branch events', () => {
+  const live = fs.readFileSync(path.join(__dirname, '../.github/workflows/cursor-automation.yml'), 'utf8');
+  assertTrustedAutomationWorkflow(live);
+  const malicious = live.replace(/^on:\n/m, 'on:\n  pull_request:\n    types: [opened]\n');
+  assert.throws(() => assertTrustedAutomationWorkflow(malicious), /PR-controlled workflow definition/);
+  const target = live.replace(/^on:\n/m, 'on:\n  pull_request_target:\n    types: [opened]\n');
+  assert.throws(() => assertTrustedAutomationWorkflow(target), /PR-controlled|pull_request_target/);
 });

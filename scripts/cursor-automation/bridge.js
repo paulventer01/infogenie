@@ -10,7 +10,7 @@ const NOTIFY_MARKER = '<!-- infogenie-cursor-notify:';
 const TERMINAL = new Set(['FINISHED', 'ERROR', 'CANCELLED', 'EXPIRED', 'REJECTED']);
 const ACTIVE = new Set(['CREATING', 'RUNNING']);
 const REJECTED_HTTP = new Set([400, 401, 403, 404, 422, 429]);
-const MONITOR_EVENTS = new Set(['schedule', 'check_suite', 'check_run', 'status', 'pull_request']);
+const MONITOR_EVENTS = new Set(['schedule', 'check_suite', 'check_run', 'status']);
 const MAX_FOLLOWUPS = 3;
 const SHA_RE = /^[a-f0-9]{40}$/;
 const PR_URL_RE = new RegExp(`^https://github\\.com/${REPO}/pull/([0-9]+)$`);
@@ -113,6 +113,11 @@ function nextAction(state) {
   }
   if (state.phase === 'FINISHED') return 'Run finished. Waiting for a pushed branch or draft PR.';
   return 'Inspect the tracking comment and Cursor agent.';
+}
+
+function commentPristine(row) {
+  if (!row?.created_at || !row?.updated_at) return true;
+  return row.created_at === row.updated_at;
 }
 
 function bindPr(pr, expectedBranch) {
@@ -394,6 +399,7 @@ class Bridge {
     const before = JSON.stringify({
       phase: state.phase, lastRunId: state.lastRunId, prs: state.prs, ci: state.ci, branch: state.branch,
       sha: state.sha, pr: state.pr, prBlocker: state.prBlocker, notifyKey: state.notifyKey, prIntent: state.prIntent,
+      handled: state.handled, cancelIntent: state.cancelIntent,
     });
     const agent = await this.agent(state.agentId);
     if (!agent.latestRunId) throw new Error('Agent has no run yet. Check Cursor before retrying.');
@@ -441,6 +447,7 @@ class Bridge {
     const after = JSON.stringify({
       phase: state.phase, lastRunId: state.lastRunId, prs: state.prs, ci: state.ci, branch: state.branch,
       sha: state.sha, pr: state.pr, prBlocker: state.prBlocker, notifyKey: state.notifyKey, prIntent: state.prIntent,
+      handled: state.handled, cancelIntent: state.cancelIntent,
     });
     if (before !== after) {
       const note = [
@@ -460,6 +467,7 @@ class Bridge {
     const out = [];
     for (const row of rows) {
       if (!this.actors.includes((row.user?.login || '').toLowerCase())) continue;
+      if (!commentPristine(row)) continue;
       const cmd = command('issue_comment', {
         action: 'created', issue: { number: state.issue }, comment: { id: row.id, body: row.body || '' },
       });
@@ -467,15 +475,21 @@ class Bridge {
       try {
         const current = await this.state(state.issue);
         if (!current) continue;
-        if (cmd.action === 'status') out.push(await this.refresh(current));
+        if (cmd.action === 'status') out.push(await this.status(current, cmd));
         else if (cmd.action === 'follow-up') out.push(await this.followup(current, cmd));
-        else if (cmd.action === 'cancel') out.push(await this.cancel(current));
+        else if (cmd.action === 'cancel') out.push(await this.cancel(current, cmd));
         Object.assign(state, { handled: (await this.state(state.issue))?.handled || state.handled });
       } catch (e) {
         out.push(`Task #${state.issue} comment ${row.id}: ${e.message}`);
       }
     }
     return out;
+  }
+
+  async status(state, cmd = {}) {
+    if (cmd.key && state.handled.includes(cmd.key)) return 'Command already processed; use status.';
+    if (cmd.key) state.handled.push(cmd.key);
+    return this.refresh(state);
   }
 
   async followup(state, cmd) {
@@ -505,11 +519,35 @@ class Bridge {
     return `Sent follow-up for task #${state.issue}.`;
   }
 
-  async cancel(state) {
+  async cancel(state, cmd = {}) {
+    if (cmd.key && state.handled.includes(cmd.key)) return 'Command already processed; use status.';
     await this.refresh(state);
-    if (TERMINAL.has(state.phase)) return 'Run has already ended.';
+    if (cmd.key && state.handled.includes(cmd.key)) return 'Command already processed; use status.';
+    if (TERMINAL.has(state.phase)) {
+      if (cmd.key) { state.handled.push(cmd.key); await this.save(state, 'Cancel recorded after the run had already ended.'); }
+      return 'Run has already ended.';
+    }
     if (!state.runId) throw new Error('Resolve the run identity before cancelling.');
-    await this.cursor('POST', `/v1/agents/${state.agentId}/runs/${state.runId}/cancel`);
+    const runId = state.runId;
+    if (state.cancelIntent && ['pending', 'uncertain'].includes(state.cancelIntent.status) && state.cancelIntent.runId === runId) {
+      if (cmd.key) { state.handled.push(cmd.key); await this.save(state, `Cancel of run ${runId} remains unresolved and will not be retried automatically.`); }
+      return 'Cancel outcome is unresolved. Check Cursor; this request will not be retried automatically.';
+    }
+    if (cmd.key) state.handled.push(cmd.key);
+    state.cancelIntent = { runId, status: 'pending' };
+    await this.save(state, `Cancelling run ${runId}. This command will not be retargeted to a later run.`);
+    try {
+      await this.cursor('POST', `/v1/agents/${state.agentId}/runs/${runId}/cancel`);
+    } catch (e) {
+      if (e.service === 'Cursor' && REJECTED_HTTP.has(e.status)) {
+        state.cancelIntent = { runId, status: 'rejected' };
+        await this.save(state, 'Cursor rejected this cancel. The command will not be replayed or applied to a later run.');
+      } else {
+        state.cancelIntent = { runId, status: 'uncertain' };
+        await this.save(state, `Cancel of run ${runId} is uncertain. Check Cursor; this request will not be retried automatically or applied to a later run.`);
+      }
+      throw e;
+    }
     // Confirmation comes from a subsequent read, not an optimistic local status.
     return this.refresh(state);
   }
@@ -549,11 +587,11 @@ class Bridge {
     if (!Number.isSafeInteger(cmd.issue) || cmd.issue <= 0) throw new Error('A task issue number is required.');
     const state = await this.state(cmd.issue);
     if (!state) throw new Error('No registered Cursor task on this issue.');
-    if (cmd.action === 'status') return this.refresh(state);
+    if (cmd.action === 'status') return this.status(state, cmd);
     if (cmd.action === 'follow-up') return this.followup(state, cmd);
-    if (cmd.action === 'cancel') return this.cancel(state);
+    if (cmd.action === 'cancel') return this.cancel(state, cmd);
     throw new Error('Unsupported automation action.');
   }
 }
 
-module.exports = { Bridge, command, prompt, readState, signState, REPO, LABEL, MONITOR_EVENTS, NOTIFY_MARKER };
+module.exports = { Bridge, command, prompt, readState, signState, REPO, LABEL, MONITOR_EVENTS, NOTIFY_MARKER, commentPristine };

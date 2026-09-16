@@ -25,10 +25,13 @@ on:
   check_suite:
     types: [completed]
   status:
-  pull_request:
-    types: [opened, reopened, closed, synchronize, converted_to_draft, ready_for_review]
 
-# Never check out a task/PR branch with automation credentials. Always run trusted default-branch code.
+# Trusted workflow definition: these events load this file from the default branch
+# (GitHub: "This event will only trigger a workflow run if the workflow file exists
+# on the default branch"). pull_request is intentionally absent: that event runs the
+# workflow from the PR merge ref, so a same-repo PR could change this file and still
+# receive CURSOR_API_KEY. pull_request_target is also absent (secret-bearing and easy
+# to misuse by checking out PR code). Never check out a task/PR branch here.
 # contents: read so this token cannot merge or push. pull-requests: write is only for opening draft PRs.
 permissions:
   contents: read
@@ -53,7 +56,6 @@ jobs:
         (github.event_name == 'schedule' ||
          github.event_name == 'check_suite' ||
          github.event_name == 'status' ||
-         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
          (github.event_name == 'issues' && startsWith(github.event.issue.body, '/cursor start')) ||
          (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/cursor ')))))
     runs-on: ubuntu-latest
