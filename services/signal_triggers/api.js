@@ -13,7 +13,13 @@ const SIGNAL_TYPES = [
   { id: 'trending_keyword', label: 'New trending keyword',     desc: 'A keyword in your space starts trending' },
   { id: 'review_negative',  label: 'New negative review',      desc: '1-2 star review posted on a tracked source' },
   { id: 'crisis_alert',     label: 'Crisis radar alert',       desc: 'Crisis Radar flags a potential PR issue' },
-  { id: 'manual',           label: 'Manual trigger',           desc: 'You fire it from the UI' }
+  { id: 'manual',           label: 'Manual trigger',           desc: 'You fire it from the UI' },
+  // Closed-loop SaaS lifecycle events → journeys
+  { id: 'stripe_checkout_completed', label: 'Stripe checkout completed', desc: 'Customer completes a Stripe Checkout payment' },
+  { id: 'stripe_payment_failed',     label: 'Stripe payment failed',     desc: 'Subscription invoice payment fails (dunning)' },
+  { id: 'user_signup',               label: 'User signup',               desc: 'New account created in auth' },
+  { id: 'product_purchased',         label: 'Product purchased',         desc: 'A product / Linksell order is paid' },
+  { id: 'email_replied',             label: 'Email reply received',      desc: 'Prospect replies to an outreach email' },
 ];
 
 router.get('/types', (_req, res) => res.json({ types: SIGNAL_TYPES }));
