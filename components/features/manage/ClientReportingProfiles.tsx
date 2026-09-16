@@ -198,7 +198,7 @@ export default function ClientReportingProfiles() {
     const target = document.getElementById(id);
     target?.scrollIntoView({ behavior: "auto", block: "start" }); target?.focus({ preventScroll: true });
   }
-  return <main className={styles.workspace}>
+  return <main className={styles.workspace} data-ig-no-enhance>
     <div className={styles.inner}>
       <header className={styles.hero}>
         <p className={styles.eyebrow}>Workspace / Client reporting</p>

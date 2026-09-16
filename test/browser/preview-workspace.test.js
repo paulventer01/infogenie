@@ -51,6 +51,8 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
     const [response]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/auth/login' && r.request().method()==='POST'),
       page.locator('form button[type="submit"]').click()]);
     assert.equal(response.status(),200);
+    stage='finish workspace startup';
+    await page.waitForFunction(()=>window.__igLegacyReady===true);
     stage='load client selector';
     await page.waitForSelector('select[name="client_id"]:enabled');
   }
@@ -61,7 +63,8 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
   assert.equal(await page.$$eval('nav[aria-label="Reporting journey"] button',items=>items.length),4);
   assert.ok(await page.evaluate(()=>document.body.innerText.includes('Test workspace')));
   stage='edit report title';
-  await page.locator('[name="report_title"]').fill('DEMO — Monthly client review');
+  await page.locator('#ig-react-panel [name="report_title"]:enabled').fill('DEMO — Monthly client review');
+  await page.waitForFunction(()=>document.querySelector('#ig-react-panel [name="report_title"]')?.value==='DEMO — Monthly client review');
   stage='save report';
   await Promise.all([page.waitForResponse(r=>r.request().method()==='PUT' && new URL(r.url()).pathname.endsWith('/profile')),
     page.locator('form[aria-label="Reporting profile"] button[type="submit"]').click()]);
