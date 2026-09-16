@@ -1,24 +1,66 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { Bridge, command, prompt, readState, signState, REPO } = require('../scripts/cursor-automation/bridge');
+const { Bridge, command, prompt, readState, signState, REPO, LABEL, NOTIFY_MARKER } = require('../scripts/cursor-automation/bridge');
 const { client, ApiError } = require('../scripts/cursor-automation/client');
 const SECRET = 'unit-test-placeholder';
 const ROOT = `/repos/${REPO}`;
+const REPO_URL = `https://github.com/${REPO}`;
 
 function fixture() {
   const calls = []; const comments = new Map(); const issues = new Map(); const agents = new Map();
-  let seq = 10; let runSeq = 0; let loseCreate = false; let loseFollowup = false; let rejectCreate = 0; let rejectFollowup = 0;
+  const pulls = new Map(); const branches = new Map();
+  let seq = 10; let runSeq = 0; let loseCreate = false; let loseFollowup = false; let losePrCreate = false;
+  let rejectCreate = 0; let rejectFollowup = 0; let rejectPrCreate = 0;
+  pulls.set(999, {
+    number: 999, state: 'open', draft: true, merged: false,
+    head: { sha: 'a'.repeat(40), ref: 'cursor/legacy', repo: { full_name: REPO } },
+    base: { ref: 'main', repo: { full_name: REPO } },
+  });
   async function github(method, path, body) {
     calls.push(['github', method, path, body]);
-    if (path === `${ROOT}/pulls/999`) return {head: {sha: 'a'.repeat(40)}};
+    if (method === 'PUT' && /\/merge$/.test(path)) throw new Error('merge is forbidden');
+    if (method === 'PATCH' && path.startsWith(`${ROOT}/pulls/`) && body?.draft === false) {
+      throw new Error('mark-ready is forbidden');
+    }
+    if (path === ROOT && method === 'GET') return { default_branch: 'main' };
     if (path.endsWith('/check-runs?per_page=100')) return {total_count: 1, check_runs: [{status: 'completed', conclusion: 'success'}]};
     if (path.endsWith('/status')) return {state: 'pending', statuses: []};
-    if (path === ROOT && method === 'GET') return { default_branch: 'main' };
     if (path === `${ROOT}/labels`) return {};
-    if (path.startsWith(`${ROOT}/issues?`)) return [...issues.values()].filter((i) => i.labels?.includes('cursor-automation'));
+    if (path.startsWith(`${ROOT}/issues?`)) return [...issues.values()].filter((i) => i.labels?.includes(LABEL));
     if (path === `${ROOT}/issues` && method === 'POST') {
       const row = { ...body, number: ++seq, state: 'open' }; issues.set(seq, row); return row;
+    }
+    if (path.startsWith(`${ROOT}/pulls?`)) {
+      const head = new URLSearchParams(path.split('?')[1] || '').get('head') || '';
+      const branch = head.startsWith(`${'paulventer01'}:`) ? head.slice('paulventer01:'.length) : null;
+      return [...pulls.values()].filter((p) => !branch || p.head?.ref === branch);
+    }
+    if (path === `${ROOT}/pulls` && method === 'POST') {
+      if (rejectPrCreate) throw new ApiError('GitHub', rejectPrCreate);
+      assert.equal(body.draft, true);
+      assert.notEqual(body.head, 'main');
+      const sha = branches.get(body.head)?.commit?.sha || 'd'.repeat(40);
+      const row = {
+        number: ++seq, draft: true, merged: false, state: 'open',
+        head: { sha, ref: body.head, repo: { full_name: REPO } },
+        base: { ref: body.base || 'main', repo: { full_name: REPO } },
+      };
+      pulls.set(row.number, row);
+      if (losePrCreate) throw new ApiError('GitHub', 0);
+      return row;
+    }
+    let pm = new RegExp(`^${ROOT}/pulls/(\\d+)$`).exec(path);
+    if (pm) {
+      const row = pulls.get(Number(pm[1]));
+      if (!row) throw new ApiError('GitHub', 404);
+      return row;
+    }
+    let bm = new RegExp(`^${ROOT}/branches/(.+)$`).exec(path);
+    if (bm) {
+      const row = branches.get(decodeURIComponent(bm[1]));
+      if (!row) throw new ApiError('GitHub', 404);
+      return row;
     }
     let m = new RegExp(`^${ROOT}/issues/(\\d+)/comments`).exec(path);
     if (m) {
@@ -54,7 +96,7 @@ function fixture() {
       if (rejectCreate) throw new ApiError('Cursor', rejectCreate);
       assert.equal(body.workOnCurrentBranch, false);
       assert.equal(body.autoCreatePR, false);
-      assert.deepEqual(body.repos, [{ url: `https://github.com/${REPO}`, startingRef: 'main' }]);
+      assert.deepEqual(body.repos, [{ url: REPO_URL, startingRef: 'main' }]);
       const agent = { id: body.agentId, repos: body.repos, workOnCurrentBranch: false };
       agents.set(agent.id, agent); const result = { agent, ...newRun(agent) };
       if (loseCreate) throw new ApiError('Cursor', 0);
@@ -63,6 +105,7 @@ function fixture() {
     const m = /^\/v1\/agents\/([^/]+)(?:\/runs(?:\/([^/]+)(\/cancel)?)?)?$/.exec(path);
     assert.ok(m, path); const agent = agents.get(m[1]);
     if (!agent) throw new ApiError('Cursor', 404);
+    if (agent.failGet) throw new ApiError('Cursor', 500);
     if (m[3]) { agent.run.status = 'CANCELLED'; agent.status = 'IDLE'; return {}; }
     if (m[2]) return agent.run;
     if (method === 'POST') {
@@ -80,9 +123,27 @@ function fixture() {
   const start = () => bridge.run('workflow_dispatch', event({ action: 'start', prompt: 'Add a focused test.' }));
   const issueId = () => [...issues.keys()][0];
   const finish = () => { for (const a of agents.values()) { a.status = 'IDLE'; a.run.status = 'FINISHED'; } };
-  return { bridge, event, start, finish, calls, comments, issues, agents, issueId,
+  const prPosts = () => calls.filter((c) => c[0] === 'github' && c[1] === 'POST' && c[2] === `${ROOT}/pulls`).length;
+  const notices = () => [...comments.values()].flat().filter((c) => c.body?.includes(NOTIFY_MARKER));
+  return { bridge, event, start, finish, calls, comments, issues, agents, pulls, branches, issueId, prPosts, notices,
     rejectCreate: (status) => { rejectCreate = status; }, rejectFollowup: (status) => { rejectFollowup = status; },
-    loseCreate: () => { loseCreate = true; }, loseFollowup: () => { loseFollowup = true; } };
+    rejectPrCreate: (status) => { rejectPrCreate = status; },
+    loseCreate: () => { loseCreate = true; }, loseFollowup: () => { loseFollowup = true; },
+    losePrCreate: () => { losePrCreate = true; } };
+}
+
+function seedTask(f, { issue, agentId, phase = 'RUNNING', failGet = false } = {}) {
+  f.issues.set(issue, { number: issue, state: 'open', labels: [LABEL] });
+  const runId = `run-seed-${issue}`;
+  f.agents.set(agentId, {
+    id: agentId, repos: [{ url: REPO_URL, startingRef: 'main' }], workOnCurrentBranch: false,
+    latestRunId: runId, run: { id: runId, status: phase, git: { branches: [] } },
+    status: phase === 'FINISHED' ? 'IDLE' : 'ACTIVE', failGet,
+  });
+  const body = `Cursor automation: **${phase}**\n\n` + signState({
+    repo: REPO, issue, agentId, runId, phase, followups: 0, handled: [],
+  }, SECRET);
+  f.comments.set(issue, [{ id: 1000 + issue, body, user: { login: 'github-actions[bot]' } }]);
 }
 
 test('untrusted actors and foreign repositories cannot call either service', async () => {
@@ -104,6 +165,8 @@ test('commands must be explicit; PR comments and edited comments do not execute'
   assert.equal(command('issue_comment', { action: 'edited', issue: {}, comment: { body: '/cursor cancel' } }), null);
   assert.equal(command('issues', { action: 'opened', issue: { body: 'please /cursor start\ncode' } }), null);
   assert.equal(command('issues', { action: 'opened', issue: { number: 2, id: 5, body: '/cursor start\nDo this' } }).text, 'Do this');
+  assert.equal(command('check_suite', { action: 'completed' }).action, 'monitor');
+  assert.equal(command('pull_request', { action: 'opened' }).action, 'monitor');
   assert.throws(() => prompt(' '.repeat(3)), /Task must/);
   assert.throws(() => prompt('x'.repeat(12001)), /Task must/);
 });
@@ -231,4 +294,120 @@ test('completed checks without legacy commit statuses are reported accurately', 
   [...f.agents.values()][0].run.git.branches = [{prUrl: `https://github.com/${REPO}/pull/999`}];
   await f.bridge.refresh(await f.bridge.state(f.issueId()));
   assert.match((await f.bridge.state(f.issueId())).ci[0], /reported checks passed/);
+});
+
+test('finished run without prUrl adopts the existing PR for that exact branch', async () => {
+  const f = fixture(); const branch = 'cursor/task-a';
+  f.pulls.set(42, {
+    number: 42, state: 'closed', draft: false, merged: true, merged_at: '2026-09-01T00:00:00Z',
+    head: { sha: 'b'.repeat(40), ref: branch, repo: { full_name: REPO } },
+    base: { ref: 'main', repo: { full_name: REPO } },
+  });
+  await f.start(); f.finish();
+  [...f.agents.values()][0].run.git.branches = [{ branch }];
+  await f.bridge.refresh(await f.bridge.state(f.issueId()));
+  const state = await f.bridge.state(f.issueId());
+  assert.equal(state.branch, branch);
+  assert.equal(state.pr.number, 42);
+  assert.equal(state.pr.state, 'merged');
+  assert.equal(state.pr.merged, true);
+  assert.equal(state.sha, 'b'.repeat(40));
+  assert.equal(f.prPosts(), 0);
+});
+
+test('a PR from a different branch is never adopted', async () => {
+  const f = fixture();
+  f.pulls.set(7, {
+    number: 7, state: 'open', draft: true, merged: false,
+    head: { sha: 'e'.repeat(40), ref: 'cursor/other', repo: { full_name: REPO } },
+    base: { ref: 'main', repo: { full_name: REPO } },
+  });
+  await f.start(); f.finish();
+  [...f.agents.values()][0].run.git.branches = [{ branch: 'cursor/task-a' }];
+  await f.bridge.refresh(await f.bridge.state(f.issueId()));
+  const state = await f.bridge.state(f.issueId());
+  assert.notEqual(state.pr?.number, 7);
+  assert.match(state.prBlocker || '', /not on GitHub/);
+  assert.equal(f.prPosts(), 0);
+});
+
+test('draft PR creation persists intent and reconciles after an uncertain response', async () => {
+  const f = fixture(); const branch = 'cursor/task-b';
+  f.branches.set(branch, { name: branch, commit: { sha: 'c'.repeat(40) } });
+  await f.start(); f.finish();
+  [...f.agents.values()][0].run.git.branches = [{ branch }];
+  f.losePrCreate();
+  await assert.rejects(f.bridge.refresh(await f.bridge.state(f.issueId())), /network/);
+  assert.equal((await f.bridge.state(f.issueId())).prIntent.status, 'uncertain');
+  assert.equal(f.prPosts(), 1);
+  await f.bridge.refresh(await f.bridge.state(f.issueId()));
+  const state = await f.bridge.state(f.issueId());
+  assert.equal(f.prPosts(), 1);
+  assert.equal(state.prIntent.status, 'created');
+  assert.ok(state.pr.number);
+  assert.equal(state.sha, 'c'.repeat(40));
+  assert.equal(state.pr.draft, true);
+  assert.ok(!f.calls.some((c) => c[1] === 'PUT' && /\/merge$/.test(c[2] || '')));
+  assert.ok(!f.calls.some((c) => c[1] === 'PATCH' && c[3]?.draft === false));
+});
+
+test('GitHub 403 while opening a draft PR is a stored blocker and is not retried', async () => {
+  const f = fixture(); const branch = 'cursor/task-c';
+  f.branches.set(branch, { name: branch, commit: { sha: 'f'.repeat(40) } });
+  f.rejectPrCreate(403);
+  await f.start(); f.finish();
+  [...f.agents.values()][0].run.git.branches = [{ branch }];
+  await f.bridge.refresh(await f.bridge.state(f.issueId()));
+  const state = await f.bridge.state(f.issueId());
+  assert.equal(state.prIntent.status, 'blocked');
+  assert.match(state.prBlocker, /Allow GitHub Actions/);
+  assert.equal(f.prPosts(), 1);
+  await f.bridge.refresh(await f.bridge.state(f.issueId()));
+  assert.equal(f.prPosts(), 1);
+});
+
+test('completion notifications are deduplicated across retries', async () => {
+  const f = fixture(); await f.start(); f.finish();
+  await f.bridge.refresh(await f.bridge.state(f.issueId()));
+  assert.equal(f.notices().length, 1);
+  assert.match(f.notices()[0].body, /does not wake a ChatGPT conversation/);
+  await f.bridge.refresh(await f.bridge.state(f.issueId()));
+  assert.equal(f.notices().length, 1);
+  const branch = 'cursor/task-d';
+  f.pulls.set(55, {
+    number: 55, state: 'open', draft: true, merged: false,
+    head: { sha: '1'.repeat(40), ref: branch, repo: { full_name: REPO } },
+    base: { ref: 'main', repo: { full_name: REPO } },
+  });
+  [...f.agents.values()][0].run.git.branches = [{ branch }];
+  await f.bridge.refresh(await f.bridge.state(f.issueId()));
+  assert.equal(f.notices().length, 2);
+  assert.match(f.notices()[1].body, /pull\/55/);
+  assert.match(f.notices()[1].body, new RegExp('1'.repeat(40)));
+});
+
+test('monitor isolates per-task failures including invalid signatures', async () => {
+  const f = fixture();
+  seedTask(f, { issue: 21, agentId: 'bc-fail1', failGet: true });
+  seedTask(f, { issue: 22, agentId: 'bc-ok22', phase: 'RUNNING' });
+  seedTask(f, { issue: 23, agentId: 'bc-bad23' });
+  f.comments.get(23)[0].body = f.comments.get(23)[0].body.replace(/[a-f0-9]{64} -->/, `${'b'.repeat(64)} -->`);
+  const result = await f.bridge.run('schedule', f.event({}));
+  assert.match(result, /Task #21: Cursor request failed \(500\)/);
+  assert.match(result, /Task #22: RUNNING/);
+  assert.match(result, /Task #23: Automation state signature mismatch/);
+  assert.equal((await f.bridge.state(22)).lastRunId, 'run-seed-22');
+});
+
+test('monitor ignores untrusted comments and reconciles a coalesced authorised follow-up', async () => {
+  const f = fixture(); await f.start(); f.finish();
+  const issue = f.issueId();
+  f.comments.get(issue).push({ id: 500, body: '/cursor cancel', user: { login: 'outsider' } });
+  const before = f.calls.filter((c) => String(c[2] || '').endsWith('/cancel')).length;
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal(f.calls.filter((c) => String(c[2] || '').endsWith('/cancel')).length, before);
+  f.comments.get(issue).push({ id: 501, body: '/cursor follow-up\nFix the bounded issue.', user: { login: 'paulventer01' } });
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal((await f.bridge.state(issue)).runId, 'run-2');
+  assert.ok((await f.bridge.state(issue)).handled.includes('comment:501'));
 });

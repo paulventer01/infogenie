@@ -1,14 +1,20 @@
 'use strict';
 
-const { createHmac, randomUUID, timingSafeEqual } = require('node:crypto');
+const { createHmac, createHash, randomUUID, timingSafeEqual } = require('node:crypto');
 const REPO = 'paulventer01/infogenie';
+const OWNER = 'paulventer01';
 const REPO_URL = `https://github.com/${REPO}`;
 const LABEL = 'cursor-automation';
 const MARKER = '<!-- infogenie-cursor-state:';
+const NOTIFY_MARKER = '<!-- infogenie-cursor-notify:';
 const TERMINAL = new Set(['FINISHED', 'ERROR', 'CANCELLED', 'EXPIRED', 'REJECTED']);
 const ACTIVE = new Set(['CREATING', 'RUNNING']);
 const REJECTED_HTTP = new Set([400, 401, 403, 404, 422, 429]);
+const MONITOR_EVENTS = new Set(['schedule', 'check_suite', 'check_run', 'status', 'pull_request']);
 const MAX_FOLLOWUPS = 3;
+const SHA_RE = /^[a-f0-9]{40}$/;
+const PR_URL_RE = new RegExp(`^https://github\\.com/${REPO}/pull/([0-9]+)$`);
+const BRANCH_RE = /^[A-Za-z0-9._/-]{1,200}$/;
 const RULES = `Work only in ${REPO}, on your feature branch. Read AGENTS.md and repository rules.
 Never merge, deploy, push to main, change branch protections, or disable CI checks.
 Do not start other agents or tasks. Do not access or modify automation credentials or control issues.
@@ -31,7 +37,7 @@ function identifier(value, kind) {
 }
 
 function command(eventName, event) {
-  if (eventName === 'schedule') return { action: 'monitor' };
+  if (MONITOR_EVENTS.has(eventName)) return { action: 'monitor' };
   if (eventName === 'workflow_dispatch') {
     const i = event.inputs || {};
     return { action: i.action || 'verify', issue: Number(i.issue_number) || null, text: i.prompt || '', key: `dispatch:${event._runId}` };
@@ -70,6 +76,64 @@ function readState(body, secret) {
   return state;
 }
 
+function validBranch(name, defaultBranch) {
+  if (typeof name !== 'string') return null;
+  const branch = name.replace(/^refs\/heads\//, '').trim();
+  if (!BRANCH_RE.test(branch) || branch.includes('..') || branch.startsWith('/') || branch.endsWith('/')) return null;
+  if (branch === defaultBranch || branch === 'main' || branch === 'master') return null;
+  return branch;
+}
+
+function gitEntries(run) {
+  const rows = run.git?.branches;
+  if (Array.isArray(rows)) return rows.filter((row) => row && typeof row === 'object');
+  if (typeof run.git?.branch === 'string') return [{ branch: run.git.branch, prUrl: run.git.prUrl }];
+  return [];
+}
+
+function notifyToken(state) {
+  const key = [
+    state.phase, state.branch || '', state.sha || '', state.pr?.number || '',
+    state.pr?.state || '', state.pr?.merged ? 'merged' : '', state.prBlocker ? 'blocked' : '',
+  ].join('|');
+  return createHash('sha256').update(key).digest('hex').slice(0, 24);
+}
+
+function nextAction(state) {
+  if (state.prBlocker) return state.prBlocker;
+  if (state.pr?.merged) return 'PR is merged. No further automation action.';
+  if (state.pr?.state === 'closed') {
+    return 'Existing PR for this branch is closed. A human can reopen it; automation will not open a second PR.';
+  }
+  if (state.pr) {
+    return 'Review the draft PR. Human approval and merge remain required. This automation will not merge or mark the PR ready.';
+  }
+  if (state.phase === 'FINISHED' && !state.branch) {
+    return 'Run finished with no identifiable feature branch. Inspect the Cursor agent.';
+  }
+  if (state.phase === 'FINISHED') return 'Run finished. Waiting for a pushed branch or draft PR.';
+  return 'Inspect the tracking comment and Cursor agent.';
+}
+
+function bindPr(pr, expectedBranch) {
+  if (!pr || !Number.isSafeInteger(pr.number) || pr.number <= 0) return null;
+  if (pr.head?.repo?.full_name && pr.head.repo.full_name !== REPO) return null;
+  if (pr.base?.repo?.full_name && pr.base.repo.full_name !== REPO) return null;
+  const branch = validBranch(pr.head?.ref, pr.base?.ref);
+  if (!branch || (expectedBranch && branch !== expectedBranch)) return null;
+  if (!SHA_RE.test(pr.head?.sha || '')) throw new Error('Invalid PR head SHA.');
+  const merged = Boolean(pr.merged || pr.merged_at);
+  return {
+    number: pr.number,
+    url: `https://github.com/${REPO}/pull/${pr.number}`,
+    state: merged ? 'merged' : (pr.state === 'closed' ? 'closed' : 'open'),
+    merged,
+    draft: Boolean(pr.draft),
+    sha: pr.head.sha,
+    branch,
+  };
+}
+
 class Bridge {
   constructor({ github, cursor, secret, actors = 'paulventer01', enabled = false }) {
     this.github = github; this.cursor = cursor; this.secret = secret;
@@ -87,6 +151,11 @@ class Bridge {
       if (rows.length < 100) return all;
     }
     throw new Error('Tracking history exceeds pagination budget. Archive old tracking issues before continuing.');
+  }
+
+  async repoInfo() {
+    if (!this._repo) this._repo = await this.github('GET', this.root);
+    return this._repo;
   }
 
   async state(issue) {
@@ -198,8 +267,134 @@ class Bridge {
     return `Started task issue #${issue}.`;
   }
 
+  async findPrByBranch(branch) {
+    const rows = await this.pages(`${this.root}/pulls?head=${encodeURIComponent(`${OWNER}:${branch}`)}&state=all`);
+    const matches = [];
+    for (const row of rows) {
+      const bound = bindPr(row, branch);
+      if (bound) matches.push(bound);
+    }
+    matches.sort((a, b) => {
+      const rank = (p) => (p.state === 'open' ? 0 : p.merged ? 1 : 2);
+      return rank(a) - rank(b) || b.number - a.number;
+    });
+    return matches[0] || null;
+  }
+
+  async ciSummary(pr, sha) {
+    const checks = await this.github('GET', `${this.root}/commits/${sha}/check-runs?per_page=100`);
+    const status = await this.github('GET', `${this.root}/commits/${sha}/status`);
+    const bad = (checks.check_runs || []).some((c) => ['failure', 'cancelled', 'timed_out', 'action_required', 'stale'].includes(c.conclusion));
+    const waiting = (checks.check_runs || []).some((c) => c.status !== 'completed');
+    const any = (checks.check_runs || []).length + (status.statuses || []).length > 0;
+    const label = pr?.merged ? 'merged' : bad || ['failure', 'error'].includes(status.state) ? 'checks failed' :
+      !any || waiting || ((status.statuses || []).length > 0 && status.state === 'pending') || checks.total_count > 100
+        ? 'checks pending / incomplete' : 'reported checks passed (review still required)';
+    const url = pr?.url || `${REPO_URL}/commit/${sha}`;
+    return `${url} @ ${sha.slice(0, 8)}: ${label}`;
+  }
+
+  async notify(state) {
+    if (!TERMINAL.has(state.phase) && !state.pr && !state.prBlocker) return;
+    const token = notifyToken(state);
+    if (state.notifyKey === token) return;
+    const rows = await this.pages(`${this.root}/issues/${state.issue}/comments`);
+    if (rows.some((r) => r.user?.login === 'github-actions[bot]' && r.body?.includes(`${NOTIFY_MARKER}${token}`))) {
+      state.notifyKey = token;
+      return;
+    }
+    const body = [
+      `Cursor automation notification: **${state.phase}**`,
+      '',
+      `Task: ${REPO_URL}/issues/${state.issue}`,
+      `Agent: https://cursor.com/agents/${state.agentId}`,
+      `Branch: ${state.branch ? `\`${state.branch}\`` : 'not identified'}`,
+      `SHA: ${state.sha ? `\`${state.sha}\`` : 'not yet known'}`,
+      `PR: ${state.pr ? `${state.pr.url} (${state.pr.state}${state.pr.draft ? ', draft' : ''})` : 'none'}`,
+      state.prBlocker ? `Blocker: ${state.prBlocker}` : '',
+      '',
+      `Next action: ${nextAction(state)}`,
+      '',
+      'This GitHub issue comment is the notification channel. It does not wake a ChatGPT conversation.',
+      '',
+      `${NOTIFY_MARKER}${token} -->`,
+    ].filter((line, i, arr) => line !== '' || arr[i - 1] !== '').join('\n');
+    await this.github('POST', `${this.root}/issues/${state.issue}/comments`, { body });
+    state.notifyKey = token;
+  }
+
+  async ensureDraftPr(state, branch) {
+    if (state.phase !== 'FINISHED' || !branch || state.prIntent?.status === 'blocked') return;
+    const existing = await this.findPrByBranch(branch);
+    if (existing) {
+      state.pr = existing; state.branch = existing.branch; state.sha = existing.sha;
+      state.prs = [existing.url]; delete state.prBlocker;
+      if (state.prIntent) state.prIntent = { branch, status: 'created' };
+      return;
+    }
+    let sha = state.sha;
+    if (!SHA_RE.test(sha || '')) {
+      try {
+        const row = await this.github('GET', `${this.root}/branches/${encodeURIComponent(branch)}`);
+        sha = row.commit?.sha;
+      } catch (e) {
+        if (e.status === 404) {
+          state.prBlocker = `Branch \`${branch}\` is not on GitHub, so a draft PR cannot be opened.`;
+          return;
+        }
+        throw e;
+      }
+    }
+    if (!SHA_RE.test(sha || '')) throw new Error('Invalid branch head SHA.');
+    state.sha = sha;
+    const base = (await this.repoInfo()).default_branch;
+    if (!base || branch === base) {
+      state.prBlocker = 'Refusing to open a PR from the default branch.';
+      return;
+    }
+    state.prIntent = { branch, status: 'pending' };
+    await this.save(state, `Opening a draft PR from \`${branch}\` at ${sha}.`);
+    try {
+      const pr = await this.github('POST', `${this.root}/pulls`, {
+        title: `[Cursor] Task #${state.issue}`,
+        head: branch, base, draft: true,
+        body: `Draft PR for Cursor tracking issue #${state.issue}.\n\nAgent: https://cursor.com/agents/${state.agentId}\nHead SHA: ${sha}\n\nHuman review and merge remain required. This automation will not merge, mark ready, or deploy.`,
+      });
+      const bound = bindPr(pr, branch);
+      if (!bound) throw new Error('GitHub returned an unexpected pull request.');
+      state.pr = bound; state.sha = bound.sha; state.prs = [bound.url];
+      state.prIntent = { branch, status: 'created' }; delete state.prBlocker;
+    } catch (e) {
+      if (e.status === 422) {
+        const retry = await this.findPrByBranch(branch);
+        if (retry) {
+          state.pr = retry; state.sha = retry.sha; state.prs = [retry.url];
+          state.prIntent = { branch, status: 'created' }; delete state.prBlocker;
+          return;
+        }
+      }
+      if (e.service === 'GitHub' && (e.status === 401 || e.status === 403)) {
+        state.prIntent = { branch, status: 'blocked' };
+        state.prBlocker = 'GitHub refused to create a draft PR with this workflow token. Enable “Allow GitHub Actions to create and approve pull requests” for this repository (Actions settings) and keep pull-requests: write. This automation will not bypass that restriction, merge, or mark a PR ready.';
+        return;
+      }
+      if (e.service === 'GitHub' && REJECTED_HTTP.has(e.status)) {
+        state.prIntent = { branch, status: 'blocked' };
+        state.prBlocker = `GitHub refused draft PR creation (${e.status}). Fix repository access/settings; this request will not be retried automatically.`;
+        return;
+      }
+      state.prIntent = { branch, status: 'uncertain' };
+      await this.save(state, 'Draft PR creation outcome is uncertain. The next monitor will reuse an existing same-branch PR if one exists.');
+      throw e;
+    }
+  }
+
   async refresh(state) {
     if (state.phase === 'REJECTED') return `Task #${state.issue}: start was rejected; no agent is tracked.`;
+    const before = JSON.stringify({
+      phase: state.phase, lastRunId: state.lastRunId, prs: state.prs, ci: state.ci, branch: state.branch,
+      sha: state.sha, pr: state.pr, prBlocker: state.prBlocker, notifyKey: state.notifyKey, prIntent: state.prIntent,
+    });
     const agent = await this.agent(state.agentId);
     if (!agent.latestRunId) throw new Error('Agent has no run yet. Check Cursor before retrying.');
     // Recover a POST whose response was lost, without replaying it.
@@ -209,29 +404,78 @@ class Bridge {
     state.runId = identifier(agent.latestRunId, 'run');
     const run = await this.cursor('GET', `/v1/agents/${state.agentId}/runs/${state.runId}`);
     if (!ACTIVE.has(run.status) && !TERMINAL.has(run.status)) throw new Error('Unknown Cursor run status; stopped safely.');
-    const changed = state.phase !== run.status || state.lastRunId !== state.runId;
     state.phase = run.status; state.lastRunId = state.runId;
-    const links = (run.git?.branches || []).map((b) => b.prUrl)
-      .filter((url) => typeof url === 'string' && new RegExp(`^https://github.com/${REPO}/pull/[0-9]+$`).test(url));
-    const ci = [];
-    for (const url of [...new Set(links)].slice(0, 10)) {
-      const pr = await this.github('GET', `${this.root}/pulls/${url.split('/').pop()}`);
-      if (!/^[a-f0-9]{40}$/.test(pr.head?.sha || '')) throw new Error('Invalid PR head SHA.');
-      const checks = await this.github('GET', `${this.root}/commits/${pr.head.sha}/check-runs?per_page=100`);
-      const status = await this.github('GET', `${this.root}/commits/${pr.head.sha}/status`);
-      const bad = (checks.check_runs || []).some((c) => ['failure', 'cancelled', 'timed_out', 'action_required', 'stale'].includes(c.conclusion));
-      const waiting = (checks.check_runs || []).some((c) => c.status !== 'completed');
-      const any = (checks.check_runs || []).length + (status.statuses || []).length > 0;
-      const label = pr.merged ? 'merged' : bad || ['failure', 'error'].includes(status.state) ? 'checks failed' :
-        !any || waiting || ((status.statuses || []).length > 0 && status.state === 'pending') || checks.total_count > 100 ? 'checks pending / incomplete' : 'reported checks passed (review still required)';
-      ci.push(`${url} @ ${pr.head.sha.slice(0, 8)}: ${label}`);
+
+    const defaultBranch = (await this.repoInfo()).default_branch || 'main';
+    const entries = gitEntries(run);
+    let branch = validBranch(state.branch, defaultBranch);
+    let cursorPrUrl = null;
+    for (const entry of entries) {
+      branch = validBranch(entry.branch || entry.ref || entry.name, defaultBranch) || branch;
+      if (!cursorPrUrl && typeof entry.prUrl === 'string' && PR_URL_RE.test(entry.prUrl)) cursorPrUrl = entry.prUrl;
     }
-    if (changed || JSON.stringify(ci) !== JSON.stringify(state.ci || []) || JSON.stringify(links) !== JSON.stringify(state.prs || [])) {
-      state.prs = links;
-      state.ci = ci;
-      await this.save(state, `${TERMINAL.has(state.phase) ? 'Run ended; inspect the result in Cursor and review the PR.' : 'Run in progress.'}\n${ci.join('\n')}`);
+    if (branch) state.branch = branch;
+
+    let pr = null;
+    if (cursorPrUrl) {
+      try {
+        pr = bindPr(await this.github('GET', `${this.root}/pulls/${cursorPrUrl.split('/').pop()}`), branch);
+      } catch (e) {
+        if (e.status !== 404) throw e;
+      }
+    }
+    if (!pr && state.branch) pr = await this.findPrByBranch(state.branch);
+    if (pr) {
+      state.pr = pr; state.branch = pr.branch; state.sha = pr.sha; state.prs = [pr.url]; delete state.prBlocker;
+      if (state.prIntent) state.prIntent = { branch: pr.branch, status: 'created' };
+    } else if (state.phase === 'FINISHED' && state.branch) {
+      await this.ensureDraftPr(state, state.branch);
+    }
+
+    if (state.pr?.sha && SHA_RE.test(state.pr.sha)) state.sha = state.pr.sha;
+    const ci = state.sha && SHA_RE.test(state.sha) ? [await this.ciSummary(state.pr, state.sha)] : [];
+    state.ci = ci;
+    if (state.pr) state.prs = [state.pr.url];
+    await this.notify(state);
+
+    const after = JSON.stringify({
+      phase: state.phase, lastRunId: state.lastRunId, prs: state.prs, ci: state.ci, branch: state.branch,
+      sha: state.sha, pr: state.pr, prBlocker: state.prBlocker, notifyKey: state.notifyKey, prIntent: state.prIntent,
+    });
+    if (before !== after) {
+      const note = [
+        TERMINAL.has(state.phase) ? 'Run ended; inspect the result in Cursor and review any draft PR.' : 'Run in progress.',
+        state.branch ? `Branch: ${state.branch}` : '',
+        state.sha ? `SHA: ${state.sha}` : '',
+        state.prBlocker || '',
+        ...ci,
+      ].filter(Boolean).join('\n');
+      await this.save(state, note);
     }
     return `Task #${state.issue}: ${state.phase}.`;
+  }
+
+  async replayMissed(state) {
+    const rows = await this.pages(`${this.root}/issues/${state.issue}/comments`);
+    const out = [];
+    for (const row of rows) {
+      if (!this.actors.includes((row.user?.login || '').toLowerCase())) continue;
+      const cmd = command('issue_comment', {
+        action: 'created', issue: { number: state.issue }, comment: { id: row.id, body: row.body || '' },
+      });
+      if (!cmd || state.handled.includes(cmd.key)) continue;
+      try {
+        const current = await this.state(state.issue);
+        if (!current) continue;
+        if (cmd.action === 'status') out.push(await this.refresh(current));
+        else if (cmd.action === 'follow-up') out.push(await this.followup(current, cmd));
+        else if (cmd.action === 'cancel') out.push(await this.cancel(current));
+        Object.assign(state, { handled: (await this.state(state.issue))?.handled || state.handled });
+      } catch (e) {
+        out.push(`Task #${state.issue} comment ${row.id}: ${e.message}`);
+      }
+    }
+    return out;
   }
 
   async followup(state, cmd) {
@@ -270,23 +514,37 @@ class Bridge {
     return this.refresh(state);
   }
 
+  async monitor() {
+    const results = [];
+    const issues = await this.pages(`${this.root}/issues?state=all&labels=${LABEL}`);
+    for (const issue of issues) {
+      if (issue.pull_request) continue;
+      try {
+        const state = await this.state(issue.number);
+        if (!state) continue;
+        const row = await this.github('GET', `${this.root}/issues/${state.issue}`);
+        if (!TERMINAL.has(state.phase) || row.state === 'open') {
+          results.push(await this.refresh(state));
+          const latest = await this.state(state.issue);
+          if (latest) results.push(...await this.replayMissed(latest));
+        }
+      } catch (e) {
+        results.push(`Task #${issue.number}: ${e.message}`);
+      }
+    }
+    return results.filter(Boolean).join('\n') || 'No active tasks.';
+  }
+
   async run(eventName, event) {
     if (event.repository?.full_name !== REPO) throw new Error('Repository not allowed.');
     const cmd = command(eventName, event);
     if (!cmd) return 'No automation command.';
-    if (eventName !== 'schedule' && !this.actors.includes((event.sender?.login || '').toLowerCase())) {
+    if (!MONITOR_EVENTS.has(eventName) && !this.actors.includes((event.sender?.login || '').toLowerCase())) {
       throw new Error('Actor not authorised for Cursor automation.');
     }
     if (cmd.action === 'verify') return this.verify();
     if (!this.enabled) return 'Automation is disabled. Set CURSOR_AUTOMATION_ENABLED=true after verifying the connection.';
-    if (cmd.action === 'monitor') {
-      const results = [];
-      for (const state of await this.tracked()) {
-        const issue = await this.github('GET', `${this.root}/issues/${state.issue}`);
-        if (!TERMINAL.has(state.phase) || issue.state === 'open') results.push(await this.refresh(state));
-      }
-      return results.join('\n') || 'No active tasks.';
-    }
+    if (cmd.action === 'monitor') return this.monitor();
     if (cmd.action === 'start') return this.start(cmd);
     if (!Number.isSafeInteger(cmd.issue) || cmd.issue <= 0) throw new Error('A task issue number is required.');
     const state = await this.state(cmd.issue);
@@ -298,4 +556,4 @@ class Bridge {
   }
 }
 
-module.exports = { Bridge, command, prompt, readState, signState, REPO, LABEL };
+module.exports = { Bridge, command, prompt, readState, signState, REPO, LABEL, MONITOR_EVENTS, NOTIFY_MARKER };
