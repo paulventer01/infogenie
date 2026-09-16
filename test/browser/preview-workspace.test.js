@@ -7,7 +7,7 @@ const path=require('node:path');
 const {spawn}=require('node:child_process');
 const {once}=require('node:events');
 const ROOT=path.resolve(__dirname,'../..'), ORIGIN='http://127.0.0.1:5000';
-test('preview boots, authenticates, renders the journey and preserves its account across restart', {timeout:360000},async t=>{
+test('preview boots, authenticates, renders the journey and preserves its account across restart', {timeout:360000,skip:process.env.INFOGENIE_REQUIRE_PREVIEW_TEST!=='1'?'optional local run: no disposable preview database':false},async t=>{
   assert.equal(process.env.INFOGENIE_REQUIRE_PREVIEW_TEST,'1','Run only against the disposable preview CI database');
   let child,browser,page,log='',stage='startup';
   const stop=async()=>{if(child && child.exitCode===null){const ended=once(child,'exit');child.kill('SIGTERM');await ended;}child=null;};
