@@ -154,10 +154,15 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
   const editingDraftIdRef = useRef<number | null>(null);
   const textRef = useRef(text);
   const warningsRef = useRef(contentSafetyWarnings);
+  const profileIdRef = useRef(profileId);
 
   useEffect(() => {
     editingDraftIdRef.current = editingDraftId;
   }, [editingDraftId]);
+
+  useEffect(() => {
+    profileIdRef.current = profileId;
+  }, [profileId]);
 
   useEffect(() => {
     textRef.current = text;
@@ -179,6 +184,14 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     if (actionRequestRef.current !== reqSeq) return true;
     if (actionTargetMismatch(expectedId)) { setActionBusy(null); return true; }
     return false;
+  }
+
+  function ownsAction(reqSeq: number): boolean {
+    return actionRequestRef.current === reqSeq;
+  }
+
+  function canUpdatePublishEditor(reqSeq: number, operationDraftId: number | null): boolean {
+    return ownsAction(reqSeq) && !actionTargetMismatch(operationDraftId);
   }
 
   function failBusy(resp: DraftWriteResult, priorWarnings: string[], fallback?: string): null {
@@ -206,7 +219,7 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     return r.draft.id;
   }
 
-  function beginDraftAction(kind: "submit" | "self-heal", message: string) {
+  function beginDraftAction(kind: "submit" | "self-heal" | "publish", message: string) {
     const reqSeq = actionRequestRef.current += 1;
     clearSaveError();
     setActionBusy(kind);
@@ -234,6 +247,7 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
       code !== "content_safety_blocked"
       && code !== "content_safety_block"
       && code !== "content_safety_unavailable"
+      && code !== "content_too_long"
     ) return false;
     setSaveError(String(resp.userMessage || resp.error || "Save blocked by content safety checks."));
     setContentSafetyWarnings(priorWarnings);
@@ -633,38 +647,69 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
       setResult({ color: "#991B1B", text: "⚠ Select at least one platform." });
       return;
     }
-    setResult({ color: "#6B7280", text: "📤 Sending to Zernio…" });
-    const body: Record<string, unknown> = { text: t, platforms, profileId };
-    if (schedule) body.scheduledFor = new Date(schedule).toISOString();
-    if (m) body.mediaUrls = [m];
-    const r = await apiPost<{ ok: boolean; error?: string; scheduled?: boolean }>("/api/social-publisher/post", body);
-    if (!r.ok) {
-      setResult({ color: "#991B1B", html: true, text: `❌ ${r.error}` });
-      return;
-    }
-    // Also keep a draft record for calendar visibility
-    await apiPost("/api/social-drafts", {
+    const { reqSeq, operationDraftId, textSnapshot, priorWarnings } = beginDraftAction(
+      "publish",
+      "📤 Sending to Zernio…",
+    );
+    const snapshot = {
       profileId,
       text: t,
       platforms,
-      media_urls: m ? [m] : [],
-      scheduled_for: schedule ? new Date(schedule).toISOString() : null,
-      status: schedule ? "scheduled" : "published",
+      mediaUrls: m ? [m] : [],
+      scheduledFor: schedule ? new Date(schedule).toISOString() : null,
       meta: { ...draftMeta, direct_publish: true },
+    };
+    const body: Record<string, unknown> = {
+      text: snapshot.text,
+      platforms: snapshot.platforms,
+      profileId: snapshot.profileId,
+      meta: draftMeta,
+    };
+    if (snapshot.scheduledFor) body.scheduledFor = snapshot.scheduledFor;
+    if (m) body.mediaUrls = snapshot.mediaUrls;
+    if (draftMeta.alt_text) body.alt_text = draftMeta.alt_text;
+    if (draftMeta.media_alt) body.media_alt = draftMeta.media_alt;
+    if (Array.isArray(draftMeta.media_alts)) body.media_alts = draftMeta.media_alts;
+    const r = await apiPost<DraftWriteResult & { scheduled?: boolean }>(
+      "/api/social-publisher/post",
+      body,
+    );
+    if (ownsAction(reqSeq)) setActionBusy(null);
+    if (!r.ok) {
+      if (canUpdatePublishEditor(reqSeq, operationDraftId)) failBusy(r, priorWarnings, "publish failed");
+      return;
+    }
+    await apiPost("/api/social-drafts", {
+      profileId: snapshot.profileId,
+      text: snapshot.text,
+      platforms: snapshot.platforms,
+      media_urls: snapshot.mediaUrls,
+      scheduled_for: snapshot.scheduledFor,
+      status: snapshot.scheduledFor ? "scheduled" : "published",
+      meta: snapshot.meta,
     }).catch(() => null);
+    setCalRefresh((n) => n + 1);
+    const publishedProfileId = snapshot.profileId;
+    if (profileIdRef.current === publishedProfileId) {
+      setTimeout(() => {
+        if (profileIdRef.current === publishedProfileId) loadPosts(publishedProfileId);
+      }, 700);
+    }
+    if (!canUpdatePublishEditor(reqSeq, operationDraftId)) return;
+    const warnings = r.content_safety_warnings || [];
+    applyIfEditorUnchanged(textSnapshot, () => setContentSafetyWarnings(warnings));
     setResult({
       color: "#065F46",
       html: true,
-      text: `✅ ${r.scheduled ? "Scheduled" : "Published"} to ${platforms.length} platform${platforms.length > 1 ? "s" : ""}!`,
+      text: `✅ ${r.scheduled ? "Scheduled" : "Published"} to ${snapshot.platforms.length} platform${snapshot.platforms.length > 1 ? "s" : ""}!`,
     });
+    if (textRef.current !== textSnapshot) return;
     setText("");
     setSchedule("");
     setMedia("");
     setSelected(new Set());
     setEditingDraftId(null);
     setDraftMeta({});
-    setCalRefresh((n) => n + 1);
-    setTimeout(() => loadPosts(profileId), 700);
   }
 
   async function deletePost(id: string) {
@@ -1010,8 +1055,8 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
                 <button onClick={() => saveDraft(true)} style={{ background: "linear-gradient(135deg,#0D9488 0%,#14B8A6 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
                   📤 Save &amp; publish
                 </button>
-                <button onClick={publishDirect} style={{ background: "linear-gradient(135deg,#FF5722 0%,#FF7043 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer", gridColumn: "1 / -1" }}>
-                  ⚡ Publish now
+                <button onClick={publishDirect} disabled={actionBusy === "publish"} style={{ background: "linear-gradient(135deg,#FF5722 0%,#FF7043 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: actionBusy === "publish" ? "wait" : "pointer", opacity: actionBusy === "publish" ? 0.7 : 1, gridColumn: "1 / -1" }}>
+                  {actionBusy === "publish" ? "Publishing…" : "⚡ Publish now"}
                 </button>
               </div>
               <div style={{ marginTop: 10, fontSize: "0.78rem" }}>

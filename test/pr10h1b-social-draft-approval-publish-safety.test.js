@@ -53,14 +53,14 @@ beforeEach(() => {
 });
 
 describe('PR-1b scope — social draft approval/publish gates (CR-058–CR-061)', () => {
-  it('documents gated routes and Step 6 partial coverage (CR-062 deferred)', () => {
+  it('documents gated routes and Step 6 partial coverage', () => {
     const src = fs.readFileSync(require.resolve('../services/social_drafts/api'), 'utf8');
     const doc = fs.readFileSync(require.resolve('../docs/step6-content-safety-coverage.md'), 'utf8');
     [/social-drafts:self-heal/, /social-drafts:submit-approval/, /social-drafts:approve/, /social-drafts:publish/, /_releasePublishingClaim/, /contentSafetyHttpBody/]
       .forEach((pattern) => assert.match(src, pattern));
     assert.match(doc, /Status:\*\* Partial/);
     assert.match(doc, /CR-058.*covered/);
-    assert.match(doc, /CR-062.*gap/);
+    assert.match(doc, /CR-062.*covered/);
   });
 });
 describe('PR-1b social draft self-heal gate (CR-058)', () => {

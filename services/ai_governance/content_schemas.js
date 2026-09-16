@@ -412,6 +412,60 @@ function socialDraftScanSizeError(draft, maxChars) {
   };
 }
 
+function _publisherCaptionParts(src) {
+  const parts = [];
+  const seen = new Set();
+  const push = (value) => {
+    const s = _rawStr(value);
+    if (!s || seen.has(s)) return;
+    seen.add(s);
+    parts.push(s);
+  };
+  push(src.text);
+  push(src.caption);
+  push(src.copy);
+  const captions = src.captions;
+  if (Array.isArray(captions)) {
+    for (const item of captions) push(item);
+  } else if (captions && typeof captions === 'object') {
+    for (const item of Object.values(captions)) push(item);
+  }
+  return parts;
+}
+
+function normalizeSocialPublisherPost(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const meta = src.meta && typeof src.meta === 'object' ? src.meta : {};
+  return {
+    text: _publisherCaptionParts(src).join('\n'),
+    media_alts: _collectMediaAltText({
+      alt_text: src.alt_text || src.altText || meta.alt_text,
+      media_alt: src.media_alt || src.mediaAlt || meta.media_alt,
+      media_alts: src.media_alts || src.mediaAlts || meta.media_alts,
+    }),
+  };
+}
+
+function socialPublisherGateText(body) {
+  const n = normalizeSocialPublisherPost(body);
+  return [n.text, ...n.media_alts].filter((part) => part != null && part !== '').join('\n');
+}
+
+function socialPublisherScanSizeError(body, maxChars) {
+  const limit = Number(maxChars);
+  if (!Number.isFinite(limit) || limit <= 0) return null;
+  const length = socialPublisherGateText(body).length;
+  if (length <= limit) return null;
+  return {
+    ok: false,
+    error: 'content_too_long',
+    userMessage: 'Post text exceeds supported content safety scan limits.',
+    warnings: [],
+    length,
+    max: limit,
+  };
+}
+
 module.exports = {
   adCopyGateText,
   normalizeAdScore,
@@ -445,4 +499,7 @@ module.exports = {
   normalizeSocialDraft,
   socialDraftGateText,
   socialDraftScanSizeError,
+  normalizeSocialPublisherPost,
+  socialPublisherGateText,
+  socialPublisherScanSizeError,
 };

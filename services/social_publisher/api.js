@@ -3,6 +3,16 @@ const _https = require('https');
 const router = express.Router();
 const _tenantCtx = require('../tenants/context');
 const { blockedPublisherBody } = require('../social_drafts/publish_approval');
+const {
+  gateRouteText,
+  contentSafetyHttpBody,
+  attachContentSafetyWarnings,
+} = require('../ai_governance/route_gate');
+const {
+  socialPublisherGateText,
+  socialPublisherScanSizeError,
+} = require('../ai_governance/content_schemas');
+const { MAX_OUTPUT_SCAN_CHARS } = require('../ai_governance/output_gate');
 
 const PLATFORMS = ['twitter','instagram','facebook','linkedin','tiktok','youtube','pinterest','reddit','bluesky','threads','googlebusiness','telegram','snapchat','whatsapp','discord'];
 
@@ -34,6 +44,66 @@ function _friendlyError(err, status) {
   if (/profile/i.test(err) && /not found/i.test(err)) return `${err} → Create a profile first via the "+ New Profile" button.`;
   if (/account|connect/i.test(err) && /not.*found|no.*connected/i.test(err)) return `${err} → Connect at least one social account for this profile before posting.`;
   return err;
+}
+
+function _providerCall(method, path, body) {
+  const fn = router._zernio || _zernio;
+  return fn(method, path, body);
+}
+
+const _PUBLISH_UNAVAILABLE = 'Content safety checks are temporarily unavailable. Publish was stopped to protect your brand.';
+
+function _scanSource(body, publishedText) {
+  const src = body && typeof body === 'object' ? body : {};
+  return { ...src, text: publishedText };
+}
+
+function _respondPublisherGateFailure(res, gated) {
+  if (gated.ok) return false;
+  if (gated.error === 'content_too_long') {
+    res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
+    return true;
+  }
+  const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
+  res.status(status).json(contentSafetyHttpBody(gated));
+  return true;
+}
+
+async function _gatePublisherPost(req, scanSource) {
+  const oversized = socialPublisherScanSizeError(scanSource, MAX_OUTPUT_SCAN_CHARS);
+  if (oversized) return oversized;
+  let tid = null;
+  try {
+    tid = await _tenantCtx.resolveTenantId(req, { label: 'social_publisher:post' });
+  } catch (_) {
+    tid = null;
+  }
+  if (!tid) {
+    return {
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: _PUBLISH_UNAVAILABLE,
+      warnings: [],
+    };
+  }
+  try {
+    const gate = router._gateRouteText || gateRouteText;
+    return await gate({
+      tenantId: tid,
+      userId: req.user?.id || null,
+      surface: 'social_publisher',
+      action: 'generate_content',
+      text: socialPublisherGateText(scanSource),
+      label: 'social_publisher:post',
+    });
+  } catch (_) {
+    return {
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: _PUBLISH_UNAVAILABLE,
+      warnings: [],
+    };
+  }
 }
 
 async function _zernio(method, path, body) {
@@ -112,7 +182,7 @@ router.post('/post', async (req, res) => {
   if (!_hasCreds()) return _err(res, 400, 'ZERNIO_API_KEY required.');
   const blocked = await _publisherApprovalBlocked(req, 'social_publisher:post');
   if (blocked) return res.status(403).json(blocked);
-  const text = String(req.body?.text || '').trim();
+  const text = String(req.body?.text || req.body?.caption || req.body?.copy || '').trim();
   const platforms = Array.isArray(req.body?.platforms) ? req.body.platforms.map(p => String(p).toLowerCase()).filter(p => PLATFORMS.includes(p)) : [];
   const mediaUrls = Array.isArray(req.body?.mediaUrls) ? req.body.mediaUrls.filter(u => /^https?:\/\//i.test(u)).slice(0, 4) : [];
   const scheduledFor = req.body?.scheduledFor ? String(req.body.scheduledFor) : null;
@@ -123,7 +193,9 @@ router.post('/post', async (req, res) => {
   const payload = { text, platforms, profileId };
   if (mediaUrls.length) payload.mediaUrls = mediaUrls;
   if (scheduledFor) payload.scheduledFor = scheduledFor;
-  const r = await _zernio('POST', '/posts', payload);
+  const gated = await _gatePublisherPost(req, _scanSource(req.body, text));
+  if (_respondPublisherGateFailure(res, gated)) return;
+  const r = await _providerCall('POST', '/posts', payload);
   if (!r.ok) return _err(res, 400, _friendlyError(r.error, r.status));
   // Fire-and-forget: record content publish in Marketing Memory
   try {
@@ -141,7 +213,8 @@ router.post('/post', async (req, res) => {
       }).catch(() => {});
     }
   } catch (_) {}
-  res.json({ ok:true, post: r.data?.post || r.data, scheduled: !!scheduledFor });
+  const warnings = gated.warnings || gated.content_safety_warnings || [];
+  res.json(attachContentSafetyWarnings({ ok:true, post: r.data?.post || r.data, scheduled: !!scheduledFor }, warnings));
 });
 
 router.get('/posts', async (req, res) => {
@@ -486,4 +559,6 @@ router.get('/best-times', async (req, res) => {
   });
 });
 
+router._zernio = _zernio;
+router._gateRouteText = gateRouteText;
 module.exports = router;

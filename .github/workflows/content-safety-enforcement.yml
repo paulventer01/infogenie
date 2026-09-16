@@ -7,6 +7,7 @@ on:
       - 'services/press_release/**'
       - 'services/ad_creative/**'
       - 'services/campaign_composer/**'
+      - 'services/social_publisher/**'
       - 'services/social_drafts/**'
       - 'components/features/create/PressRelease.tsx'
       - 'components/features/create/AdCreative.tsx'
@@ -19,6 +20,8 @@ on:
       - 'test/pr10h10-*.test.js'
       - 'test/pr10h1a-*.test.js'
       - 'test/pr10h1b-*.test.js'
+      - 'test/pr10h1c-*.test.js'
+      - 'test/pr10h6-social-publish-approval.test.js'
       - 'components/features/reach/SocialApprovalsPanel.tsx'
       - 'test/pr10h11-*.test.js'
       - 'test/pr10h12-*.test.js'
@@ -66,8 +69,8 @@ jobs:
         run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h9-ad-copy-safety.test.js test/pr10h9-ad-copy-safety-ui.test.js
       - name: Verify campaign composer draft save safety
         run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h10-composer-draft-save-safety.test.js test/pr10h10-composer-draft-save-safety-ui.test.js
-      - name: Verify social draft save + approval/publish safety (PR-1a/PR-1b)
-        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h1a-social-draft-save-safety.test.js test/pr10h1a-social-draft-save-safety-ui.test.js test/pr10h1b-social-draft-approval-publish-safety.test.js test/pr10h1b-social-draft-approval-publish-safety-ui.test.js
+      - name: Verify social draft save + approval/publish safety (PR-1a/PR-1b/PR-1c)
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h1a-social-draft-save-safety.test.js test/pr10h1a-social-draft-save-safety-ui.test.js test/pr10h1b-social-draft-approval-publish-safety.test.js test/pr10h1b-social-draft-approval-publish-safety-ui.test.js test/pr10h1c-social-publisher-post-safety.test.js test/pr10h1c-social-publisher-post-safety-ui.test.js test/pr10h6-social-publish-approval.test.js
       - name: Verify campaign composer draft approve safety
         run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/pr10h11-composer-draft-approve-safety.test.js test/pr10h11-composer-draft-approve-safety-ui.test.js
       - name: Verify video script generate safety
@@ -166,6 +169,20 @@ jobs:
           grep -Eq '^# tests [1-9][0-9]*$' /tmp/pr10h1b-postgres.tap
           grep -Eq '^# fail 0$' /tmp/pr10h1b-postgres.tap
           grep -Eq '^# skipped 0$' /tmp/pr10h1b-postgres.tap
+      - name: Verify social publisher post safety (PostgreSQL)
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/infogenie_content_safety
+          NODE_ENV: test
+          PR10H1_REQUIRE_INTEGRATION: '1'
+          CREDENTIAL_ENCRYPTION_KEY: Mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq=
+          SESSION_SECRET: pr10h1-integration-session
+          INFOGENIE_API_KEY: pr10h1-integration-api-key
+        run: |
+          set -o pipefail
+          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit --test-name-pattern "social publisher post safety postgres" test/pr10h1c-social-publisher-post-safety.test.js | tee /tmp/pr10h1c-postgres.tap
+          grep -Eq '^# tests [1-9][0-9]*$' /tmp/pr10h1c-postgres.tap
+          grep -Eq '^# fail 0$' /tmp/pr10h1c-postgres.tap
+          grep -Eq '^# skipped 0$' /tmp/pr10h1c-postgres.tap
       - name: Verify social draft bulk atomicity (PostgreSQL)
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/infogenie_content_safety
