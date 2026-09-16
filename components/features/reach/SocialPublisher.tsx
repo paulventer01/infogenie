@@ -154,10 +154,15 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
   const editingDraftIdRef = useRef<number | null>(null);
   const textRef = useRef(text);
   const warningsRef = useRef(contentSafetyWarnings);
+  const profileIdRef = useRef(profileId);
 
   useEffect(() => {
     editingDraftIdRef.current = editingDraftId;
   }, [editingDraftId]);
+
+  useEffect(() => {
+    profileIdRef.current = profileId;
+  }, [profileId]);
 
   useEffect(() => {
     textRef.current = text;
@@ -179,6 +184,14 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     if (actionRequestRef.current !== reqSeq) return true;
     if (actionTargetMismatch(expectedId)) { setActionBusy(null); return true; }
     return false;
+  }
+
+  function ownsAction(reqSeq: number): boolean {
+    return actionRequestRef.current === reqSeq;
+  }
+
+  function canUpdatePublishEditor(reqSeq: number, operationDraftId: number | null): boolean {
+    return ownsAction(reqSeq) && !actionTargetMismatch(operationDraftId);
   }
 
   function failBusy(resp: DraftWriteResult, priorWarnings: string[], fallback?: string): null {
@@ -638,9 +651,22 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
       "publish",
       "📤 Sending to Zernio…",
     );
-    const body: Record<string, unknown> = { text: t, platforms, profileId, meta: draftMeta };
-    if (schedule) body.scheduledFor = new Date(schedule).toISOString();
-    if (m) body.mediaUrls = [m];
+    const snapshot = {
+      profileId,
+      text: t,
+      platforms,
+      mediaUrls: m ? [m] : [],
+      scheduledFor: schedule ? new Date(schedule).toISOString() : null,
+      meta: { ...draftMeta, direct_publish: true },
+    };
+    const body: Record<string, unknown> = {
+      text: snapshot.text,
+      platforms: snapshot.platforms,
+      profileId: snapshot.profileId,
+      meta: draftMeta,
+    };
+    if (snapshot.scheduledFor) body.scheduledFor = snapshot.scheduledFor;
+    if (m) body.mediaUrls = snapshot.mediaUrls;
     if (draftMeta.alt_text) body.alt_text = draftMeta.alt_text;
     if (draftMeta.media_alt) body.media_alt = draftMeta.media_alt;
     if (Array.isArray(draftMeta.media_alts)) body.media_alts = draftMeta.media_alts;
@@ -648,25 +674,34 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
       "/api/social-publisher/post",
       body,
     );
-    if (staleOrSwitched(reqSeq, operationDraftId)) return;
-    setActionBusy(null);
-    if (!r.ok) return void failBusy(r, priorWarnings, "publish failed");
+    if (ownsAction(reqSeq)) setActionBusy(null);
+    if (!r.ok) {
+      if (canUpdatePublishEditor(reqSeq, operationDraftId)) failBusy(r, priorWarnings, "publish failed");
+      return;
+    }
+    await apiPost("/api/social-drafts", {
+      profileId: snapshot.profileId,
+      text: snapshot.text,
+      platforms: snapshot.platforms,
+      media_urls: snapshot.mediaUrls,
+      scheduled_for: snapshot.scheduledFor,
+      status: snapshot.scheduledFor ? "scheduled" : "published",
+      meta: snapshot.meta,
+    }).catch(() => null);
+    setCalRefresh((n) => n + 1);
+    const publishedProfileId = snapshot.profileId;
+    if (profileIdRef.current === publishedProfileId) {
+      setTimeout(() => {
+        if (profileIdRef.current === publishedProfileId) loadPosts(publishedProfileId);
+      }, 700);
+    }
+    if (!canUpdatePublishEditor(reqSeq, operationDraftId)) return;
     const warnings = r.content_safety_warnings || [];
     applyIfEditorUnchanged(textSnapshot, () => setContentSafetyWarnings(warnings));
-    await apiPost("/api/social-drafts", {
-      profileId,
-      text: t,
-      platforms,
-      media_urls: m ? [m] : [],
-      scheduled_for: schedule ? new Date(schedule).toISOString() : null,
-      status: schedule ? "scheduled" : "published",
-      meta: { ...draftMeta, direct_publish: true },
-    }).catch(() => null);
-    if (staleOrSwitched(reqSeq, operationDraftId)) return;
     setResult({
       color: "#065F46",
       html: true,
-      text: `✅ ${r.scheduled ? "Scheduled" : "Published"} to ${platforms.length} platform${platforms.length > 1 ? "s" : ""}!`,
+      text: `✅ ${r.scheduled ? "Scheduled" : "Published"} to ${snapshot.platforms.length} platform${snapshot.platforms.length > 1 ? "s" : ""}!`,
     });
     if (textRef.current !== textSnapshot) return;
     setText("");
@@ -675,8 +710,6 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     setSelected(new Set());
     setEditingDraftId(null);
     setDraftMeta({});
-    setCalRefresh((n) => n + 1);
-    setTimeout(() => loadPosts(profileId), 700);
   }
 
   async function deletePost(id: string) {

@@ -176,6 +176,8 @@ async function publisherHarness(t, opts = {}) {
     selfHealCalls: [],
     submitCalls: [],
     publishCalls: [],
+    postsLoads: [],
+    listLoads: [],
     publishHandler: opts.publishHandler || null,
     nextDraftId: 200,
   };
@@ -209,7 +211,11 @@ async function publisherHarness(t, opts = {}) {
         }
         if (url.includes('/profiles')) return json({ ok: true, profiles: [{ id: 'prof1', name: 'Main profile' }] });
         if (url.includes('/accounts')) return json({ ok: true, accounts: [] });
-        if (url.includes('/posts')) return json({ ok: true, posts: [] });
+        if (url.includes('/posts')) {
+          const pid = String(url.split('profileId=')[1] || '').split('&')[0];
+          state.postsLoads.push(decodeURIComponent(pid));
+          return json({ ok: true, posts: [] });
+        }
         if (url.includes('/best-times')) return json({ ok: true, slots: [] });
       }
       if (url.endsWith('/api/social-drafts') && method === 'POST') {
@@ -217,7 +223,21 @@ async function publisherHarness(t, opts = {}) {
         state.postCalls.push(payload);
         const response = state.saveHandler
           ? await state.saveHandler({ method: 'POST', payload }, state)
-          : { ok: true, draft: { id: ++state.nextDraftId, profile_id: payload.profileId, status: 'draft', text: payload.text, media_urls: [], platforms: payload.platforms || [], meta: {}, content_safety_warnings: [] } };
+          : {
+            ok: true,
+            draft: {
+              id: ++state.nextDraftId,
+              profile_id: payload.profileId,
+              status: payload.status || 'draft',
+              text: payload.text,
+              media_urls: payload.media_urls || [],
+              platforms: payload.platforms || [],
+              scheduled_for: payload.scheduled_for || null,
+              meta: payload.meta || {},
+              content_safety_warnings: payload.content_safety_warnings || [],
+            },
+          };
+        if (response.ok && response.draft?.id) state.drafts[response.draft.id] = response.draft;
         return json(response, safetyStatus(response));
       }
       const patchMatch = url.match(/\/api\/social-drafts\/(\d+)$/);
@@ -230,7 +250,10 @@ async function publisherHarness(t, opts = {}) {
           : { ok: true, draft: { id: draftId, profile_id: 'prof1', status: 'draft', text: payload.text, platforms: ['instagram'], meta: {}, content_safety_warnings: [] } };
         return json(response, safetyStatus(response));
       }
-      if (url.includes('/api/social-drafts/list')) return json({ ok: true, drafts: Object.values(state.drafts) });
+      if (url.includes('/api/social-drafts/list')) {
+        state.listLoads.push(url);
+        return json({ ok: true, drafts: Object.values(state.drafts) });
+      }
       const actionMatch = url.match(/\/api\/social-drafts\/(\d+)\/(self-heal|submit-approval)$/);
       if (actionMatch && method === 'POST') {
         const draftId = Number(actionMatch[1]);

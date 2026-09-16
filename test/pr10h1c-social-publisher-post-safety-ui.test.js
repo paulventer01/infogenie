@@ -108,6 +108,66 @@ test('SocialPublisher ignores a late blocked publish after switching drafts', as
   await act(async () => pending.finish());
   await waitFor(() => h.captionInput().value === 'Draft B caption', 20, 'draft B editor');
   assert.equal(h.document.querySelector('[role="alert"]'), null);
+  assert.equal(h.state.publishCalls.length, 1);
+  assert.equal(h.state.postCalls.length, 0);
+});
+
+test('SocialPublisher late successful publish still records A after switching to B', async (t) => {
+  const pending = deferred(() => ({
+    ok: true,
+    scheduled: false,
+    content_safety_warnings: ['A warning must not land on B.'],
+  }));
+  const draftA = uiDraft(84, 'Draft A publish caption');
+  const draftB = uiDraft(85, 'Draft B stays put', { platforms: ['linkedin'], warnings: ['B warning stays.'] });
+  const h = await publisherHarness(t, {
+    drafts: { 84: draftA, 85: draftB },
+    publishHandler: async () => pending.handler(),
+  });
+  await openEditorDraft(h, 84, 'Draft A publish caption');
+  await h.selectInstagram();
+  await h.clickPublishNow();
+  await waitFor(() => h.state.publishCalls.length === 1, 20, 'publish A started');
+  const postsBefore = h.state.postsLoads.length;
+  await openEditorDraft(h, 85, 'Draft B stays put');
+  await waitFor(() => h.text().includes('B warning stays'), 20, 'B warnings');
+  await act(async () => pending.finish());
+  await waitFor(() => h.state.postCalls.length === 1, 20, 'A calendar record');
+  assert.equal(h.state.publishCalls.length, 1);
+  assert.equal(h.state.postCalls[0].text, 'Draft A publish caption');
+  assert.equal(h.state.postCalls[0].status, 'published');
+  assert.equal(h.state.postCalls[0].meta.direct_publish, true);
+  await waitFor(() => h.captionInput().value === 'Draft B stays put', 20, 'B caption');
+  assert.match(h.text(), /B warning stays/);
+  assert.doesNotMatch(h.text(), /A warning must not land on B/);
+  assert.equal(h.document.querySelector('[role="alert"]'), null);
+  assert.doesNotMatch(h.text(), /Published to /);
+  await waitFor(() => h.state.postsLoads.length > postsBefore, 50, 'A history refresh');
+  assert.ok(h.state.postsLoads.slice(postsBefore).includes('prof1'));
+  await h.openCalendar();
+  await waitFor(() => h.text().includes('Draft A publish caption'), 40, 'calendar shows A');
+});
+
+test('SocialPublisher late success records original copy and keeps in-flight caption edits', async (t) => {
+  const pending = deferred(() => ({ ok: true, scheduled: false, content_safety_warnings: ['Sent-copy warning.'] }));
+  const h = await publisherHarness(t, { publishHandler: pending.handler });
+  await h.setCaption('Original sent copy.');
+  await h.selectInstagram();
+  await h.clickPublishNow();
+  await waitFor(() => h.text().includes('Sending to Zernio') || h.text().includes('Publishing'), 20, 'publish loading');
+  const postsBefore = h.state.postsLoads.length;
+  await h.setCaption('Edited again while publishing.');
+  await act(async () => pending.finish());
+  await waitFor(() => h.state.postCalls.length === 1, 20, 'recorded original copy');
+  assert.equal(h.state.publishCalls.length, 1);
+  assert.equal(h.state.publishCalls[0].text, 'Original sent copy.');
+  assert.equal(h.state.postCalls[0].text, 'Original sent copy.');
+  assert.equal(h.state.postCalls[0].status, 'published');
+  await waitFor(() => h.captionInput().value === 'Edited again while publishing.', 20, 'preserved caption');
+  assert.doesNotMatch(h.text(), /Sent-copy warning/);
+  await waitFor(() => h.state.postsLoads.length > postsBefore, 50, 'list refresh');
+  await h.openCalendar();
+  await waitFor(() => h.text().includes('Original sent copy.'), 40, 'calendar shows sent copy');
 });
 
 test('SocialPublisher resets publish loading after the response', async (t) => {
