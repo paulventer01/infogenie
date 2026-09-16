@@ -54,18 +54,13 @@ export default function SocialApprovalsPanel({ onEditDraft, refreshKey = 0 }: Pr
   }
 
   async function approve(id: number) {
-    const reqSeq = approveRequestRef.current + 1;
-    approveRequestRef.current = reqSeq;
+    const reqSeq = approveRequestRef.current += 1;
     const priorWarnings = draftWarnings[id] || drafts.find((d) => d.id === id)?.content_safety_warnings || [];
     setBusy(id);
     setError(null);
-    const r = await apiPost<{
-      ok: boolean;
-      error?: string;
-      userMessage?: string;
-      content_safety_warnings?: string[];
-      draft?: SocialDraft;
-    }>(`/api/social-drafts/${id}/approve`, { notes: note || null });
+    const r = await apiPost<{ ok: boolean; error?: string; userMessage?: string; content_safety_warnings?: string[]; draft?: SocialDraft }>(
+      `/api/social-drafts/${id}/approve`, { notes: note || null },
+    );
     if (approveRequestRef.current !== reqSeq) return;
     setBusy(null);
     if (!r.ok) {

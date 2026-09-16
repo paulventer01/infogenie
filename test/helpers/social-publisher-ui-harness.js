@@ -91,6 +91,36 @@ async function testInflightEditPreserved(t, { id, snippet, editedCaption, loadin
   await waitFor(() => h.captionInput().value === editedCaption, 20, 'preserved caption');
 }
 
+async function testUnsavedCreateThenAction(t, { actionKey, switchAway = false }) {
+  const created = uiDraft(201, 'Unsaved compose caption');
+  const draftB = uiDraft(80, 'Draft B caption', { platforms: ['linkedin'] });
+  const create = deferred(() => ({ ok: true, draft: created }));
+  const h = await publisherHarness(t, {
+    drafts: switchAway ? { 80: draftB } : {},
+    saveHandler: async ({ method }) => (method === 'POST' ? create.handler() : { ok: true, draft: switchAway ? draftB : created }),
+    [`${actionKey}Handler`]: async ({ draftId }) => ({
+      ok: true, draft: { ...created, id: draftId, status: actionKey === 'submit' ? 'pending_approval' : 'draft' },
+    }),
+  });
+  await h.setCaption(created.text);
+  await h.selectInstagram();
+  await (actionKey === 'submit' ? h.clickSubmitApproval() : h.clickSelfHeal());
+  await waitFor(() => h.state.postCalls.length === 1, 20, 'create started');
+  if (switchAway) await openEditorDraft(h, 80, draftB.text);
+  await act(async () => create.finish());
+  const calls = h.state[`${actionKey}Calls`];
+  if (switchAway) {
+    await waitFor(() => h.captionInput().value === draftB.text, 20, 'draft B editor');
+    assert.equal(calls.length, 0);
+    assert.doesNotMatch(h.text(), /Submitting|Self-healing/);
+    return;
+  }
+  await waitFor(() => calls[0]?.draftId === 201, 20, `${actionKey} once`);
+  await waitFor(() => !/Submitting|Self-healing/.test(h.text()), 20, 'loading cleared');
+  assert.equal(h.state.postCalls.length, 1);
+  assert.equal(calls.length, 1);
+}
+
 async function testLateResponseIgnored(t, { idA, idB, snippetA, snippetB, actionKey, callsKey, finish, assertQuiet }) {
   const draftA = uiDraft(idA, snippetA);
   const draftB = uiDraft(idB, snippetB, { platforms: ['linkedin'] });
@@ -191,22 +221,16 @@ async function publisherHarness(t, opts = {}) {
         return json(response, safetyStatus(response));
       }
       if (url.includes('/api/social-drafts/list')) return json({ ok: true, drafts: Object.values(state.drafts) });
-      const selfHealMatch = url.match(/\/api\/social-drafts\/(\d+)\/self-heal$/);
-      if (selfHealMatch && method === 'POST') {
-        const draftId = Number(selfHealMatch[1]);
-        state.selfHealCalls.push({ draftId });
-        const response = state.selfHealHandler
-          ? await state.selfHealHandler({ draftId }, state)
-          : { ok: true, draft: { id: draftId, text: 'Healed caption', content_safety_warnings: [] }, content_safety_warnings: [] };
-        return json(response, safetyStatus(response));
-      }
-      const submitMatch = url.match(/\/api\/social-drafts\/(\d+)\/submit-approval$/);
-      if (submitMatch && method === 'POST') {
-        const draftId = Number(submitMatch[1]);
-        state.submitCalls.push({ draftId });
-        const response = state.submitHandler
-          ? await state.submitHandler({ draftId }, state)
+      const actionMatch = url.match(/\/api\/social-drafts\/(\d+)\/(self-heal|submit-approval)$/);
+      if (actionMatch && method === 'POST') {
+        const draftId = Number(actionMatch[1]);
+        const kind = actionMatch[2] === 'self-heal' ? 'selfHeal' : 'submit';
+        state[`${kind}Calls`].push({ draftId });
+        const handler = state[`${kind}Handler`];
+        const fallback = kind === 'selfHeal'
+          ? { ok: true, draft: { id: draftId, text: 'Healed caption', content_safety_warnings: [] }, content_safety_warnings: [] }
           : { ok: true, draft: { id: draftId, status: 'pending_approval', text: state.drafts[draftId]?.text || 'Submitted', content_safety_warnings: [] }, content_safety_warnings: [] };
+        const response = handler ? await handler({ draftId }, state) : fallback;
         return json(response, safetyStatus(response));
       }
       return json({ ok: true });
@@ -250,16 +274,13 @@ async function publisherHarness(t, opts = {}) {
     assert.ok(btn, 'Save draft');
     btn.click();
   });
-  const clickSelfHeal = async () => act(async () => {
-    const btn = [...dom.window.document.querySelectorAll('button')].find((b) => /Self-heal|Self-healing/.test(b.textContent || ''));
-    assert.ok(btn, 'Self-heal');
+  const clickBy = (re, label) => async () => act(async () => {
+    const btn = [...dom.window.document.querySelectorAll('button')].find((b) => re.test(b.textContent || ''));
+    assert.ok(btn, label);
     btn.click();
   });
-  const clickSubmitApproval = async () => act(async () => {
-    const btn = [...dom.window.document.querySelectorAll('button')].find((b) => /Submit for approval|Submitting…/.test(b.textContent || ''));
-    assert.ok(btn, 'Submit for approval');
-    btn.click();
-  });
+  const clickSelfHeal = clickBy(/Self-heal|Self-healing/, 'Self-heal');
+  const clickSubmitApproval = clickBy(/Submit for approval|Submitting…/, 'Submit for approval');
   const editDraftFromCalendar = async (snippet) => act(async () => {
     const editBtn = [...dom.window.document.querySelectorAll('button')]
       .find((b) => b.textContent === 'Edit' && b.closest('div')?.textContent?.includes(snippet));
@@ -309,8 +330,7 @@ async function approvalsHarness(t, opts = {}) {
         const response = state.approveHandler
           ? await state.approveHandler(Number(approveMatch[1]))
           : { ok: true, draft: { id: Number(approveMatch[1]), status: 'published' }, content_safety_warnings: [] };
-        const status = response.httpStatus || (response.ok ? 200 : response.error === 'content_safety_unavailable' ? 503 : 403);
-        return json(response, status);
+        return json(response, safetyStatus(response));
       }
       return json({ ok: true });
     },
@@ -348,4 +368,5 @@ module.exports = {
   openEditorDraft,
   testInflightEditPreserved,
   testLateResponseIgnored,
+  testUnsavedCreateThenAction,
 };

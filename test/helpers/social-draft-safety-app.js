@@ -164,6 +164,21 @@ const GATE_UNAVAILABLE = {
   userMessage: 'Content safety checks are temporarily unavailable.',
 };
 
+const GATE_BLOCKED = { ok: false, error: 'content_safety_blocked', userMessage: 'blocked' };
+
+async function assertApproveSafetyHold(fx, { status, server }) {
+  const assert = require('node:assert/strict');
+  await withStubPublish(require('../../services/social_drafts/api'), async () => ({ ok: true, post: { id: 'z' } }), async (publish) => {
+    const r = await jsonFetch(server, 'POST', `/api/social-drafts/${fx.draftId}/approve`, { tid: fx.tenantId });
+    assert.equal(r.status, status);
+    assert.equal(r.body.draft, undefined);
+    assert.equal(publish.calls, 0);
+    const row = await pgDraftRow(fx, fx.draftId);
+    assert.equal(row.status, 'pending_approval');
+    assert.equal(row.meta?.publishing_claim || null, null);
+  });
+}
+
 async function mountMemServer() {
   const { app, draftsRouter } = mountApp();
   const server = await listen(app);
@@ -197,7 +212,7 @@ async function setupPr10h1bPostgres(fixtureTag) {
   const draftId = (await pendingDraft(server, tenantId, SAFE_TEXT)).id;
   const gateCached = require.cache[GATE_PATH];
   const realGate = gateCached.exports.gateRouteText;
-  gateCached.exports.gateRouteText = async () => ({ ok: false, error: 'content_safety_blocked', userMessage: 'blocked' });
+  gateCached.exports.gateRouteText = async () => GATE_BLOCKED;
   delete require.cache[API_PATH];
   server = await listen(mountApp({ useDb: true }).app);
   return {
@@ -249,6 +264,8 @@ module.exports = {
   stubPublish,
   withStubPublish,
   GATE_UNAVAILABLE,
+  GATE_BLOCKED,
+  assertApproveSafetyHold,
   mountMemServer,
   setupPr10h1bPostgres,
   pgDraftRow,

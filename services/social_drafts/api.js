@@ -475,12 +475,6 @@ function _applyDraftPatch(existing, patch) {
 async function _updateUserDraft(tid, id, expected, patch) {
   const existing = await _getDraft(tid, id);
   if (!existing) return { ok: false, error: 'not found' };
-  const blocked = _userPatchBlockedReason(existing);
-  if (blocked) return { ok: false, error: blocked, draft: existing };
-  if (expected) {
-    const stale = _userPatchStaleReason(expected, existing);
-    if (stale) return { ok: false, error: stale, draft: existing };
-  }
   if (_publishApproval.patchInvalidatesApproval(existing, patch)) {
     Object.assign(patch, _publishApproval.invalidateApprovalPatch(existing));
   }
@@ -502,13 +496,10 @@ async function _updateDraftAtVersion(tid, id, expected, patch, opts = {}) {
     const stale = _userPatchStaleReason(expected, existing);
     if (stale) return { ok: false, error: stale, draft: existing };
   }
-  if (userPatch) {
-    const blocked = _userPatchBlockedReason(existing);
-    if (blocked) return { ok: false, error: blocked, draft: existing };
-  } else {
-    const blocked = _versionWriteBlockedReason(existing, requireStatuses);
-    if (blocked) return { ok: false, error: blocked, draft: existing };
-  }
+  const blocked = userPatch
+    ? _userPatchBlockedReason(existing)
+    : _versionWriteBlockedReason(existing, requireStatuses);
+  if (blocked) return { ok: false, error: blocked, draft: existing };
 
   const next = _applyDraftPatch(existing, patch);
   const warnings = patch.content_safety_warnings !== undefined
@@ -558,12 +549,9 @@ async function _updateDraftAtVersion(tid, id, expected, patch, opts = {}) {
     if (r.rows[0]) return { ok: true, draft: _rowOut(r.rows[0]) };
     const current = await _getDraft(tid, id);
     if (!current) return { ok: false, error: 'not found' };
-    if (userPatch) {
-      return { ok: false, error: _userPatchStaleReason(expected || existing, current) || _userPatchBlockedReason(current) || 'conflict', draft: current };
-    }
-    const blocked = _versionWriteBlockedReason(current, requireStatuses);
-    if (blocked) return { ok: false, error: blocked, draft: current };
-    const err = _userPatchStaleReason(expected || existing, current) || 'conflict';
+    const err = userPatch
+      ? (_userPatchStaleReason(expected || existing, current) || _userPatchBlockedReason(current) || 'conflict')
+      : (_versionWriteBlockedReason(current, requireStatuses) || _userPatchStaleReason(expected || existing, current) || 'conflict');
     return { ok: false, error: err, draft: current };
   }
 

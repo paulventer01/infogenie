@@ -15,6 +15,7 @@ const {
   openEditorDraft,
   testInflightEditPreserved,
   testLateResponseIgnored,
+  testUnsavedCreateThenAction,
 } = require('./helpers/social-publisher-ui-harness');
 
 test('SocialApprovalsPanel shows role=alert on content safety block', async (t) => {
@@ -126,4 +127,12 @@ test('SocialPublisher resets self-heal loading after response', async (t) => {
   const btn = [...h.document.querySelectorAll('button')].find((b) => /Self-heal/.test(b.textContent || ''));
   assert.ok(btn);
   assert.equal(btn.disabled, false);
+});
+
+[
+  ['unsaved submit create calls submit-approval once', { actionKey: 'submit' }],
+  ['unsaved self-heal create calls self-heal once', { actionKey: 'selfHeal' }],
+  ['ignores late unsaved create after switching drafts', { actionKey: 'submit', switchAway: true }],
+].forEach(([name, spec]) => {
+  test(`SocialPublisher ${name}`, (t) => testUnsavedCreateThenAction(t, spec));
 });

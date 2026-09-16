@@ -22,6 +22,8 @@ const {
   withGateMock,
   withStubPublish,
   GATE_UNAVAILABLE,
+  GATE_BLOCKED,
+  assertApproveSafetyHold,
   setupPr10h1bPostgres,
   pgDraftRow,
   assertParallelSubmitWinner,
@@ -289,16 +291,7 @@ describe('PR-1b social draft publish safety postgres', { skip: pgSkip }, () => {
   });
 
   it('leaves no publishing claim after safety-blocked approve', async () => {
-    const draftsRouter = require('../services/social_drafts/api');
-    await withStubPublish(draftsRouter, async () => ({ ok: true, post: { id: 'z-pg' } }), async (publish) => {
-      const blocked = await jsonFetch(fx.server, 'POST', `/api/social-drafts/${fx.draftId}/approve`, { tid: fx.tenantId });
-      assert.equal(blocked.status, 403);
-      assert.equal(blocked.body.draft, undefined);
-      assert.equal(publish.calls, 0);
-      const row = await pgDraftRow(fx, fx.draftId);
-      assert.equal(row.status, 'pending_approval');
-      assert.equal(row.meta?.publishing_claim || null, null);
-    });
+    await assertApproveSafetyHold(fx, { status: 403, server: fx.server });
   });
 
   it('postgres versioned submit write rejects stale updated_at', async () => {
@@ -325,26 +318,17 @@ describe('PR-1b social draft publish safety postgres', { skip: pgSkip }, () => {
     const finalRow = await pgDraftRow(fx, row.id, 'status, text');
     assert.equal(finalRow.status, 'draft');
     assert.equal(finalRow.text, 'Concurrent postgres edit');
-    fx.setGate(async () => ({ ok: false, error: 'content_safety_blocked', userMessage: 'blocked' }));
+    fx.setGate(async () => GATE_BLOCKED);
   });
 
   it('leaves no claim and zero provider calls when approve gate is unavailable', async () => {
     fx.setGate(async () => GATE_UNAVAILABLE);
     const tmpServer = await listen(mountApp({ useDb: true }).app);
-    const draftsRouter = require('../services/social_drafts/api');
     try {
-      await withStubPublish(draftsRouter, async () => ({ ok: true, post: { id: 'z-unavail' } }), async (publish) => {
-        const unavailable = await jsonFetch(tmpServer, 'POST', `/api/social-drafts/${fx.draftId}/approve`, { tid: fx.tenantId });
-        assert.equal(unavailable.status, 503);
-        assert.equal(unavailable.body.draft, undefined);
-        assert.equal(publish.calls, 0);
-        const row = await pgDraftRow(fx, fx.draftId);
-        assert.equal(row.status, 'pending_approval');
-        assert.equal(row.meta?.publishing_claim || null, null);
-      });
+      await assertApproveSafetyHold(fx, { status: 503, server: tmpServer });
     } finally {
       await new Promise((r) => tmpServer.close(r));
-      fx.setGate(async () => ({ ok: false, error: 'content_safety_blocked', userMessage: 'blocked' }));
+      fx.setGate(async () => GATE_BLOCKED);
     }
   });
 });
