@@ -119,3 +119,51 @@ Not implemented here: separately controlled independent Security/QA reviewer orc
 Run `node --test test/cursor-automation.test.js` for isolated tests with mocked APIs; no credentials or paid agent runs are needed. The dedicated PR workflow runs this suite, including a regression that a same-repo PR must not add `pull_request`/`pull_request_target` to the secret-bearing control workflow. The normal repository core test gate remains applicable.
 
 The bridge targets [Cursor Cloud Agent API v1](https://cursor.com/docs/cloud-agent/api/endpoints): agent creation with a client-supplied ID, agent/run retrieval, explicit follow-up runs, and cancellation. The API is evolving; inspect contract changes before changing request handling.
+
+## B2: optional read-only policy access (operator setup after merge)
+
+`CURSOR_POLICY_READ_TOKEN` is an optional repository Actions secret used only for
+GETs to this repository's protection and branch-rules endpoints. Branch rules
+are paginated at 100 rows per page with a 20-page cap; reaching the cap stays blocked. All normal GitHub
+operations retain `GITHUB_TOKEN`. The new token is never sent to Cursor or stored
+in signed task state. Missing secret keeps the existing workflow-token behavior;
+an invalid configured token does not fall back. No complete trusted-policy override
+is enabled by this change.
+
+Setup, performed by Paul after reviewing and merging this PR:
+
+1. In GitHub **Settings → Developer settings → Personal access tokens → Fine-grained
+   tokens**, create a token with resource owner `paulventer01` and **Only select
+   repositories → infogenie**. Do not include `Infogenie_Qwen` or all repositories.
+2. Grant repository **Administration: Read-only** and the implicit **Metadata:
+   Read-only**. Do not grant write permissions. GitHub documents Administration
+   read for [status-check protection](https://docs.github.com/en/rest/branches/branch-protection#get-status-checks-protection)
+   and Metadata read for [branch rules](https://docs.github.com/en/rest/repos/rules#get-rules-for-a-branch).
+   Use a short expiry appropriate for initial verification (for example seven days).
+3. In **infogenie → Settings → Secrets and variables → Actions → New repository
+   secret**, save the value as `CURSOR_POLICY_READ_TOKEN`. Enter the value only in
+   GitHub's secret field, never in chat, issue comments, code, or a command argument.
+4. In **Actions → Cursor automation → Run workflow**, select branch **main** and
+   action **verify-policy**. Leave issue/prompt empty. This works with automation
+   disabled and without a working Cursor credential or subscription. Read the job
+   summary: it lists the default branch, credential source (name only), protection
+   and rules source status, completeness, and required context/app identities.
+5. Both sources must be readable and `complete` true. This verifies policy access
+   only, not CI success, independent review or end-to-end automatic correction.
+   A forbidden/unauthorized result needs the token's repository selection,
+   permissions or expiry corrected. Malformed/API failure remains blocked.
+
+For the dedicated token a 404 is conservatively treated as forbidden: GitHub may
+hide inaccessible resources as not found. An absent classic protection cannot be
+proven from that response alone. It stays blocked; do not weaken repository rules
+or declare the Buildkite floor complete to make the diagnostic pass. A successful
+response with valid empty required-check arrays is supported. Existing fallback
+workflow-token handling of absent policy is unchanged.
+
+Before expiry, replace the repository secret with a newly scoped token, run
+`verify-policy`, then revoke the previous token in GitHub. For immediate revocation,
+revoke the token and remove the secret; policy checks can become blocked again.
+[GitHub's token management guide](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+explains creation, expiration and deletion. No agent creates credentials or changes
+live permissions as part of this implementation. Live setup and verification remain
+operator work; local tests use fake credentials and cannot prove live access.

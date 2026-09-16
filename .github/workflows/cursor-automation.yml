@@ -6,7 +6,7 @@ on:
       action:
         description: 'Verify credentials, start a task, or control an existing task'
         type: choice
-        options: [verify, start, follow-up, status, cancel]
+        options: [verify, verify-policy, start, follow-up, status, cancel]
         default: verify
         required: true
       issue_number:
@@ -71,6 +71,7 @@ jobs:
       - name: Execute authorised automation command
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          CURSOR_POLICY_READ_TOKEN: ${{ secrets.CURSOR_POLICY_READ_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           CURSOR_AUTOMATION_ACTORS: ${{ vars.CURSOR_AUTOMATION_ACTORS }}
           CURSOR_AUTOMATION_ENABLED: ${{ vars.CURSOR_AUTOMATION_ENABLED }}
