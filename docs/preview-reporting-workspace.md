@@ -9,8 +9,8 @@ It does not deploy production or enable autonomous sending.
 1. On this branch in GitHub, choose **Code → Codespaces → Create codespace**.
    The included devcontainer starts a dedicated PostgreSQL container and installs
    the application. Wait for port **5000** to open. Keep its visibility **Private**.
-2. Run **`npm run preview:access`** in the Codespace terminal once to see the
-   generated test email and password. The account is unique to this workspace;
+2. Run **`npm run preview:access`** in the Codespace terminal once to open the
+   private login file in the editor. Copy its email and password, then close it. The account is unique to this workspace;
    it does not use your production login or the old hard-coded demo password.
 3. Open port **5000 → Open in Browser**, sign in and choose **Client reporting**
    in the sidebar. This is the usable preview URL; bookmark that browser address.
@@ -29,8 +29,10 @@ forwarded port; this is not a public staging deployment.
 Startup is automatic through `postStartCommand`. To restart manually, stop the
 existing preview process and run `npm run preview`. Do not also run `npm run dev`:
 both would compete for ports and the `.next` directory. Startup output is in
-`/tmp/infogenie-preview.log`; `npm run preview:access` only reads the generated
-account after seeding. Database initialization or Next compilation may still
+`/tmp/infogenie-preview.log`; `npm run preview:access` opens the generated
+account file in the editor after seeding; it never prints credentials.
+If automatic opening fails, press **Ctrl+P**, enter
+**`.preview-workspace/access.json`**, and open that private file. Database initialization or Next compilation may still
 be in progress at that point.
 
 Initial account creation uses one transaction and a private pending record so
@@ -48,7 +50,9 @@ a clean disposable workspace; do not point this launcher at a real database.
   Provider keys, ambient database URLs and runtime overrides are discarded.
 - Random session/vault/API keys and the synthetic login are stored locally in
   ignored `.preview-workspace/` files, with directory mode 0700 and file mode 0600.
-  They are never printed by startup or included in CI artifacts.
+  They are never printed by startup or the access command, or included in CI
+  artifacts. The access command refuses non-interactive use and opens only a
+  regular, owner-only file owned by the current user.
 - Real session, tenant permissions and CSRF checks remain enabled. The seeded
   reviewer is a tenant owner, not a platform administrator.
 - Jobs are disabled; server-side network connections are limited to the three
