@@ -155,9 +155,34 @@ test('MCP client presets catalog includes official + community', async () => {
     const cats = new Set(p.body.presets.map((x) => x.category));
     assert.ok(cats.has('official'));
     assert.ok(cats.has('community') || cats.has('data'));
+    const mangools = p.body.presets.find((x) => x.id === 'mangools');
+    assert.ok(mangools, 'mangools preset present');
+    assert.equal(mangools.transport, 'streamable');
+    assert.equal(mangools.base_url, 'https://mcp.mangools.com/mcp');
   } finally {
     await new Promise((r) => server.close(r));
   }
+});
+
+test('MCP streamable transport lists Mangools tools when keyed', async () => {
+  const key = process.env.MANGOOLS_API_KEY;
+  if (!key) {
+    // Skip silently when secret is not available in CI.
+    return;
+  }
+  const { listTools, callTool } = require('../services/mcp_client/transport');
+  const server = {
+    transport: 'streamable',
+    base_url: 'https://mcp.mangools.com/mcp',
+    auth_header: `x-access-token:${key}`,
+  };
+  const listed = await listTools(server);
+  assert.equal(listed.ok, true, listed.error || 'listTools failed');
+  assert.ok(Array.isArray(listed.tools) && listed.tools.length > 10, 'expected many Mangools tools');
+  assert.ok(listed.tools.some((t) => t.name === 'mangools_search_locations'));
+  const called = await callTool(server, 'mangools_search_locations', { query: 'London' });
+  assert.equal(called.ok, true, called.error || 'callTool failed');
+  assert.ok(Array.isArray(called.content) && called.content[0]?.text?.includes('London'));
 });
 
 test('rate_ai_output MCP action', async () => {

@@ -1,11 +1,15 @@
 /**
- * MCP client transports: builtin · REST (InfoGenie-shaped) · JSON-RPC over HTTP.
+ * MCP client transports: builtin · REST · JSON-RPC · Streamable HTTP.
  */
 
 const { listBuiltinTools, callBuiltin } = require('./builtins');
 
-function _headers(server) {
-  const h = { 'Content-Type': 'application/json', Accept: 'application/json' };
+function _headers(server, extra = {}) {
+  const h = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    ...extra,
+  };
   if (server.auth_header) {
     const [k, ...rest] = String(server.auth_header).split(':');
     if (rest.length) h[k.trim()] = rest.join(':').trim();
@@ -25,8 +29,55 @@ function _resolveUrl(server, pathSuffix, { origin } = {}) {
   if (!pathSuffix) return base;
   if (base.endsWith('/tools') && pathSuffix === '/tools') return base;
   if (base.endsWith('/call') && pathSuffix === '/call') return base;
-  // If base already ends with /mcp, append path
   return base + pathSuffix;
+}
+
+function _parseJsonRpcBody(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return {};
+  // Streamable HTTP may return SSE: event: message\ndata: {...}\n\n
+  if (raw.startsWith('event:') || raw.includes('\ndata:')) {
+    const dataLines = raw.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim());
+    for (let i = dataLines.length - 1; i >= 0; i--) {
+      try { return JSON.parse(dataLines[i]); } catch { /* continue */ }
+    }
+  }
+  try { return JSON.parse(raw); } catch { return { raw }; }
+}
+
+async function _rpc(server, method, params, ctx = {}, { notification = false } = {}) {
+  const url = _resolveUrl(server, '', ctx);
+  const headers = _headers(server, ctx.sessionId ? { 'mcp-session-id': ctx.sessionId } : {});
+  const body = notification
+    ? { jsonrpc: '2.0', method, params: params || {} }
+    : { jsonrpc: '2.0', id: ctx.rpcId || Date.now() % 1e9, method, params: params || {} };
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(ctx.timeoutMs || 60000),
+  });
+  const sessionId = resp.headers.get('mcp-session-id') || ctx.sessionId || null;
+  const text = await resp.text();
+  const j = _parseJsonRpcBody(text);
+  return { resp, j, sessionId, text };
+}
+
+async function _ensureStreamableSession(server, ctx = {}) {
+  const init = await _rpc(server, 'initialize', {
+    protocolVersion: '2025-03-26',
+    capabilities: {},
+    clientInfo: { name: 'InfoGenie', version: '1.0.0' },
+  }, { ...ctx, timeoutMs: 20000, rpcId: 1 });
+  if (init.j.error) {
+    return { ok: false, error: init.j.error.message || JSON.stringify(init.j.error), sessionId: null };
+  }
+  const sessionId = init.sessionId;
+  // Best-effort notification (some servers return 202 with empty body).
+  try {
+    await _rpc(server, 'notifications/initialized', {}, { ...ctx, sessionId, timeoutMs: 10000 }, { notification: true });
+  } catch { /* ignore */ }
+  return { ok: true, sessionId, serverInfo: init.j.result?.serverInfo || null };
 }
 
 async function listTools(server, ctx = {}) {
@@ -34,18 +85,23 @@ async function listTools(server, ctx = {}) {
     return { ok: true, tools: await listBuiltinTools(server.builtin), transport: 'builtin' };
   }
 
-  if (server.transport === 'jsonrpc') {
-    const url = _resolveUrl(server, '', ctx);
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: _headers(server),
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
-      signal: AbortSignal.timeout(20000),
-    });
-    const j = await resp.json().catch(() => ({}));
-    if (j.error) return { ok: false, error: j.error.message || JSON.stringify(j.error), tools: [] };
+  if (server.transport === 'streamable' || server.transport === 'jsonrpc') {
+    let sessionId = null;
+    if (server.transport === 'streamable') {
+      const sess = await _ensureStreamableSession(server, ctx);
+      if (!sess.ok) return { ok: false, error: sess.error, tools: [], transport: 'streamable' };
+      sessionId = sess.sessionId;
+    }
+    const { resp, j } = await _rpc(server, 'tools/list', {}, { ...ctx, sessionId, timeoutMs: 30000, rpcId: 2 });
+    if (j.error) return { ok: false, error: j.error.message || JSON.stringify(j.error), tools: [], transport: server.transport };
     const tools = j.result?.tools || j.tools || [];
-    return { ok: true, tools, transport: 'jsonrpc', raw_status: resp.status };
+    return {
+      ok: true,
+      tools,
+      transport: server.transport,
+      raw_status: resp.status,
+      serverInfo: j.result?.serverInfo || undefined,
+    };
   }
 
   // REST default
@@ -78,20 +134,16 @@ async function callTool(server, name, args = {}, ctx = {}) {
     };
   }
 
-  if (server.transport === 'jsonrpc') {
-    const url = _resolveUrl(server, '', ctx);
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: _headers(server),
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 2,
-        method: 'tools/call',
-        params: { name, arguments: args },
-      }),
-      signal: AbortSignal.timeout(60000),
+  if (server.transport === 'streamable' || server.transport === 'jsonrpc') {
+    let sessionId = null;
+    if (server.transport === 'streamable') {
+      const sess = await _ensureStreamableSession(server, ctx);
+      if (!sess.ok) return { ok: false, isError: true, error: sess.error, content: [] };
+      sessionId = sess.sessionId;
+    }
+    const { j } = await _rpc(server, 'tools/call', { name, arguments: args }, {
+      ...ctx, sessionId, timeoutMs: 60000, rpcId: 3,
     });
-    const j = await resp.json().catch(() => ({}));
     if (j.error) {
       return { ok: false, isError: true, error: j.error.message || JSON.stringify(j.error), content: [] };
     }
@@ -100,7 +152,7 @@ async function callTool(server, name, args = {}, ctx = {}) {
       ok: true,
       content: result.content || [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       isError: !!result.isError,
-      transport: 'jsonrpc',
+      transport: server.transport,
     };
   }
 

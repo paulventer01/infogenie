@@ -468,6 +468,14 @@ Backlink intelligence: Trust Flow, Citation Flow, referring domains, anchor text
 
 ---
 
+### 4.23b Mangools SEO Integration
+
+**API**: `/api/mangools`  
+**Auth**: `MANGOOLS_API_KEY` → `x-access-token` header on `api.mangools.com/v3`  
+KWFinder related & competitor keywords, SiteProfiler overview/competitors, keyword gap analysis, and SiteProfiler backlink profiles. UI: Analyse → Mangools. Configure via Manage → Platform APIs.
+
+---
+
 ### 4.24 Maps Intelligence (T41)
 
 **API**: `POST /api/maps-intel/scan {keyword, region}`  
