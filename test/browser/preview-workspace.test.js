@@ -70,7 +70,12 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
   fs.mkdirSync('/tmp/preview-artifacts',{recursive:true});
   await page.screenshot({path:'/tmp/preview-artifacts/reporting-desktop.png',fullPage:true});
   await page.setViewport({width:390,height:844});
-  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no mobile page overflow');
+  const geometry=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,
+    overflowing:[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,15).map(e=>({tag:e.tagName,id:e.id,classes:e.className,right:e.getBoundingClientRect().right}))}));
+  t.diagnostic(JSON.stringify(geometry));
+  assert.ok(geometry.scroll<=geometry.width+1,'no mobile page overflow');
+  assert.equal(await page.$eval('#report-client',el=>el.getBoundingClientRect().right<=innerWidth),true);
+  assert.equal(await page.$eval('main header h1',el=>getComputedStyle(el).color),'rgb(255, 255, 255)');
   await page.screenshot({path:'/tmp/preview-artifacts/reporting-mobile.png',fullPage:true});
   await stop();
   fs.renameSync(accessPath,accessPath+'.pending'); // interrupted first boot after commit, before rename

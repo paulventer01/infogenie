@@ -761,3 +761,7 @@
   .topbarRight{max-width:100%;}
   .topbar :global(#ig-live-timer-slot):empty{display:none !important;}
 }
+/* Off-canvas legacy overlays must not enlarge the mobile document. */
+:global(body):has(.shell){overflow-x:clip;}
+.shellCollapsed .navCaption{display:none;}
+.shellCollapsed .reportingLink{justify-content:center;}

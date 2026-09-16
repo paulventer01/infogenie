@@ -25,3 +25,9 @@
 .workspace button:disabled {cursor:not-allowed;}
 @media(max-width:700px){.workspace{padding:18px 12px 40px}.hero{padding:24px}.steps{grid-template-columns:repeat(2,1fr);gap:8px}.step{padding:12px 9px}.step small{display:none}.context{align-items:flex-start}}
 @media(prefers-reduced-motion:reduce){.workspace *{scroll-behavior:auto}}
+/* Scoped exception to legacy shell text resets: preserve dark-hero contrast. */
+:global(body #ig-app-shell #ig-react-panel) .hero h1,
+:global(body #ig-app-shell #ig-react-panel) .hero p {
+  color:#fff !important;
+  -webkit-text-fill-color:#fff !important;
+}
