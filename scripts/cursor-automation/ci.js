@@ -10,24 +10,34 @@ const SUCCESS_CONCLUSIONS = new Set(['success']);
 const FAIL_STATES = new Set(['failure', 'error']);
 const PENDING_STATES = new Set(['pending', 'expected']);
 const ALLOWED_EVIDENCE_HOSTS = new Set(['github.com', 'buildkite.com']);
-const CI_AUTH_LINE = /^ci-correction:\s*authorized\s*$/im;
-const CI_WINDOW_LINE = /^ci-correction-window:\s*(?:([1-9]|[1-6]\d|7[0-2])h)\s*$/im;
+const AUTH_HEADER = /^ci-correction:\s*authorized\s*$/i;
+const WINDOW_HEADER = /^ci-correction-window:\s*([1-9]|[1-6]\d|7[0-2])h\s*$/i;
+const ANY_CI_HEADER = /^ci-correction(?:-window)?:/i;
 
-// Default-branch control list. Live protection/rulesets are unioned when readable.
-// GITHUB_TOKEN typically cannot read classic branch protection (403).
+// Floor only. Not a complete required-check policy unless TRUSTED_POLICY_COMPLETE is true.
 const TRUSTED_DEFAULT_REQUIRED = Object.freeze([
   Object.freeze({ context: 'buildkite/infogenie', appId: null, source: 'trusted-default' }),
 ]);
+const TRUSTED_POLICY_COMPLETE = false;
 
 function shaFingerprint(value) {
   return createHash('sha256').update(value).digest('hex').slice(0, 32);
 }
 
 function parseCiCorrectionAuth(text, nowMs) {
-  if (typeof text !== 'string' || !CI_AUTH_LINE.test(text)) return { enabled: false };
-  const match = text.match(CI_WINDOW_LINE);
-  if (!match) return { enabled: false };
-  const hours = Number(match[1]);
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  const prefix = [];
+  for (const line of lines) {
+    if (!ANY_CI_HEADER.test(line.trim())) break;
+    prefix.push(line.trim());
+  }
+  if (!prefix.length) return { enabled: false };
+  const keys = prefix.map((line) => line.split(':')[0].toLowerCase());
+  if (prefix.length !== 2 || new Set(keys).size !== 2) return { enabled: false };
+  if (!AUTH_HEADER.test(prefix[0])) return { enabled: false };
+  const windowMatch = WINDOW_HEADER.exec(prefix[1]);
+  if (!windowMatch) return { enabled: false };
+  const hours = Number(windowMatch[1]);
   if (!Number.isInteger(hours) || hours < 1 || hours > 72) return { enabled: false };
   const authorizedAt = new Date(nowMs).toISOString();
   return {
@@ -39,12 +49,13 @@ function parseCiCorrectionAuth(text, nowMs) {
 }
 
 function stripCiAuthHeaders(text) {
-  return String(text || '')
-    .replace(/\r\n/g, '\n')
-    .split('\n')
-    .filter((line) => !/^ci-correction(?:-window)?:/i.test(line.trim()))
-    .join('\n')
-    .trim();
+  const normalized = String(text || '').replace(/\r\n/g, '\n');
+  const parsed = parseCiCorrectionAuth(normalized, Date.now());
+  if (!parsed.enabled) return normalized.trim();
+  const lines = normalized.split('\n');
+  let i = 0;
+  while (i < lines.length && ANY_CI_HEADER.test(lines[i].trim())) i += 1;
+  return lines.slice(i).join('\n').trim();
 }
 
 function requiredKey(item) {
@@ -63,17 +74,31 @@ function unionRequired(live, trusted = TRUSTED_DEFAULT_REQUIRED) {
   return [...map.values()];
 }
 
+function eventTime(row, keys) {
+  for (const key of keys) {
+    const value = Date.parse(row?.[key] || '');
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
 function newerCheck(a, b) {
-  const at = Date.parse(a.started_at || a.completed_at || 0) || 0;
-  const bt = Date.parse(b.started_at || b.completed_at || 0) || 0;
-  if (at !== bt) return at > bt;
+  if (a.status !== 'completed' && b.status === 'completed' && (a.id || 0) > (b.id || 0)) return true;
+  if (b.status !== 'completed' && a.status === 'completed' && (b.id || 0) > (a.id || 0)) return false;
+  const at = eventTime(a, ['started_at', 'completed_at']);
+  const bt = eventTime(b, ['started_at', 'completed_at']);
+  if (at != null && bt != null && at !== bt) return at > bt;
   return (a.id || 0) > (b.id || 0);
 }
 
 function newerStatus(a, b) {
-  const at = Date.parse(a.updated_at || a.created_at || 0) || 0;
-  const bt = Date.parse(b.updated_at || b.created_at || 0) || 0;
-  if (at !== bt) return at > bt;
+  const pendingA = PENDING_STATES.has(a.state) || !a.state;
+  const pendingB = PENDING_STATES.has(b.state) || !b.state;
+  if (pendingA && !pendingB && (a.id || 0) > (b.id || 0)) return true;
+  if (pendingB && !pendingA && (b.id || 0) > (a.id || 0)) return false;
+  const at = eventTime(a, ['updated_at', 'created_at']);
+  const bt = eventTime(b, ['updated_at', 'created_at']);
+  if (at != null && bt != null && at !== bt) return at > bt;
   return (a.id || 0) > (b.id || 0);
 }
 
@@ -304,9 +329,21 @@ async function pageStatuses(github, root, sha) {
   return { rows: all, truncated: true };
 }
 
+function policyReadable(status) {
+  return status === 'ok' || status === 'absent';
+}
+
+function trustedPolicyValid(complete, required = TRUSTED_DEFAULT_REQUIRED) {
+  return complete === true && Array.isArray(required) && required.length > 0
+    && required.every((row) => typeof row?.context === 'string' && row.context.trim());
+}
+
 function liveRequiredFromProtection(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('malformed required-check policy');
+  if (body.checks !== undefined && !Array.isArray(body.checks)) throw new Error('malformed required-check policy');
+  if (body.contexts !== undefined && !Array.isArray(body.contexts)) throw new Error('malformed required-check policy');
   const out = [];
-  const checks = Array.isArray(body?.checks) ? body.checks : [];
+  const checks = Array.isArray(body.checks) ? body.checks : [];
   for (const row of checks) {
     if (typeof row?.context === 'string') {
       out.push({
@@ -316,7 +353,7 @@ function liveRequiredFromProtection(body) {
       });
     }
   }
-  if (!checks.length && Array.isArray(body?.contexts)) {
+  if (!checks.length && Array.isArray(body.contexts)) {
     for (const context of body.contexts) {
       if (typeof context === 'string') out.push({ context, appId: null, source: 'protection' });
     }
@@ -325,12 +362,13 @@ function liveRequiredFromProtection(body) {
 }
 
 function liveRequiredFromRules(rules) {
+  if (!Array.isArray(rules)) throw new Error('malformed required-check policy');
   const out = [];
-  for (const rule of Array.isArray(rules) ? rules : []) {
+  for (const rule of rules) {
     if (rule?.type !== 'required_status_checks') continue;
     const rows = rule.parameters?.required_status_checks;
-    if (!Array.isArray(rows)) continue;
-    for (const row of rows) {
+    if (rows !== undefined && !Array.isArray(rows)) throw new Error('malformed required-check policy');
+    for (const row of Array.isArray(rows) ? rows : []) {
       if (typeof row?.context !== 'string') continue;
       const appId = Number.isInteger(row.integration_id) ? row.integration_id : null;
       out.push({ context: row.context, appId, source: 'ruleset' });
@@ -343,6 +381,9 @@ module.exports = {
   CHECK_PAGE_BUDGET,
   STATUS_PAGE_BUDGET,
   TRUSTED_DEFAULT_REQUIRED,
+  TRUSTED_POLICY_COMPLETE,
+  policyReadable,
+  trustedPolicyValid,
   parseCiCorrectionAuth,
   stripCiAuthHeaders,
   unionRequired,

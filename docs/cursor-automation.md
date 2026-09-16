@@ -54,7 +54,8 @@ ci-correction-window: 24h
 Implement the bounded task described here. Include acceptance criteria and exclusions.
 ```
 
-- `ci-correction: authorized` must match exactly (case-insensitive line).
+- `ci-correction: authorized` then `ci-correction-window:` must be the **first two lines** of the start prompt (immediately after `/cursor start`). Order is required. Duplicate, swapped, malformed, or out-of-range headers leave the task manual.
+- Quoted examples or the same lines later in the task body never enable correction.
 - `ci-correction-window:` must be an integer `1h`–`72h`. Missing or invalid window means the task stays manual.
 - The window starts at the accepted start timestamp stored in signed state. After the deadline, failing CI is reported as exhausted; no further automatic POST is sent.
 - Manual and automatic follow-ups share one cap of **three accepted follow-ups total** per tracking issue.
@@ -62,19 +63,21 @@ Implement the bounded task described here. Include acceptance criteria and exclu
 
 ## Current-SHA CI evaluation (Phase B1)
 
-On refresh, when a bound same-repo PR (or known SHA) exists, the bridge re-reads the PR head, pages check-runs and commit statuses (100 per page, 20-page budget), and keeps the latest attempt per check name/app and per status context. Required identities are the union of:
+On refresh, when a bound same-repo PR (or known SHA) exists, the bridge re-reads the PR head, pages check-runs and commit statuses (100 per page, 20-page budget), and keeps the latest attempt per check name/app and per status context (a newer in-progress attempt is not hidden behind an older success when `started_at` is missing). Required identities are the union of:
 
 1. Classic branch protection `required_status_checks` on the default branch, when readable.
 2. Repository ruleset `required_status_checks` on that branch, when readable.
-3. The trusted default-branch floor: commit status `buildkite/infogenie`.
+3. The trusted default-branch floor: commit status `buildkite/infogenie` (a floor only).
 
-`GITHUB_TOKEN` commonly receives **403** for classic protection; that is not treated as “no required checks”. Missing, pending, skipped/neutral, unknown conclusions, truncated pagination, API failures, unavailable policy, or a head SHA that moved during evaluation **cannot** be reported as CI passed. Evidence is sanitized names/conclusions/https links on `github.com` or `buildkite.com` only — no log bodies, credentials, or executable snippets. The secret-bearing workflow still runs only default-branch events and checks out the default branch.
+Live policy is **complete** only when both protection and ruleset APIs are readable (`ok` or `absent`) or when `TRUSTED_POLICY_COMPLETE` is explicitly true in default-branch controller code with a validated non-empty trusted list. `GITHUB_TOKEN` commonly receives **403** for classic protection. That is **policy blocked**, not “no required checks”, and cannot be reported as CI passed even if the floor status succeeded. Malformed policy bodies are blocked. Missing, pending, skipped/neutral, unknown conclusions, truncated pagination, API failures, incomplete policy, or a head SHA that moved during evaluation **cannot** be reported as CI passed. If evaluation throws after a previous green result, that green evidence is cleared and a blocked state is persisted. Evidence is sanitized names/conclusions/https links on `github.com` or `buildkite.com` only — no log bodies, credentials, or executable snippets. The secret-bearing workflow still runs only default-branch events and checks out the default branch.
 
 Passed required CI is notified as **ci-passed-awaiting-independent-review**. That is not independent approval and not `READY_FOR_HUMAN_MERGE`. PRs stay draft.
 
 ## Bounded automatic correction
 
-When signed opt-in is present, the run is **FINISHED**, the bound PR is open, CI verdict is a confirmed actionable failure, the shared follow-up cap and deadline remain, and no other InfoGenie Cursor task is active, the bridge persists correction intent (task, run, PR, head SHA, failure fingerprint) **before** the Cursor POST. Duplicate `schedule` / `check_suite` / `status` ticks do not repeat it. Uncertain network outcomes are reconciled the same way as manual follow-ups and are never blindly retried. Cursor 4xx/429 rejections are not replayed. Cancellation, closed/merged PRs, disabled automation, and `noOtherWork` still block the POST. Head movement after evaluation invalidates that evidence and prevents the POST.
+When signed opt-in is present, the run is **FINISHED**, the bound PR is open, CI verdict is a confirmed actionable failure, the shared follow-up cap and deadline remain, and no other InfoGenie Cursor task is active, the bridge persists correction intent (task, run, PR, head SHA, failure fingerprint) **before** the Cursor POST. Duplicate `schedule` / `check_suite` / `status` ticks do not repeat it. Uncertain network outcomes are reconciled from the observed run (intent becomes accepted when `latestRunId` moved) and are never blindly retried. Cursor 4xx/429 rejections are **terminal** for automatic correction: the rejected intent stays in signed state and no later automatic POST is sent, even if failure metadata changes, until a separately authorised `/cursor follow-up`. Cancellation, closed/merged PRs, disabled automation, and `noOtherWork` still block the POST. Head movement after evaluation invalidates that evidence and prevents the POST.
+
+`/cursor status`, `/cursor cancel`, and `/cursor follow-up` observe without launching automatic correction. Monitor consumes those authorised comments first, then may dispatch one automatic correction. Cancel of an already-finished opted-in failure suppresses further automatic POSTs.
 
 ## Completion, PR handoff, and notifications (Phase A)
 
@@ -109,7 +112,7 @@ Errors are available in the Actions run log and summary. Remote response bodies 
 
 ## Deferred (issue #196 remaining work)
 
-Not implemented here: separately controlled independent Security/QA reviewer orchestration, `READY_FOR_HUMAN_MERGE`, start-command coalescing recovery, or hosted end-to-end proof. Self-check and green CI are not independent approval. Do not merge automatically. If classic branch protection remains unreadable to `GITHUB_TOKEN`, additional unpublished required contexts beyond the trusted floor and readable rulesets will not be discovered until that permission/policy is available; they still cannot turn an incomplete result green.
+Not implemented here: separately controlled independent Security/QA reviewer orchestration, `READY_FOR_HUMAN_MERGE`, start-command coalescing recovery, or hosted end-to-end proof. Self-check and green CI are not independent approval. Do not merge automatically. Classic branch protection is typically unreadable to `GITHUB_TOKEN`, so CI stays **policy blocked** until live protection/rulesets are readable or an explicit complete trusted policy is configured in default-branch controller code. The current `buildkite/infogenie` list is a floor, not that complete policy.
 
 ## Verification and API contract
 

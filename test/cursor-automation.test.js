@@ -14,7 +14,7 @@ function fixture() {
   const pulls = new Map(); const branches = new Map();
   let seq = 10; let runSeq = 0; let loseCreate = false; let loseFollowup = false; let losePrCreate = false;
   let loseCancel = false; let rejectCreate = 0; let rejectFollowup = 0; let rejectPrCreate = 0;
-  let protectionStatus = 403; let protectionBody = null; let branchRules = [];
+  let protectionStatus = 403; let protectionBody = null; let branchRules = []; let rulesStatus = 0;
   let checks = [
     {
       id: 1, name: 'fixture-check', status: 'completed', conclusion: 'success',
@@ -56,7 +56,10 @@ function fixture() {
       if (protectionStatus) throw new ApiError('GitHub', protectionStatus);
       return protectionBody || { checks: [], contexts: [] };
     }
-    if (path.includes('/rules/branches/')) return branchRules;
+    if (path.includes('/rules/branches/')) {
+      if (rulesStatus) throw new ApiError('GitHub', rulesStatus);
+      return branchRules;
+    }
     if (path.endsWith('/status')) return {state: 'pending', statuses: []};
     if (path === `${ROOT}/labels`) return {};
     if (path.startsWith(`${ROOT}/issues?`)) return [...issues.values()].filter((i) => i.labels?.includes(LABEL));
@@ -171,7 +174,7 @@ function fixture() {
     setChecks: (rows) => { checks = rows; },
     setStatuses: (rows) => { statuses = rows; },
     setProtection: (status, body) => { protectionStatus = status; protectionBody = body; },
-    setRules: (rows) => { branchRules = rows; },
+    setRules: (rows, status = 0) => { branchRules = rows; rulesStatus = status; },
     rejectCreate: (status) => { rejectCreate = status; }, rejectFollowup: (status) => { rejectFollowup = status; },
     rejectPrCreate: (status) => { rejectPrCreate = status; },
     loseCreate: () => { loseCreate = true; }, loseFollowup: () => { loseFollowup = true; },
@@ -337,7 +340,7 @@ test('HTTP client uses fixed destination, timeout, no redirects/retries, and san
  });
 
 test('completed checks without legacy commit statuses still require trusted policy checks', async () => {
-  const f = fixture(); f.setStatuses([]);
+  const f = fixture(); readablePolicy(f); f.setStatuses([]);
   await f.start(); f.finish();
   [...f.agents.values()][0].run.git.branches = [{prUrl: `https://github.com/${REPO}/pull/999`}];
   await f.bridge.refresh(await f.bridge.state(f.issueId()));
@@ -614,6 +617,11 @@ test('status key is persisted in steady state and kept if refresh later fails', 
 });
 
 const CORRECTION_START = 'ci-correction: authorized\nci-correction-window: 24h\nFix the bounded CI failure.';
+const { parseCiCorrectionAuth, latestChecks } = require('../scripts/cursor-automation/ci');
+
+function readablePolicy(f) {
+  f.setProtection(0, { checks: [{ context: 'buildkite/infogenie' }] });
+}
 
 function checkRow(over = {}) {
   return {
@@ -640,12 +648,12 @@ async function finishBoundPr(f, prOpts = {}) {
   const pr = attachPr(f, prOpts);
   f.finish();
   [...f.agents.values()][0].run.git.branches = [{ branch: pr.branch, prUrl: `https://github.com/${REPO}/pull/${pr.number}` }];
-  await f.bridge.refresh(await f.bridge.state(f.issueId()));
+  await f.bridge.refresh(await f.bridge.state(f.issueId()), { allowCorrection: true });
   return pr;
 }
 
 test('paginated checks include a failure on a later page and do not treat truncation as green', async () => {
-  const f = fixture();
+  const f = fixture(); readablePolicy(f);
   const rows = [];
   for (let i = 0; i < 100; i++) rows.push(checkRow({ id: i + 1, name: `ok-${i}` }));
   rows.push(checkRow({ id: 101, name: 'later-fail', conclusion: 'failure' }));
@@ -667,7 +675,7 @@ test('paginated checks include a failure on a later page and do not treat trunca
 });
 
 test('paginated commit statuses include a later-page failure', async () => {
-  const f = fixture();
+  const f = fixture(); readablePolicy(f);
   const rows = [];
   for (let i = 0; i < 100; i++) {
     rows.push({
@@ -703,7 +711,7 @@ test('missing, skipped, and unknown required checks are never green', async () =
 });
 
 test('reruns keep the latest check attempt', async () => {
-  const f = fixture();
+  const f = fixture(); readablePolicy(f);
   f.setChecks([
     checkRow({ id: 1, name: 'bridge-tests', conclusion: 'failure', started_at: '2026-01-01T00:00:00Z' }),
     checkRow({ id: 2, name: 'bridge-tests', conclusion: 'success', started_at: '2026-01-01T02:00:00Z' }),
@@ -741,7 +749,7 @@ test('PR head movement during evaluation invalidates evidence', async () => {
 });
 
 test('old tasks without opt-in stay manual when CI fails', async () => {
-  const f = fixture();
+  const f = fixture(); readablePolicy(f);
   f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
   await f.start();
   await finishBoundPr(f);
@@ -752,7 +760,7 @@ test('old tasks without opt-in stay manual when CI fails', async () => {
 });
 
 test('authorized CI correction persists intent before POST and does not replay duplicates', async () => {
-  const f = fixture();
+  const f = fixture(); readablePolicy(f);
   f.setChecks([checkRow({
     name: 'bridge-tests', conclusion: 'failure',
     html_url: 'https://github.com/paulventer01/infogenie/runs/9',
@@ -778,7 +786,7 @@ test('authorized CI correction persists intent before POST and does not replay d
 });
 
 test('lost automatic correction response is reconciled and never blindly retried', async () => {
-  const f = fixture();
+  const f = fixture(); readablePolicy(f);
   f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
   await f.start(CORRECTION_START); f.loseFollowup();
   await assert.rejects(finishBoundPr(f), /network/);
@@ -787,13 +795,16 @@ test('lost automatic correction response is reconciled and never blindly retried
   assert.equal(state.ciCorrectionIntent.status, 'uncertain');
   assert.equal(f.runPosts().length, 1);
   await f.bridge.refresh(await f.bridge.state(f.issueId()));
-  await f.bridge.run('schedule', f.event({}));
-  assert.equal(f.runPosts().length, 1);
   assert.equal((await f.bridge.state(f.issueId())).runId, 'run-2');
+  assert.equal((await f.bridge.state(f.issueId())).ciCorrectionIntent.status, 'accepted');
+  f.finish();
+  await f.bridge.refresh(await f.bridge.state(f.issueId()), { allowCorrection: true });
+  assert.notEqual((await f.bridge.state(f.issueId())).ciPhase, 'correction-running');
+  assert.equal(f.runPosts().length, 1);
 });
 
 test('correction budget is shared with manual follow-ups and respects the deadline', async () => {
-  const f = fixture();
+  const f = fixture(); readablePolicy(f);
   f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
   await f.start(CORRECTION_START);
   const issue = f.issueId();
@@ -804,16 +815,16 @@ test('correction budget is shared with manual follow-ups and respects the deadli
   f.finish();
   attachPr(f, { number: 88, branch: 'cursor/budget' });
   [...f.agents.values()][0].run.git.branches = [{ branch: 'cursor/budget', prUrl: `https://github.com/${REPO}/pull/88` }];
-  await f.bridge.refresh(await f.bridge.state(issue));
+  await f.bridge.refresh(await f.bridge.state(issue), { allowCorrection: true });
   assert.equal((await f.bridge.state(issue)).followups, 3);
   assert.equal(f.runPosts().length, 3);
   f.finish();
-  await f.bridge.refresh(await f.bridge.state(issue));
+  await f.bridge.refresh(await f.bridge.state(issue), { allowCorrection: true });
   assert.equal(f.runPosts().length, 3);
   await assert.rejects(f.bridge.followup(await f.bridge.state(issue), { text: 'Manual four', key: 'comment:m4' }), /limit/);
   assert.equal((await f.bridge.state(issue)).ciPhase, 'exhausted');
 
-  const late = fixture();
+  const late = fixture(); readablePolicy(late);
   late.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
   const origin = Date.now();
   late.bridge.now = () => origin;
@@ -825,7 +836,7 @@ test('correction budget is shared with manual follow-ups and respects the deadli
 });
 
 test('cancellation, closed, and merged PRs do not start automatic CI correction', async () => {
-  const f = fixture();
+  const f = fixture(); readablePolicy(f);
   f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
   await f.start(CORRECTION_START);
   await f.bridge.cancel(await f.bridge.state(f.issueId()));
@@ -835,13 +846,13 @@ test('cancellation, closed, and merged PRs do not start automatic CI correction'
   assert.equal((await f.bridge.state(f.issueId())).phase, 'CANCELLED');
   assert.equal(f.runPosts().length, 0);
 
-  const closed = fixture();
+  const closed = fixture(); readablePolicy(closed);
   closed.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
   await closed.start(CORRECTION_START);
   await finishBoundPr(closed, { number: 91, branch: 'cursor/closed', state: 'closed' });
   assert.equal(closed.runPosts().length, 0);
 
-  const merged = fixture();
+  const merged = fixture(); readablePolicy(merged);
   merged.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
   await merged.start(CORRECTION_START);
   await finishBoundPr(merged, { number: 92, branch: 'cursor/merged', merged: true, state: 'closed' });
@@ -849,7 +860,7 @@ test('cancellation, closed, and merged PRs do not start automatic CI correction'
 });
 
 test('other active Cursor work blocks automatic CI correction without a POST', async () => {
-  const f = fixture();
+  const f = fixture(); readablePolicy(f);
   f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
   await f.start(CORRECTION_START);
   const pr = attachPr(f, { number: 94, branch: 'cursor/other' });
@@ -859,7 +870,7 @@ test('other active Cursor work blocks automatic CI correction without a POST', a
     status: 'ACTIVE', latestRunId: 'run-other', run: { id: 'run-other', status: 'RUNNING', git: { branches: [] } },
   });
   [...f.agents.values()][0].run.git.branches = [{ branch: pr.branch, prUrl: `https://github.com/${REPO}/pull/${pr.number}` }];
-  await f.bridge.refresh(await f.bridge.state(f.issueId()));
+  await f.bridge.refresh(await f.bridge.state(f.issueId()), { allowCorrection: true });
   assert.equal(f.runPosts().length, 0);
   assert.match((await f.bridge.state(f.issueId())).ciBlocker || '', /active/);
 });
@@ -875,6 +886,162 @@ test('GitHub check-run API failure is a blocker rather than green or a correctio
     if (/\/check-runs/.test(path)) throw new ApiError('GitHub', 500);
     return inner(method, path, body);
   };
-  await assert.rejects(f.bridge.refresh(await f.bridge.state(f.issueId())), /500/);
+  await assert.rejects(f.bridge.refresh(await f.bridge.state(f.issueId()), { allowCorrection: true }), /500/);
   assert.equal(f.runPosts().length, 0);
+  const blocked = await f.bridge.state(f.issueId());
+  assert.equal(blocked.ciEval.verdict, 'blocked');
+  assert.match(blocked.ci[0], /invalidated|blocked/i);
+  assert.equal(blocked.ciPhase, 'blocked');
+});
+
+test('unreadable policy with a successful floor cannot pass when other required checks are undiscovered', async () => {
+  const f = fixture();
+  f.setRules([], 403);
+  f.setChecks([checkRow({ name: 'Secret scan', conclusion: 'success' })]);
+  await f.start();
+  await finishBoundPr(f);
+  const state = await f.bridge.state(f.issueId());
+  assert.equal(state.ciEval.verdict, 'blocked');
+  assert.equal(state.ciEval.policyComplete, false);
+  assert.equal(state.ciEval.policySources.protection, 'forbidden');
+  assert.doesNotMatch(state.ci[0], /CI passed/);
+  assert.equal(state.ciPhase, 'blocked');
+});
+
+test('malformed required-check policy is blocked', async () => {
+  const f = fixture();
+  f.setProtection(0, { checks: 'not-a-list' });
+  await f.start();
+  await finishBoundPr(f);
+  const state = await f.bridge.state(f.issueId());
+  assert.equal(state.ciEval.verdict, 'blocked');
+  assert.equal(state.ciEval.policySources.protection, 'malformed');
+  assert.doesNotMatch(state.ci[0], /CI passed/);
+});
+
+test('API failure after a passed evaluation invalidates persisted green evidence', async () => {
+  const f = fixture(); readablePolicy(f);
+  await f.start();
+  await finishBoundPr(f, { number: 95, branch: 'cursor/green-then-fail' });
+  assert.equal((await f.bridge.state(f.issueId())).ciEval.verdict, 'passed');
+  const inner = f.bridge.github;
+  f.bridge.github = async (method, path, body) => {
+    if (/check-runs\?per_page=100&page=2/.test(path)) throw new ApiError('GitHub', 502);
+    return inner(method, path, body);
+  };
+  const rows = [];
+  for (let i = 0; i < 101; i++) rows.push(checkRow({ id: i + 1, name: `ok-${i}` }));
+  f.setChecks(rows);
+  await assert.rejects(f.bridge.refresh(await f.bridge.state(f.issueId())), /502/);
+  const state = await f.bridge.state(f.issueId());
+  assert.equal(state.ciEval.verdict, 'blocked');
+  assert.match(state.ci[0], /invalidated|blocked/i);
+  assert.notEqual(state.ciEval.verdict, 'passed');
+});
+
+test('definite automatic correction rejections are terminal and never replayed', async () => {
+  async function assertOnePost(status) {
+    const f = fixture(); readablePolicy(f);
+    f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
+    f.rejectFollowup(status);
+    await f.start(CORRECTION_START);
+    await finishBoundPr(f, { number: 100 + status, branch: `cursor/rej-${status}` });
+    assert.equal(f.runPosts().length, 1);
+    assert.equal((await f.bridge.state(f.issueId())).ciCorrectionIntent.status, 'rejected');
+    f.setChecks([checkRow({ name: 'other-job', conclusion: 'failure' })]);
+    await f.bridge.run('schedule', f.event({}));
+    await f.bridge.run('check_suite', { repository: { full_name: REPO } });
+    await f.bridge.refresh(await f.bridge.state(f.issueId()), { allowCorrection: true });
+    assert.equal(f.runPosts().length, 1);
+  }
+  await assertOnePost(403);
+  await assertOnePost(429);
+});
+
+test('cancel of a finished opted-in failure does not launch a correction', async () => {
+  const f = fixture(); readablePolicy(f);
+  f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
+  await f.start(CORRECTION_START);
+  const pr = attachPr(f, { number: 110, branch: 'cursor/fin-cancel' });
+  f.finish();
+  [...f.agents.values()][0].run.git.branches = [{ branch: pr.branch, prUrl: `https://github.com/${REPO}/pull/${pr.number}` }];
+  await f.bridge.cancel(await f.bridge.state(f.issueId()));
+  assert.equal(f.runPosts().length, 0);
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal(f.runPosts().length, 0);
+  assert.equal((await f.bridge.state(f.issueId())).suppressAutoCorrect, true);
+});
+
+test('missed cancel is consumed before automatic correction', async () => {
+  const f = fixture(); readablePolicy(f);
+  f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
+  await f.start(CORRECTION_START);
+  const pr = attachPr(f, { number: 111, branch: 'cursor/missed-cancel' });
+  f.finish();
+  [...f.agents.values()][0].run.git.branches = [{ branch: pr.branch, prUrl: `https://github.com/${REPO}/pull/${pr.number}` }];
+  const issue = f.issueId();
+  f.comments.get(issue).push({
+    id: 801, body: '/cursor cancel', user: { login: 'paulventer01' },
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  });
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal(f.runPosts().length, 0);
+});
+
+test('manual follow-up takes precedence over automatic correction', async () => {
+  const f = fixture(); readablePolicy(f);
+  f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
+  await f.start(CORRECTION_START);
+  const pr = attachPr(f, { number: 112, branch: 'cursor/manual-first' });
+  f.finish();
+  [...f.agents.values()][0].run.git.branches = [{ branch: pr.branch, prUrl: `https://github.com/${REPO}/pull/${pr.number}` }];
+  const issue = f.issueId();
+  f.comments.get(issue).push({
+    id: 802, body: '/cursor follow-up\nFix the bounded issue.', user: { login: 'paulventer01' },
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  });
+  await f.bridge.run('schedule', f.event({}));
+  assert.equal(f.runPosts().length, 1);
+  assert.match(f.runPosts()[0][3].prompt.text, /Fix the bounded issue/);
+});
+
+test('status observes without launching automatic correction', async () => {
+  const f = fixture(); readablePolicy(f);
+  f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
+  await f.start(CORRECTION_START);
+  const pr = attachPr(f, { number: 113, branch: 'cursor/status-obs' });
+  f.finish();
+  [...f.agents.values()][0].run.git.branches = [{ branch: pr.branch, prUrl: `https://github.com/${REPO}/pull/${pr.number}` }];
+  await f.bridge.status(await f.bridge.state(f.issueId()), { key: 'comment:status-obs' });
+  assert.equal(f.runPosts().length, 0);
+  assert.equal((await f.bridge.state(f.issueId())).ciEval.verdict, 'failed');
+});
+
+test('correction opt-in requires consecutive leading headers and ignores quoted examples', async () => {
+  const now = Date.parse('2026-01-01T00:00:00Z');
+  assert.equal(parseCiCorrectionAuth('ci-correction: authorized\nci-correction-window: 1h\nDo the task.', now).enabled, true);
+  assert.equal(parseCiCorrectionAuth('ci-correction: authorized\nci-correction-window: 1h\nDo the task.', now).hours, 1);
+  assert.equal(parseCiCorrectionAuth('ci-correction: authorized\nci-correction-window: 72h\nDo the task.', now).hours, 72);
+  assert.equal(parseCiCorrectionAuth('Please implement.\nci-correction: authorized\nci-correction-window: 24h', now).enabled, false);
+  assert.equal(parseCiCorrectionAuth('```\nci-correction: authorized\nci-correction-window: 24h\n```\nTask', now).enabled, false);
+  assert.equal(parseCiCorrectionAuth('ci-correction: authorized\nci-correction-window: 24h\nci-correction-window: 12h\nTask', now).enabled, false);
+  assert.equal(parseCiCorrectionAuth('ci-correction-window: 24h\nci-correction: authorized\nTask', now).enabled, false);
+  assert.equal(parseCiCorrectionAuth('ci-correction: authorized\nci-correction-window: 99h\nTask', now).enabled, false);
+  assert.equal(parseCiCorrectionAuth('ci-correction: authorized\nDo the task.', now).enabled, false);
+  const f = fixture();
+  await f.start('See this example:\nci-correction: authorized\nci-correction-window: 24h\nReal task.');
+  assert.equal((await f.bridge.state(f.issueId())).ciCorrectionAuth.enabled, false);
+});
+
+test('a newer pending check without started_at is not hidden by an older success', () => {
+  const latest = latestChecks([
+    checkRow({ id: 1, name: 'bridge-tests', conclusion: 'success', started_at: '2026-01-01T00:00:00Z' }),
+    {
+      id: 2, name: 'bridge-tests', status: 'in_progress', conclusion: null,
+      started_at: undefined, completed_at: undefined, app: { id: 15368 },
+    },
+  ]);
+  assert.equal(latest.length, 1);
+  assert.equal(latest[0].id, 2);
+  assert.equal(latest[0].status, 'in_progress');
 });
