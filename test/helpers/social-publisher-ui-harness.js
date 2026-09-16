@@ -8,10 +8,18 @@ const React = require('react');
 const { JSDOM } = require('jsdom');
 const { act } = React;
 
-async function waitFor(pred, tries = 20) {
+async function waitFor(pred, tries = 20, label = 'condition') {
+  let ok = false;
   await act(async () => {
-    for (let i = 0; i < tries && !pred(); i++) await new Promise((r) => setTimeout(r, 25));
+    for (let i = 0; i < tries; i++) {
+      if (pred()) {
+        ok = true;
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
   });
+  if (!ok) throw new Error(`Timed out waiting for ${label}`);
 }
 
 function load(file) {
@@ -157,9 +165,9 @@ async function publisherHarness(t, opts = {}) {
     clickSaveDraft,
     openCalendar: () => clickTab('Calendar'),
     editDraftFromCalendar,
-    waitForAlert: () => waitFor(() => !!dom.window.document.querySelector('[role="alert"]')),
-    waitForCalendarDrafts: () => waitFor(() => dom.window.document.body.textContent.includes('Unscheduled drafts')),
-    waitForDraftEditor: (id) => waitFor(() => dom.window.document.body.textContent.includes(`draft #${id}`)),
+    waitForAlert: () => waitFor(() => !!dom.window.document.querySelector('[role="alert"]'), 20, 'role=alert'),
+    waitForCalendarDrafts: () => waitFor(() => dom.window.document.body.textContent.includes('Content calendar'), 40, 'calendar view'),
+    waitForDraftEditor: (id) => waitFor(() => dom.window.document.body.textContent.includes(`draft #${id}`), 20, `draft #${id} editor`),
     state,
     waitFor,
   };

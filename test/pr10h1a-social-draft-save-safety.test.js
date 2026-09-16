@@ -88,6 +88,8 @@ describe('PR-1a social draft save gates (CR-055–CR-057)', () => {
       });
       assert.equal(created.status, 200);
       assert.ok((created.body.content_safety_warnings || created.body.draft?.content_safety_warnings || []).length >= 1);
+      const got = await jsonFetch(server, 'GET', `/api/social-drafts/${created.body.draft.id}`);
+      assert.ok((got.body.draft.content_safety_warnings || []).length >= 1);
       const out = await gateRouteText({ tenantId: 1, text: socialDraftGateText({ text: PROHIBITED }), surface: 'social_drafts' });
       assert.equal(out.ok, true);
       assert.ok((out.warnings || out.content_safety_warnings || []).length >= 1);
@@ -123,7 +125,7 @@ describe('PR-1a social draft save gates (CR-055–CR-057)', () => {
 
   it('gates merged PATCH and rejects cross-tenant edits', async () => {
     const created = await jsonFetch(server, 'POST', '/api/social-drafts', {
-      body: { profileId: 'p1', text: SAFE_TEXT, platforms: ['instagram'] },
+      body: { profileId: 'p1', text: SAFE_TEXT, platforms: ['instagram'], meta: { alt_text: 'Existing alt' } },
     });
     const id = created.body.draft.id;
     assert.equal((await jsonFetch(server, 'PATCH', `/api/social-drafts/${id}`, { body: { text: PROHIBITED } })).status, 403);
@@ -132,7 +134,15 @@ describe('PR-1a social draft save gates (CR-055–CR-057)', () => {
     }
     const got = await jsonFetch(server, 'GET', `/api/social-drafts/${id}`);
     assert.equal(got.body.draft.text, SAFE_TEXT);
-    assert.equal((await jsonFetch(server, 'PATCH', `/api/social-drafts/${id}`, { tid: 99, body: { text: 'Tenant B takeover' } })).status, 404);
+    assert.equal(got.body.draft.meta?.alt_text, 'Existing alt');
+    const forged = await jsonFetch(server, 'PATCH', `/api/social-drafts/${id}`, {
+      tid: 99,
+      body: { text: 'Tenant B takeover' },
+    });
+    assert.equal(forged.status, 404);
+    const reloaded = await jsonFetch(server, 'GET', `/api/social-drafts/${id}`, { tid: 11 });
+    assert.equal(reloaded.body.draft.text, SAFE_TEXT);
+    assert.equal(reloaded.body.draft.meta?.alt_text, 'Existing alt');
   });
 
   it('validates bulk atomically and rolls back memory inserts on failure', async () => {

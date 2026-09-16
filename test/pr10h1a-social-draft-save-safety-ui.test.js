@@ -38,6 +38,7 @@ test('SocialPublisher shows content_safety_unavailable without clearing the edit
   });
   await saveBlockedCaption(h, 'Draft text stays put.');
   assert.match(h.document.querySelector('[role="alert"]').textContent, /temporarily unavailable/);
+  assert.equal(h.captionInput().value, 'Draft text stays put.');
 });
 
 test('SocialPublisher keeps prior warnings visible when save is blocked', async (t) => {
@@ -60,7 +61,7 @@ test('SocialPublisher keeps prior warnings visible when save is blocked', async 
   await h.waitForCalendarDrafts();
   await h.editDraftFromCalendar('Existing caption');
   await h.waitForDraftEditor(42);
-  await waitFor(() => h.text().includes('Prior warning stays visible'));
+  await waitFor(() => h.text().includes('Prior warning stays visible'), 20, 'seeded warnings');
   await saveBlockedCaption(h);
   assert.match(h.text(), /Prior warning stays visible/);
 });
@@ -83,7 +84,7 @@ test('SocialPublisher displays saved content_safety_warnings after successful sa
   await h.setCaption('Benign caption');
   await h.selectInstagram();
   await h.clickSaveDraft();
-  await waitFor(() => h.text().includes('Warning-only phrase flagged'));
+  await waitFor(() => h.text().includes('Warning-only phrase flagged'), 20, 'saved warnings');
   assert.match(h.text(), /Draft saved/);
 });
 
@@ -108,16 +109,17 @@ test('SocialPublisher preserves edits made while a save is in flight', async (t)
   await h.setCaption('Initial save caption.');
   await h.selectInstagram();
   await h.clickSaveDraft();
+  await waitFor(() => h.state.postCalls.length === 1, 20, 'save request initiation');
   await h.setCaption('Edited again while saving.');
   await act(async () => finish());
-  await waitFor(() => h.text().includes('Saved warning.'));
+  await waitFor(() => h.text().includes('Saved warning.'), 20, 'saved warning banner');
   assert.equal(h.captionInput().value, 'Edited again while saving.');
 });
 
-test('SocialPublisher stale save guards ignore late blocked responses and clear alerts on draft switch', async (t) => {
+test('SocialPublisher ignores a late blocked save response after switching drafts', async (t) => {
   let finish;
   const draftA = { id: 42, profile_id: 'prof1', status: 'draft', text: 'Draft A baseline', platforms: ['instagram'], meta: {}, content_safety_warnings: [] };
-  const draftB = { id: 43, profile_id: 'prof1', status: 'draft', text: 'Draft B caption', platforms: ['linkedin'], meta: {}, content_safety_warnings: ['Second draft baseline warning.'] };
+  const draftB = { id: 43, profile_id: 'prof1', status: 'draft', text: 'Draft B caption', platforms: ['linkedin'], meta: {}, content_safety_warnings: [] };
   const h = await publisherHarness(t, {
     drafts: { 42: draftA, 43: draftB },
     saveHandler: async ({ method, draftId }) => new Promise((resolve) => {
@@ -132,13 +134,47 @@ test('SocialPublisher stale save guards ignore late blocked responses and clear 
   await h.waitForCalendarDrafts();
   await h.editDraftFromCalendar('Draft A baseline');
   await h.waitForDraftEditor(42);
-  await saveBlockedCaption(h, 'Draft A pending save.');
+  await h.setCaption('Draft A pending save.');
+  await h.selectInstagram();
+  await h.clickSaveDraft();
+  await waitFor(() => h.state.patchCalls.length === 1, 20, 'patch save initiation');
   await h.openCalendar();
   await h.waitForCalendarDrafts();
   await h.editDraftFromCalendar('Draft B caption');
   await h.waitForDraftEditor(43);
   await act(async () => { assert.ok(finish); finish(); });
-  await waitFor(() => h.captionInput().value === 'Draft B caption');
+  await waitFor(() => h.captionInput().value === 'Draft B caption', 20, 'draft B editor');
+  assert.equal(h.document.querySelector('[role="alert"]'), null);
+});
+
+test('switching drafts clears the prior save alert', async (t) => {
+  const secondDraft = {
+    id: 43,
+    profile_id: 'prof1',
+    status: 'draft',
+    text: 'Second draft caption',
+    media_urls: [],
+    platforms: ['linkedin'],
+    scheduled_for: '2026-09-20T10:00:00.000Z',
+    meta: {},
+    content_safety_warnings: ['Second draft baseline warning.'],
+  };
+  const h = await publisherHarness(t, {
+    drafts: { 43: secondDraft },
+    saveHandler: async () => ({
+      ok: false,
+      error: 'content_safety_blocked',
+      userMessage: 'Draft A save blocked.',
+      httpStatus: 403,
+    }),
+  });
+  await saveBlockedCaption(h, 'Blocked caption attempt.');
+  assert.match(h.document.querySelector('[role="alert"]').textContent, /Draft A save blocked/);
+  await h.openCalendar();
+  await h.waitForCalendarDrafts();
+  await h.editDraftFromCalendar('Second draft caption');
+  await waitFor(() => h.captionInput().value.includes('Second draft'), 20, 'second draft editor');
   assert.equal(h.document.querySelector('[role="alert"]'), null);
   assert.match(h.text(), /Second draft baseline warning/);
+  assert.equal(h.captionInput().value, 'Second draft caption');
 });
