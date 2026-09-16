@@ -9,9 +9,16 @@ const {once}=require('node:events');
 const ROOT=path.resolve(__dirname,'../..'), ORIGIN='http://127.0.0.1:5000';
 test('preview boots, authenticates, renders the journey and preserves its account across restart', {timeout:360000},async t=>{
   assert.equal(process.env.INFOGENIE_REQUIRE_PREVIEW_TEST,'1','Run only against the disposable preview CI database');
-  let child,browser,log='';
+  let child,browser,page,log='',stage='startup';
   const stop=async()=>{if(child && child.exitCode===null){const ended=once(child,'exit');child.kill('SIGTERM');await ended;}child=null;};
-  t.after(async()=>{await browser?.close();await stop();});
+  t.after(async()=>{
+    fs.mkdirSync('/tmp/preview-artifacts',{recursive:true});
+    if(page){await page.screenshot({path:'/tmp/preview-artifacts/last-screen.png',fullPage:true}).catch(()=>{});
+      t.diagnostic('Last stage: '+stage+'; URL: '+page.url());
+      t.diagnostic((await page.evaluate(()=>document.body.innerText).catch(()=>'' )).slice(0,7000));}
+    t.diagnostic(log);
+    await browser?.close();await stop();
+  });
   async function start(){
     child=spawn(process.execPath,['scripts/preview/start.js'],{cwd:ROOT,env:process.env,stdio:['ignore','pipe','pipe']});
     for(const stream of [child.stdout,child.stderr]) stream.on('data',chunk=>{log=(log+chunk).slice(-18000);});
@@ -29,7 +36,7 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
   assert.equal(fs.statSync(accessPath).mode&0o777,0o600);
   assert.equal(account.email,'reviewer@example.test');
   browser=await require('puppeteer').launch({headless:true,pipe:true,args:['--disable-dev-shm-usage']});
-  const page=await browser.newPage(); page.setDefaultTimeout(60000);
+  page=await browser.newPage(); page.setDefaultTimeout(60000);
   const externalResponses=[];
   page.on('response',r=>{const u=new URL(r.url());if(['http:','https:'].includes(u.protocol) && u.origin!==ORIGIN) externalResponses.push(u.origin);});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -38,20 +45,27 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
     assert.match(documentResponse.headers()['content-security-policy'],/connect-src 'self'(;|$)/);
     assert.equal(await page.$('#ms-clarity'),null);
     await page.waitForFunction(()=>document.body.innerText.includes('Preview login'));
+    stage='fill login';
     await page.locator('#email').fill(account.email);await page.locator('#pass').fill(account.password);
+    stage='submit login';
     const [response]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/auth/login' && r.request().method()==='POST'),
       page.locator('form button[type="submit"]').click()]);
     assert.equal(response.status(),200);
+    stage='load client selector';
     await page.waitForSelector('select[name="client_id"]:enabled');
   }
   await page.setViewport({width:1440,height:1000});await login();
+  stage='select client';
   await page.select('select[name="client_id"]',String(account.clientId));
   await page.waitForSelector('form[aria-label="Reporting profile"]');
   assert.equal(await page.$$eval('nav[aria-label="Reporting journey"] button',items=>items.length),4);
   assert.ok(await page.evaluate(()=>document.body.innerText.includes('Test workspace')));
+  stage='edit report title';
   await page.locator('[name="report_title"]').fill('DEMO — Monthly client review');
+  stage='save report';
   await Promise.all([page.waitForResponse(r=>r.request().method()==='PUT' && new URL(r.url()).pathname.endsWith('/profile')),
     page.locator('form[aria-label="Reporting profile"] button[type="submit"]').click()]);
+  stage='load saved report';
   await page.waitForSelector('#report-review [aria-label="Client report preview"]');
   fs.mkdirSync('/tmp/preview-artifacts',{recursive:true});
   await page.screenshot({path:'/tmp/preview-artifacts/reporting-desktop.png',fullPage:true});

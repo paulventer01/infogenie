@@ -756,3 +756,8 @@
 .skipLink:focus {top:12px;}
 .previewNotice {background:#e5f1e9;color:#174534;border-bottom:1px solid #c8dfd0;padding:10px 24px;font-size:12px;line-height:1.6;}
 @media(prefers-reduced-motion:reduce){.shell * {transition:none;scroll-behavior:auto;}}
+@media(max-width:640px){
+  .topbar,.topbarRight{flex-wrap:wrap;}
+  .topbarRight{max-width:100%;}
+  .topbar :global(#ig-live-timer-slot):empty{display:none !important;}
+}
