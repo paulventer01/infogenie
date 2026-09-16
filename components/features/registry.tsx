@@ -36,6 +36,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "web-vitals": L("web-vitals", () => import("@/components/features/reach/WebVitals")),
   "tech-stack": L("tech-stack", () => import("@/components/features/analyse/TechStack")),
   "growth-methodology": L("growth-methodology", () => import("@/components/features/manage/GrowthMethodology")),
+  "marketing-plan": L("marketing-plan", () => import("@/components/features/manage/MarketingPlan")),
   "white-label": L("white-label", () => import("@/components/features/manage/WhiteLabel")),
   "bulk-reports": L("bulk-reports", () => import("@/components/features/manage/BulkReports")),
   "model-compare": L("model-compare", () => import("@/components/features/manage/ModelCompare")),

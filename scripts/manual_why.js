@@ -146,6 +146,7 @@ module.exports = {
   'journey-builder': 'Use for any flow with more than one step — visual node graphs prevent the "it sent twice / it never sent" bugs of stitched-together drips.',
   'omnichannel': 'Best for time-critical announcements (sale, outage, event) — fan one message across every channel so no segment misses it.',
   'bookings': 'Use the moment you stop wanting to email-ping-pong about times — a public booking link removes 5+ message rounds per meeting.',
+  'marketing-plan': 'Best when you need a single revenue plan — walk Goal → Optimization, save the artifact, then jump into the matching InfoGenie tool for each step.',
   'growth-methodology': 'Best as a quarterly sanity check — confirms you have a tool firing in every funnel stage instead of only optimising one.',
   'brand-calendar': 'Use as your single source of truth for "what is going out this month" — one view across all 10 channels prevents collisions.',
   'budget-board': 'Best for monthly spend discipline — actual vs target with channel breakdowns turns "we overspent" into "we overspent on Meta".',
