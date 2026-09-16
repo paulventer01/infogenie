@@ -72,6 +72,8 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
   await page.waitForSelector('#report-review [aria-label="Client report preview"]');
   fs.mkdirSync('/tmp/preview-artifacts',{recursive:true});
   await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+  await page.waitForFunction(()=>document.querySelector('[name="report_title"]')?.value==='DEMO — Monthly client review' && !document.body.innerText.includes('Verifying account, workspace'));
+  assert.equal(await page.$eval('button[aria-current="page"]',el=>getComputedStyle(el).color),'rgb(255, 255, 255)');
   await page.screenshot({path:'/tmp/preview-artifacts/reporting-desktop.png',fullPage:true});
   await page.setViewport({width:390,height:844});
   await page.waitForFunction(()=>document.querySelector('#report-client').getBoundingClientRect().right<=innerWidth && document.documentElement.scrollWidth<=innerWidth+1,{timeout:5000});

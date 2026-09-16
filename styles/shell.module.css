@@ -750,6 +750,7 @@
 .navCaption {font-size:10px;letter-spacing:.14em;font-weight:800;color:var(--shell-muted);padding:8px 14px 4px;margin:0;}
 .reportingLink {display:flex;align-items:center;gap:12px;width:100%;padding:14px;border:1px solid var(--shell-line);border-radius:10px;margin:0 0 16px;background:var(--shell-rail-2);color:var(--shell-ink);text-align:left;font:inherit;font-size:13px;font-weight:750;cursor:pointer;}
 .reportingLink[aria-current="page"] {background:#123f39;color:#fff;border-color:#123f39;}
+.reportingLink[aria-current="page"],.reportingLink[aria-current="page"] * {color:#fff!important;-webkit-text-fill-color:#fff!important;}
 .reportingLink:focus-visible,.railSearch input:focus-visible {outline:3px solid #16816c;outline-offset:2px;}
 .shellCollapsed .navCaption {display:none;}
 .skipLink {position:fixed;left:16px;top:-100px;z-index:2000;background:#fff;color:#123f39;padding:12px 20px;border:2px solid #123f39;border-radius:8px;}
