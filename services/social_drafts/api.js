@@ -85,15 +85,16 @@ function _oversizedDraftResponse(draft) {
   return oversized;
 }
 
-const _SAFETY_UNAVAILABLE_MSG = {
-  'social-drafts:create': 'Content safety checks are temporarily unavailable. Save was stopped to protect your brand.',
-  'social-drafts:patch': 'Content safety checks are temporarily unavailable. Save was stopped to protect your brand.',
-  'social-drafts:bulk': 'Content safety checks are temporarily unavailable. Bulk save was stopped to protect your brand.',
-  'social-drafts:self-heal': 'Content safety checks are temporarily unavailable. Self-heal was stopped to protect your brand.',
-  'social-drafts:submit-approval': 'Content safety checks are temporarily unavailable. Approval submit was stopped to protect your brand.',
-  'social-drafts:approve': 'Content safety checks are temporarily unavailable. Approval was stopped to protect your brand.',
-  'social-drafts:publish': 'Content safety checks are temporarily unavailable. Publish was stopped to protect your brand.',
-};
+function _safetyUnavailableMsg(label) {
+  const action = ({
+    'social-drafts:self-heal': 'Self-heal',
+    'social-drafts:submit-approval': 'Approval submit',
+    'social-drafts:approve': 'Approval',
+    'social-drafts:publish': 'Publish',
+    'social-drafts:bulk': 'Bulk save',
+  })[label] || 'Save';
+  return `Content safety checks are temporarily unavailable. ${action} was stopped to protect your brand.`;
+}
 
 async function _gateSocialDraft(req, tid, draft, label) {
   const oversized = _oversizedDraftResponse(draft);
@@ -111,25 +112,39 @@ async function _gateSocialDraft(req, tid, draft, label) {
     return {
       ok: false,
       error: 'content_safety_unavailable',
-      userMessage: _SAFETY_UNAVAILABLE_MSG[label] || 'Content safety checks are temporarily unavailable.',
+      userMessage: _safetyUnavailableMsg(label),
       warnings: [],
     };
   }
 }
 
 function _safetyGateFailure(gated) {
-  return {
-    ok: false,
-    safety_blocked: true,
-    error: gated.error,
-    userMessage: gated.userMessage,
-    warnings: gated.warnings || [],
-  };
+  return { ...gated, ok: false, safety_blocked: true, warnings: gated.warnings || [] };
 }
 
 function _safetyBlockResponse(res, gated) {
   const status = gated.error === 'content_safety_unavailable' ? 503 : 403;
   return res.status(status).json(contentSafetyHttpBody(gated));
+}
+
+function _respondGateFailure(res, gated) {
+  if (gated.ok) return false;
+  if (gated.error === 'content_too_long') {
+    res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
+    return true;
+  }
+  _safetyBlockResponse(res, gated);
+  return true;
+}
+
+function _respondVersionWriteFailure(res, writeResult) {
+  const code = writeResult.error === 'not found' ? 404 : 409;
+  return res.status(code).json({ ok: false, error: writeResult.error, draft: writeResult.draft || undefined });
+}
+
+function _versionWriteBlockedReason(existing, requireStatuses) {
+  if (requireStatuses && !requireStatuses.includes(existing.status)) return `invalid status "${existing.status}"`;
+  return _userPatchBlockedReason(existing);
 }
 
 async function _tid(req, label) {
@@ -466,80 +481,20 @@ async function _updateUserDraft(tid, id, expected, patch) {
     const stale = _userPatchStaleReason(expected, existing);
     if (stale) return { ok: false, error: stale, draft: existing };
   }
-
   if (_publishApproval.patchInvalidatesApproval(existing, patch)) {
     Object.assign(patch, _publishApproval.invalidateApprovalPatch(existing));
   }
-  const next = _applyDraftPatch(existing, patch);
-  const warnings = patch.content_safety_warnings !== undefined
-    ? _parseWarnings(patch.content_safety_warnings)
-    : existing.content_safety_warnings || [];
-  if (_db.hasDb()) {
-    const expectedAt = existing.updated_at;
-    const p = await _db.getPool();
-    const r = await p.query(
-      `UPDATE social_post_drafts SET
-         profile_id=$1, status=$2, text=$3,
-         media_urls=$4::jsonb, platforms=$5::jsonb,
-         scheduled_for=$6, meta=$7::jsonb,
-         content_safety_warnings=$8::jsonb,
-         updated_at=NOW()
-       WHERE id=$9 AND tenant_id=$10
-         AND status NOT IN ('published', 'scheduled', 'delivery_unknown')
-         AND zernio_post_id IS NULL
-         AND COALESCE(meta->>'published_at', '') = ''
-         AND COALESCE(meta->>'delivery_outcome', '') <> 'unknown'
-         AND COALESCE(meta->>'publishing_claim', '') = ''
-         AND FLOOR(EXTRACT(EPOCH FROM updated_at) * 1000) = $11::bigint
-       RETURNING *`,
-      [
-        next.profile_id,
-        next.status,
-        next.text || '',
-        JSON.stringify(next.media_urls || []),
-        JSON.stringify(next.platforms || []),
-        next.scheduled_for || null,
-        JSON.stringify(next.meta || {}),
-        JSON.stringify(warnings),
-        id,
-        tid,
-        _updatedAtMs({ updated_at: expectedAt }),
-      ],
-    );
-    if (r.rows[0]) return { ok: true, draft: _rowOut(r.rows[0]) };
-    const current = await _getDraft(tid, id);
-    if (!current) return { ok: false, error: 'not found' };
-    return { ok: false, error: _userPatchStaleReason(expected || existing, current) || _userPatchBlockedReason(current) || 'conflict', draft: current };
-  }
-
-  const list = _memList(tid);
-  const idx = list.findIndex((r) => String(r.id) === String(id));
-  if (idx < 0) return { ok: false, error: 'not found' };
-  const current = list[idx];
-  const stale = _userPatchStaleReason(expected || existing, current);
-  if (stale) return { ok: false, error: stale, draft: _rowOut(current) };
-  const currentBlocked = _userPatchBlockedReason(current);
-  if (currentBlocked) return { ok: false, error: currentBlocked, draft: _rowOut(current) };
-  const written = {
-    ..._applyDraftPatch(current, patch),
-    content_safety_warnings: warnings,
-  };
-  list[idx] = written;
-  return { ok: true, draft: _rowOut(written) };
+  return _updateDraftAtVersion(tid, id, expected, patch, { userPatch: true });
 }
 
 function _sanitizeSelfHealResponse(selfHeal) {
   if (!selfHeal) return null;
   const attempts = selfHeal.attempts;
-  return {
-    passed: !!selfHeal.passed,
-    final_verdict: selfHeal.final_verdict || null,
-    attempts: Array.isArray(attempts) ? attempts.length : (Number(attempts) || 0),
-    healed: selfHeal.healed === true,
-  };
+  return { passed: !!selfHeal.passed, final_verdict: selfHeal.final_verdict || null, attempts: Array.isArray(attempts) ? attempts.length : (Number(attempts) || 0), healed: selfHeal.healed === true };
 }
 
 async function _updateDraftAtVersion(tid, id, expected, patch, opts = {}) {
+  const userPatch = !!opts.userPatch;
   const requireStatuses = opts.requireStatuses || null;
   const existing = await _getDraft(tid, id);
   if (!existing) return { ok: false, error: 'not found' };
@@ -547,17 +502,12 @@ async function _updateDraftAtVersion(tid, id, expected, patch, opts = {}) {
     const stale = _userPatchStaleReason(expected, existing);
     if (stale) return { ok: false, error: stale, draft: existing };
   }
-  if (requireStatuses && !requireStatuses.includes(existing.status)) {
-    return { ok: false, error: `invalid status "${existing.status}"`, draft: existing };
-  }
-  if (_hasUnresolvedPublishingClaim(existing.meta)) {
-    return { ok: false, error: 'publish_in_progress', draft: existing };
-  }
-  if (_isDeliveryUnknown(existing)) {
-    return { ok: false, error: 'delivery_unknown', draft: existing };
-  }
-  if (existing.status === 'published' || existing.status === 'scheduled' || existing.zernio_post_id || existing.meta?.published_at) {
-    return { ok: false, error: 'already_published', draft: existing };
+  if (userPatch) {
+    const blocked = _userPatchBlockedReason(existing);
+    if (blocked) return { ok: false, error: blocked, draft: existing };
+  } else {
+    const blocked = _versionWriteBlockedReason(existing, requireStatuses);
+    if (blocked) return { ok: false, error: blocked, draft: existing };
   }
 
   const next = _applyDraftPatch(existing, patch);
@@ -581,8 +531,10 @@ async function _updateDraftAtVersion(tid, id, expected, patch, opts = {}) {
       tid,
       _updatedAtMs({ updated_at: expectedAt }),
     ];
-    let statusClause = '';
-    if (requireStatuses) {
+    let statusClause = userPatch
+      ? `AND status NOT IN ('published', 'scheduled', 'delivery_unknown')`
+      : '';
+    if (!userPatch && requireStatuses) {
       params.push(requireStatuses);
       statusClause = `AND status = ANY($${params.length}::text[])`;
     }
@@ -606,13 +558,12 @@ async function _updateDraftAtVersion(tid, id, expected, patch, opts = {}) {
     if (r.rows[0]) return { ok: true, draft: _rowOut(r.rows[0]) };
     const current = await _getDraft(tid, id);
     if (!current) return { ok: false, error: 'not found' };
-    if (requireStatuses && !requireStatuses.includes(current.status)) {
-      return { ok: false, error: `invalid status "${current.status}"`, draft: current };
+    if (userPatch) {
+      return { ok: false, error: _userPatchStaleReason(expected || existing, current) || _userPatchBlockedReason(current) || 'conflict', draft: current };
     }
-    let err = _userPatchStaleReason(expected || existing, current);
-    if (!err && _hasUnresolvedPublishingClaim(current.meta)) err = 'publish_in_progress';
-    if (!err && _isDeliveryUnknown(current)) err = 'delivery_unknown';
-    if (!err) err = 'conflict';
+    const blocked = _versionWriteBlockedReason(current, requireStatuses);
+    if (blocked) return { ok: false, error: blocked, draft: current };
+    const err = _userPatchStaleReason(expected || existing, current) || 'conflict';
     return { ok: false, error: err, draft: current };
   }
 
@@ -622,12 +573,10 @@ async function _updateDraftAtVersion(tid, id, expected, patch, opts = {}) {
   const current = list[idx];
   const stale = _userPatchStaleReason(expected || existing, current);
   if (stale) return { ok: false, error: stale, draft: _rowOut(current) };
-  if (requireStatuses && !requireStatuses.includes(current.status)) {
-    return { ok: false, error: `invalid status "${current.status}"`, draft: _rowOut(current) };
-  }
-  if (_hasUnresolvedPublishingClaim(current.meta)) {
-    return { ok: false, error: 'publish_in_progress', draft: _rowOut(current) };
-  }
+  const memBlocked = userPatch
+    ? _userPatchBlockedReason(current)
+    : _versionWriteBlockedReason(current, requireStatuses);
+  if (memBlocked) return { ok: false, error: memBlocked, draft: _rowOut(current) };
   const written = {
     ..._applyDraftPatch(current, patch),
     content_safety_warnings: warnings,
@@ -945,12 +894,7 @@ router.post('/', socialDraftWriteLimiter, _safeAsync(async (req, res) => {
   if (!fields.text.trim() && !fields.media_urls.length) return _err(res, 400, 'text or media_urls required');
 
   const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(fields), 'social-drafts:create');
-  if (!gated.ok) {
-    if (gated.error === 'content_too_long') {
-      return res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
-    }
-    return _safetyBlockResponse(res, gated);
-  }
+  if (_respondGateFailure(res, gated)) return;
 
   const warnings = gated.warnings || gated.content_safety_warnings || [];
   const draft = await _insertDraft(tid, {
@@ -975,16 +919,7 @@ router.post('/bulk', socialDraftWriteLimiter, _safeAsync(async (req, res) => {
     const fields = _fieldsFromBulkItem(it, profile_id);
     if (!fields.text.trim() && !fields.media_urls.length) continue;
     const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(fields), 'social-drafts:bulk');
-    if (!gated.ok) {
-      if (gated.error === 'content_too_long') {
-        return res.status(400).json({
-          ok: false,
-          error: gated.error,
-          userMessage: gated.userMessage,
-        });
-      }
-      return _safetyBlockResponse(res, gated);
-    }
+    if (_respondGateFailure(res, gated)) return;
     prepared.push({
       ...fields,
       content_safety_warnings: gated.warnings || gated.content_safety_warnings || [],
@@ -1075,12 +1010,7 @@ router.patch('/:id', socialDraftWriteLimiter, _safeAsync(async (req, res) => {
 
   const mergedForGate = _applyDraftPatch(existing, patch);
   const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(mergedForGate), 'social-drafts:patch');
-  if (!gated.ok) {
-    if (gated.error === 'content_too_long') {
-      return res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
-    }
-    return _safetyBlockResponse(res, gated);
-  }
+  if (_respondGateFailure(res, gated)) return;
 
   patch.content_safety_warnings = gated.warnings || gated.content_safety_warnings || [];
   const updated = await _updateUserDraft(tid, req.params.id, existing, patch);
@@ -1097,13 +1027,7 @@ router.post('/:id/publish', _safeAsync(async (req, res) => {
   if (!tid) return _err(res, 400, 'no_tenant');
   const result = await _executePublishDraft(tid, req.params.id, { mode: 'direct', req });
   if (!result.ok) {
-    if (result.safety_blocked) {
-      if (result.error === 'content_too_long') {
-        return res.status(400).json({ ok: false, error: result.error, userMessage: result.userMessage });
-      }
-      const status = result.error === 'content_safety_unavailable' ? 503 : 403;
-      return res.status(status).json(contentSafetyHttpBody(result));
-    }
+    if (result.safety_blocked && _respondGateFailure(res, result)) return;
     if (result.error === 'not found') return _err(res, 404, result.error);
     const code = result.error === 'delivery_unknown' ? 409 : 400;
     return res.status(code).json({ ok: false, error: result.error, draft: result.draft || undefined });
@@ -1196,12 +1120,7 @@ router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
       if (!self_heal.passed && self_heal.final_verdict === 'fail' && req.body?.force !== true) {
         const failedCandidate = _applyDraftPatch(snapshot, { text: candidateText });
         const gatedFail = await _gateSocialDraft(req, tid, _draftShapeForGate(failedCandidate), 'social-drafts:submit-approval');
-        if (!gatedFail.ok) {
-          if (gatedFail.error === 'content_too_long') {
-            return res.status(400).json({ ok: false, error: gatedFail.error, userMessage: gatedFail.userMessage });
-          }
-          return _safetyBlockResponse(res, gatedFail);
-        }
+        if (_respondGateFailure(res, gatedFail)) return;
         return res.status(400).json({
           ok: false,
           error: 'self_heal_failed',
@@ -1216,12 +1135,7 @@ router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
 
   const candidateForGate = _applyDraftPatch(snapshot, { text: candidateText });
   const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(candidateForGate), 'social-drafts:submit-approval');
-  if (!gated.ok) {
-    if (gated.error === 'content_too_long') {
-      return res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
-    }
-    return _safetyBlockResponse(res, gated);
-  }
+  if (_respondGateFailure(res, gated)) return;
   const warnings = gated.warnings || gated.content_safety_warnings || [];
 
   const selfHealMeta = self_heal ? {
@@ -1244,10 +1158,7 @@ router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
       submitted_by: req.user?.email || req.user?.id || null,
     },
   }, { requireStatuses: ['draft', 'approved'] });
-  if (!writeResult.ok) {
-    const code = writeResult.error === 'not found' ? 404 : 409;
-    return res.status(code).json({ ok: false, error: writeResult.error, draft: writeResult.draft || undefined });
-  }
+  if (!writeResult.ok) return _respondVersionWriteFailure(res, writeResult);
   const updated = writeResult.draft;
 
   let approval_request = null;
@@ -1308,12 +1219,7 @@ router.post('/:id/self-heal', _safeAsync(async (req, res) => {
   const result = await selfHealDraft(tid, snapshot.text || '', { maxAttempts: Number(req.body?.max_attempts) || 3 });
   const candidate = _applyDraftPatch(snapshot, { text: result.text });
   const gated = await _gateSocialDraft(req, tid, _draftShapeForGate(candidate), 'social-drafts:self-heal');
-  if (!gated.ok) {
-    if (gated.error === 'content_too_long') {
-      return res.status(400).json({ ok: false, error: gated.error, userMessage: gated.userMessage });
-    }
-    return _safetyBlockResponse(res, gated);
-  }
+  if (_respondGateFailure(res, gated)) return;
   const warnings = gated.warnings || gated.content_safety_warnings || [];
   const writeResult = await _updateDraftAtVersion(tid, snapshot.id, snapshot, {
     text: result.text,
@@ -1330,10 +1236,7 @@ router.post('/:id/self-heal', _safeAsync(async (req, res) => {
       original_text: snapshot.meta?.original_text || snapshot.text,
     },
   }, { requireStatuses: ['draft', 'approved'] });
-  if (!writeResult.ok) {
-    const code = writeResult.error === 'not found' ? 404 : 409;
-    return res.status(code).json({ ok: false, error: writeResult.error, draft: writeResult.draft || undefined });
-  }
+  if (!writeResult.ok) return _respondVersionWriteFailure(res, writeResult);
   res.json(attachContentSafetyWarnings({
     ok: true,
     draft: writeResult.draft,
@@ -1363,13 +1266,7 @@ router.post('/:id/approve', _safeAsync(async (req, res) => {
     req,
   });
   if (!result.ok) {
-    if (result.safety_blocked) {
-      if (result.error === 'content_too_long') {
-        return res.status(400).json({ ok: false, error: result.error, userMessage: result.userMessage });
-      }
-      const status = result.error === 'content_safety_unavailable' ? 503 : 403;
-      return res.status(status).json(contentSafetyHttpBody(result));
-    }
+    if (result.safety_blocked && _respondGateFailure(res, result)) return;
     const code = result.error === 'delivery_unknown' ? 409 : 400;
     return res.status(code).json({ ok: false, error: result.error, draft: result.draft || undefined });
   }

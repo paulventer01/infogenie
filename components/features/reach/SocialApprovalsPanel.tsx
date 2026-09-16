@@ -69,13 +69,8 @@ export default function SocialApprovalsPanel({ onEditDraft, refreshKey = 0 }: Pr
     if (approveRequestRef.current !== reqSeq) return;
     setBusy(null);
     if (!r.ok) {
-      const code = r.error || "";
-      if (code === "content_safety_blocked" || code === "content_safety_block" || code === "content_safety_unavailable") {
-        setError(String(r.userMessage || r.error || "Approval blocked by content safety checks."));
-        setDraftWarnings((prev) => ({ ...prev, [id]: priorWarnings }));
-        return;
-      }
-      setError(r.error || "Approve failed");
+      const safetyBlocked = /content_safety_(blocked|block|unavailable)/.test(r.error || "");
+      setError(String(safetyBlocked ? (r.userMessage || r.error || "Approval blocked by content safety checks.") : (r.error || "Approve failed")));
       setDraftWarnings((prev) => ({ ...prev, [id]: priorWarnings }));
       return;
     }

@@ -169,6 +169,63 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     return editingDraftIdRef.current !== operationDraftId;
   }
 
+  async function persistActionDraft(
+    reqSeq: number,
+    operationDraftId: number | null,
+    body: Record<string, unknown>,
+    priorWarnings: string[],
+    failureLabel = "save failed",
+  ): Promise<number | null> {
+    if (operationDraftId) {
+      const pr = await apiPatch<{
+        ok: boolean;
+        error?: string;
+        userMessage?: string;
+        draft?: SocialDraft;
+        content_safety_warnings?: string[];
+      }>(`/api/social-drafts/${operationDraftId}`, body);
+      if (actionRequestRef.current !== reqSeq) return null;
+      if (actionTargetMismatch(operationDraftId)) {
+        setActionBusy(null);
+        return null;
+      }
+      if (!pr.ok) {
+        setActionBusy(null);
+        if (handleSafetyBlock(pr, priorWarnings)) {
+          setResult(null);
+          return null;
+        }
+        setResult({ color: "#991B1B", text: `❌ ${pr.userMessage || pr.error}` });
+        return null;
+      }
+      return operationDraftId;
+    }
+    const r = await apiPost<{
+      ok: boolean;
+      error?: string;
+      userMessage?: string;
+      draft?: SocialDraft;
+      content_safety_warnings?: string[];
+    }>("/api/social-drafts", body);
+    if (actionRequestRef.current !== reqSeq) return null;
+    if (!r.ok || !r.draft) {
+      setActionBusy(null);
+      if (handleSafetyBlock(r, priorWarnings)) {
+        setResult(null);
+        return null;
+      }
+      setResult({ color: "#991B1B", text: `❌ ${r.userMessage || r.error || failureLabel}` });
+      return null;
+    }
+    setEditingDraftId(r.draft.id);
+    if (actionRequestRef.current !== reqSeq) return null;
+    if (actionTargetMismatch(r.draft.id)) {
+      setActionBusy(null);
+      return null;
+    }
+    return r.draft.id;
+  }
+
   function clearSaveError() {
     setSaveError(null);
   }
@@ -527,54 +584,8 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     if (schedule) body.scheduled_for = new Date(schedule).toISOString();
     if (media.trim()) body.media_urls = [media.trim()];
 
-    if (operationDraftId) {
-      const pr = await apiPatch<{
-        ok: boolean;
-        error?: string;
-        userMessage?: string;
-        draft?: SocialDraft;
-        content_safety_warnings?: string[];
-      }>(`/api/social-drafts/${operationDraftId}`, body);
-      if (actionRequestRef.current !== reqSeq) return;
-      if (actionTargetMismatch(operationDraftId)) {
-        setActionBusy(null);
-        return;
-      }
-      if (!pr.ok) {
-        setActionBusy(null);
-        if (handleSafetyBlock(pr, priorWarnings)) {
-          setResult(null);
-          return;
-        }
-        setResult({ color: "#991B1B", text: `❌ ${pr.userMessage || pr.error}` });
-        return;
-      }
-    } else {
-      const r = await apiPost<{
-        ok: boolean;
-        error?: string;
-        userMessage?: string;
-        draft?: SocialDraft;
-        content_safety_warnings?: string[];
-      }>("/api/social-drafts", body);
-      if (actionRequestRef.current !== reqSeq) return;
-      if (!r.ok || !r.draft) {
-        setActionBusy(null);
-        if (handleSafetyBlock(r, priorWarnings)) {
-          setResult(null);
-          return;
-        }
-        setResult({ color: "#991B1B", text: `❌ ${r.userMessage || r.error || "save failed"}` });
-        return;
-      }
-      operationDraftId = r.draft.id;
-      setEditingDraftId(operationDraftId);
-      if (actionRequestRef.current !== reqSeq) return;
-      if (actionTargetMismatch(operationDraftId)) {
-        setActionBusy(null);
-        return;
-      }
-    }
+    operationDraftId = await persistActionDraft(reqSeq, operationDraftId, body, priorWarnings);
+    if (!operationDraftId) return;
 
     const sub = await apiPost<{
       ok: boolean;
@@ -635,64 +646,16 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     setActionBusy("self-heal");
     setResult({ color: "#6B7280", text: "Running self-heal (verify → fix → re-verify)…" });
 
-    if (!operationDraftId) {
-      const r = await apiPost<{
-        ok: boolean;
-        error?: string;
-        userMessage?: string;
-        draft?: SocialDraft;
-        content_safety_warnings?: string[];
-      }>("/api/social-drafts", {
+    const healBody = operationDraftId
+      ? { text: t, profileId, platforms: Array.from(selected), meta: draftMeta }
+      : {
         profileId,
         text: t,
         platforms: Array.from(selected).length ? Array.from(selected) : ["instagram"],
         meta: draftMeta,
-      });
-      if (actionRequestRef.current !== reqSeq) return;
-      if (!r.ok || !r.draft) {
-        setActionBusy(null);
-        if (handleSafetyBlock(r, priorWarnings)) {
-          setResult(null);
-          return;
-        }
-        setResult({ color: "#991B1B", text: `❌ ${r.userMessage || r.error || "save failed"}` });
-        return;
-      }
-      operationDraftId = r.draft.id;
-      setEditingDraftId(operationDraftId);
-      if (actionRequestRef.current !== reqSeq) return;
-      if (actionTargetMismatch(operationDraftId)) {
-        setActionBusy(null);
-        return;
-      }
-    } else {
-      const pr = await apiPatch<{
-        ok: boolean;
-        error?: string;
-        userMessage?: string;
-        draft?: SocialDraft;
-        content_safety_warnings?: string[];
-      }>(`/api/social-drafts/${operationDraftId}`, {
-        text: t,
-        profileId,
-        platforms: Array.from(selected),
-        meta: draftMeta,
-      });
-      if (actionRequestRef.current !== reqSeq) return;
-      if (actionTargetMismatch(operationDraftId)) {
-        setActionBusy(null);
-        return;
-      }
-      if (!pr.ok) {
-        setActionBusy(null);
-        if (handleSafetyBlock(pr, priorWarnings)) {
-          setResult(null);
-          return;
-        }
-        setResult({ color: "#991B1B", text: `❌ ${pr.userMessage || pr.error || "save failed"}` });
-        return;
-      }
-    }
+      };
+    operationDraftId = await persistActionDraft(reqSeq, operationDraftId, healBody, priorWarnings);
+    if (!operationDraftId) return;
 
     const heal = await apiPost<{
       ok: boolean;
