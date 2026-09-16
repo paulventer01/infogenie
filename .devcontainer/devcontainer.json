@@ -1,0 +1,12 @@
+{
+  "name": "InfoGenie review workspace",
+  "dockerComposeFile": "compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/infogenie",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [5000],
+  "portsAttributes": {"5000": {"label": "InfoGenie preview", "onAutoForward": "openBrowser", "visibility": "private"}},
+  "postCreateCommand": "npm ci --ignore-scripts --no-audit --no-fund",
+  "postStartCommand": "nohup npm run preview > /tmp/infogenie-preview.log 2>&1 &",
+  "remoteUser": "node"
+}

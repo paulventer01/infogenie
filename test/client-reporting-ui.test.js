@@ -26,6 +26,7 @@ function loader() {
     const mod = { exports: {} };
     new Function("exports", "require", "module", outputText)(mod.exports, (id) => id.startsWith("@/lib/") ? load(id.slice(2) + ".ts")
       : id.startsWith("@/components/") ? load(id.slice(2) + ".tsx")
+      : id.endsWith(".module.css") ? { default: {} }
       : id === "next/link" ? { default: ({ children, ...props }) => React.createElement("a", props, children) } : require(id), mod);
     cache.set(file, mod.exports); return mod.exports;
   };

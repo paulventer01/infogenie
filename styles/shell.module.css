@@ -9,21 +9,18 @@
   --shell-line: rgba(11, 18, 32, 0.1);
   --shell-accent: #0f766e;
   --shell-accent-2: #0284c7;
-  --shell-stage: #f3f6fb;
+  --shell-stage: #f4f6f5;
   --shell-stage-ink: #0b1220;
   --shell-w-open: 280px;
   --shell-w-closed: 76px;
-  --shell-topbar-bg: rgba(243, 246, 251, 0.9);
+  --shell-topbar-bg: rgba(255, 255, 255, 0.96);
   --shell-topbar-border: rgba(11, 18, 32, 0.08);
   --shell-icon-bg: #ffffff;
   --shell-icon-border: rgba(11, 18, 32, 0.1);
   --shell-icon-color: #334155;
 
   min-height: 100vh;
-  background:
-    radial-gradient(900px 420px at 85% -8%, rgba(15, 118, 110, 0.14), transparent 58%),
-    radial-gradient(700px 360px at 0% 100%, rgba(2, 132, 199, 0.1), transparent 55%),
-    linear-gradient(180deg, #eef3f9 0%, var(--shell-stage) 42%, #e8eef6 100%);
+  background: var(--shell-stage);
   color: var(--shell-stage-ink);
   font-family: var(--font-manrope), "Manrope", sans-serif;
 }
@@ -748,3 +745,14 @@
     transition: none;
   }
 }
+
+/* Review workspace: clear hierarchy, with canonical tool routes retained. */
+.navCaption {font-size:10px;letter-spacing:.14em;font-weight:800;color:var(--shell-muted);padding:8px 14px 4px;margin:0;}
+.reportingLink {display:flex;align-items:center;gap:12px;width:100%;padding:14px;border:1px solid var(--shell-line);border-radius:10px;margin:0 0 16px;background:var(--shell-rail-2);color:var(--shell-ink);text-align:left;font:inherit;font-size:13px;font-weight:750;cursor:pointer;}
+.reportingLink[aria-current="page"] {background:#123f39;color:#fff;border-color:#123f39;}
+.reportingLink:focus-visible,.railSearch input:focus-visible {outline:3px solid #16816c;outline-offset:2px;}
+.shellCollapsed .navCaption {display:none;}
+.skipLink {position:fixed;left:16px;top:-100px;z-index:2000;background:#fff;color:#123f39;padding:12px 20px;border:2px solid #123f39;border-radius:8px;}
+.skipLink:focus {top:12px;}
+.previewNotice {background:#e5f1e9;color:#174534;border-bottom:1px solid #c8dfd0;padding:10px 24px;font-size:12px;line-height:1.6;}
+@media(prefers-reduced-motion:reduce){.shell * {transition:none;scroll-behavior:auto;}}

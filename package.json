@@ -25,7 +25,9 @@
     "eval:prompts": "node scripts/eval-prompts.js",
     "scan:secrets": "node scripts/secret-scan.js",
     "checkly:smoke": "node checkly/infogenie.checks.js",
-    "tenant:preflight": "node scripts/tenant-schema-preflight.js"
+    "tenant:preflight": "node scripts/tenant-schema-preflight.js",
+    "preview": "node scripts/preview/start.js",
+    "preview:access": "node scripts/preview/access.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",

@@ -1,0 +1,27 @@
+.workspace {background:#f4f6f5;color:#172e2a;min-height:100%;padding:32px 28px 64px;font-family:var(--font-manrope),sans-serif;}
+.inner {max-width:1120px;margin:auto;}
+.hero {padding:32px 36px;border-radius:20px;background:#123f39;color:#fff;position:relative;overflow:hidden;}
+.hero::after {content:"";position:absolute;width:220px;height:220px;border:42px solid #ffffff08;border-radius:50%;right:-80px;top:-70px;pointer-events:none;}
+.eyebrow {font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#bce8d3;margin:0 0 14px;}
+.hero h1 {font-size:clamp(27px,3vw,40px);letter-spacing:-.04em;line-height:1.15;margin:0 0 14px;font-weight:800;}
+.hero p:last-child {max-width:620px;font-size:15px;line-height:1.7;color:#d7e8e1;margin:0;}
+.steps {display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:24px 0;}
+.step {display:flex;gap:12px;text-align:left;border:1px solid #d7e1db;background:white;padding:18px 14px;border-radius:12px;color:#193b32;cursor:pointer;align-items:center;}
+.step:hover:not(:disabled) {border-color:#15765b;background:#edf7f1;}
+.step:disabled {opacity:.55;cursor:not-allowed;}
+.step:focus-visible,.section:focus-visible {outline:3px solid #13765b;outline-offset:4px;}
+.number {width:28px;height:28px;display:grid;place-items:center;flex-shrink:0;border-radius:50%;background:#e7f1ea;font-size:12px;font-weight:800;}
+.step strong {display:block;font-size:13px;}
+.step small {display:block;font-size:11px;color:#5b7168;margin-top:4px;}
+.context {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:24px 0 8px;font-size:13px;}
+.context strong {font-size:16px;}
+.pill {background:#e6eee8;color:#2b5141;padding:7px 12px;border-radius:30px;font-size:12px;font-weight:700;}
+.section {scroll-margin-top:150px;min-width:0;}
+.sectionTitle {display:flex;gap:10px;align-items:center;font-size:18px;letter-spacing:-.02em;margin:32px 0 0;}
+.workspace h2 {font-size:20px;letter-spacing:-.025em;}
+.workspace h3 {font-size:15px;}
+.workspace p {line-height:1.65;}
+.workspace input:focus-visible,.workspace select:focus-visible,.workspace button:focus-visible {outline:3px solid #16816c;outline-offset:3px;}
+.workspace button:disabled {cursor:not-allowed;}
+@media(max-width:700px){.workspace{padding:18px 12px 40px}.hero{padding:24px}.steps{grid-template-columns:repeat(2,1fr);gap:8px}.step{padding:12px 9px}.step small{display:none}.context{align-items:flex-start}}
+@media(prefers-reduced-motion:reduce){.workspace *{scroll-behavior:auto}}

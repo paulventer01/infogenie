@@ -74,3 +74,6 @@ coverage/
 /disp.txt
 /audit_index.txt
 tsconfig.tsbuildinfo
+
+# Isolated preview login, keys and process state
+/.preview-workspace/

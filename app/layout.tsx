@@ -52,11 +52,11 @@ export default function RootLayout({
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: themeInit }}
         />
-        <Script
+        {process.env.INFOGENIE_PREVIEW_WORKSPACE !== "1" && <Script
           id="ms-clarity"
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{ __html: clarityInit }}
-        />
+        />}
         <HideNextDevBadge />
         {children}
       </body>
