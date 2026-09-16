@@ -1,6 +1,7 @@
 'use strict';
 
 const { createHmac, createHash, randomUUID, timingSafeEqual } = require('node:crypto');
+const ci = require('./ci');
 const REPO = 'paulventer01/infogenie';
 const OWNER = 'paulventer01';
 const REPO_URL = `https://github.com/${REPO}`;
@@ -95,15 +96,55 @@ function notifyToken(state) {
   const key = [
     state.phase, state.branch || '', state.sha || '', state.pr?.number || '',
     state.pr?.state || '', state.pr?.merged ? 'merged' : '', state.prBlocker ? 'blocked' : '',
+    state.ciEval?.verdict || '', state.ciPhase || '', state.ciCorrectionIntent?.status || '',
   ].join('|');
   return createHash('sha256').update(key).digest('hex').slice(0, 24);
 }
 
+function correctionDeadlinePassed(state, nowMs) {
+  const deadline = Date.parse(state.ciCorrectionAuth?.deadline || '');
+  return Number.isFinite(deadline) && nowMs >= deadline;
+}
+
+function ciPhaseFor(state, nowMs) {
+  const verdict = state.ciEval?.verdict;
+  if (!verdict) return '';
+  const intent = state.ciCorrectionIntent?.status;
+  if (intent === 'pending' || intent === 'uncertain' || (intent === 'accepted' && !TERMINAL.has(state.phase))) {
+    return 'correction-running';
+  }
+  if (verdict === 'passed') return 'ci-passed-awaiting-independent-review';
+  if (verdict === 'pending') return 'ci-waiting';
+  if (verdict === 'failed') {
+    const auth = state.ciCorrectionAuth?.enabled;
+    if (auth && (state.followups >= MAX_FOLLOWUPS || correctionDeadlinePassed(state, nowMs) || intent === 'rejected')) {
+      return 'exhausted';
+    }
+    return 'ci-failed';
+  }
+  if (verdict === 'stale') return 'ci-waiting';
+  return 'blocked';
+}
+
 function nextAction(state) {
   if (state.prBlocker) return state.prBlocker;
+  if (state.ciBlocker) return state.ciBlocker;
   if (state.pr?.merged) return 'PR is merged. No further automation action.';
   if (state.pr?.state === 'closed') {
     return 'Existing PR for this branch is closed. A human can reopen it; automation will not open a second PR.';
+  }
+  if (state.ciPhase === 'correction-running') {
+    return 'Automatic CI correction is running on the bound agent/branch/PR. Human merge remains required.';
+  }
+  if (state.ciPhase === 'ci-waiting') {
+    return 'Waiting for required CI on the current PR head SHA. Missing, pending, skipped, or incomplete results are not green.';
+  }
+  if (state.ciPhase === 'exhausted' || state.ciPhase === 'blocked') {
+    return state.ciEval?.summary
+      || 'CI evaluation is blocked or the correction budget/window is exhausted. Human intervention is required.';
+  }
+  if (state.ciEval?.verdict === 'passed') {
+    return 'Required CI passed on this SHA. Independent Security/QA review is still required. This is not READY_FOR_HUMAN_MERGE; the PR stays draft and will not be merged by automation.';
   }
   if (state.pr) {
     return 'Review the draft PR. Human approval and merge remain required. This automation will not merge or mark the PR ready.';
@@ -125,7 +166,11 @@ function bindPr(pr, expectedBranch) {
   if (pr.head?.repo?.full_name && pr.head.repo.full_name !== REPO) return null;
   if (pr.base?.repo?.full_name && pr.base.repo.full_name !== REPO) return null;
   const branch = validBranch(pr.head?.ref, pr.base?.ref);
+  const base = typeof pr.base?.ref === 'string' ? pr.base.ref.replace(/^refs\/heads\//, '').trim() : '';
   if (!branch || (expectedBranch && branch !== expectedBranch)) return null;
+  if (!base || !BRANCH_RE.test(base) || base.includes('..') || base.startsWith('/') || base.endsWith('/')) {
+    return null;
+  }
   if (!SHA_RE.test(pr.head?.sha || '')) throw new Error('Invalid PR head SHA.');
   const merged = Boolean(pr.merged || pr.merged_at);
   return {
@@ -136,14 +181,20 @@ function bindPr(pr, expectedBranch) {
     draft: Boolean(pr.draft),
     sha: pr.head.sha,
     branch,
+    base,
   };
 }
 
 class Bridge {
-  constructor({ github, cursor, secret, actors = 'paulventer01', enabled = false }) {
+  constructor({
+    github, cursor, secret, actors = 'paulventer01', enabled = false, now = () => Date.now(),
+    trustedPolicyComplete = ci.TRUSTED_POLICY_COMPLETE,
+  }) {
     this.github = github; this.cursor = cursor; this.secret = secret;
     this.actors = actors.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
     this.enabled = enabled;
+    this.now = now;
+    this.trustedPolicyComplete = trustedPolicyComplete;
     this.root = `/repos/${REPO}`;
   }
 
@@ -231,7 +282,8 @@ class Bridge {
   }
 
   async start(cmd) {
-    const text = prompt(cmd.text);
+    const ciCorrectionAuth = ci.parseCiCorrectionAuth(cmd.text, this.now());
+    const text = prompt(ci.stripCiAuthHeaders(cmd.text) || cmd.text);
     if ((await this.tracked()).some((s) => s.handled.includes(cmd.key))) return 'Start command already processed; use status.';
     if (cmd.issue && await this.state(cmd.issue)) return 'Task already registered; use status or follow-up.';
     await this.noOtherWork();
@@ -248,7 +300,10 @@ class Bridge {
       if (row.pull_request || row.state !== 'open') throw new Error('Start requires an open task issue, not a PR.');
       await this.github('POST', `${this.root}/issues/${issue}/labels`, { labels: [LABEL] });
     }
-    const state = { repo: REPO, issue, agentId: `bc-${randomUUID()}`, runId: null, phase: 'STARTING', followups: 0, handled: [cmd.key] };
+    const state = {
+      repo: REPO, issue, agentId: `bc-${randomUUID()}`, runId: null, phase: 'STARTING',
+      followups: 0, handled: [cmd.key], ciCorrectionAuth,
+    };
     // Durable intent BEFORE the billable POST. A timeout never causes an automatic re-launch.
     await this.save(state, 'Starting the authorised task.');
     try {
@@ -286,17 +341,204 @@ class Bridge {
     return matches[0] || null;
   }
 
-  async ciSummary(pr, sha) {
-    const checks = await this.github('GET', `${this.root}/commits/${sha}/check-runs?per_page=100`);
-    const status = await this.github('GET', `${this.root}/commits/${sha}/status`);
-    const bad = (checks.check_runs || []).some((c) => ['failure', 'cancelled', 'timed_out', 'action_required', 'stale'].includes(c.conclusion));
-    const waiting = (checks.check_runs || []).some((c) => c.status !== 'completed');
-    const any = (checks.check_runs || []).length + (status.statuses || []).length > 0;
-    const label = pr?.merged ? 'merged' : bad || ['failure', 'error'].includes(status.state) ? 'checks failed' :
-      !any || waiting || ((status.statuses || []).length > 0 && status.state === 'pending') || checks.total_count > 100
-        ? 'checks pending / incomplete' : 'reported checks passed (review still required)';
-    const url = pr?.url || `${REPO_URL}/commit/${sha}`;
-    return `${url} @ ${sha.slice(0, 8)}: ${label}`;
+  async loadRequiredPolicy(baseBranch) {
+    const live = [];
+    const sources = { protection: 'unread', rules: 'unread' };
+    try {
+      const body = await this.github('GET', `${this.root}/branches/${encodeURIComponent(baseBranch)}/protection/required_status_checks`);
+      live.push(...ci.liveRequiredFromProtection(body));
+      sources.protection = 'ok';
+    } catch (e) {
+      if (e.message === 'malformed required-check policy') sources.protection = 'malformed';
+      else if (e.status === 404) sources.protection = 'absent';
+      else if (e.status === 403) sources.protection = 'forbidden';
+      else throw e;
+    }
+    try {
+      const rules = await this.github('GET', `${this.root}/rules/branches/${encodeURIComponent(baseBranch)}`);
+      live.push(...ci.liveRequiredFromRules(rules));
+      sources.rules = 'ok';
+    } catch (e) {
+      if (e.message === 'malformed required-check policy') sources.rules = 'malformed';
+      else if (e.status === 404) sources.rules = 'absent';
+      else if (e.status === 403) sources.rules = 'forbidden';
+      else throw e;
+    }
+    const complete = ci.trustedPolicyValid(this.trustedPolicyComplete)
+      || (ci.policyReadable(sources.protection) && ci.policyReadable(sources.rules)
+        && sources.protection !== 'malformed' && sources.rules !== 'malformed');
+    return { required: ci.unionRequired(live), sources, complete };
+  }
+
+  compactEval(result, policy) {
+    return {
+      sha: result.sha,
+      verdict: result.verdict,
+      summary: result.summary || ci.summarize(result),
+      truncated: Boolean(result.truncated),
+      missing: (result.missing || []).slice(0, 8),
+      failures: result.failures || [],
+      policySources: policy?.sources || result.policySources,
+      policyComplete: Boolean(policy?.complete),
+    };
+  }
+
+  blockedEval(sha, reason, policy) {
+    return this.compactEval(ci.classify({
+      sha, checks: [], statuses: [], required: [], truncated: false, reason,
+    }), policy);
+  }
+
+  async evaluateSha(sha, { reason } = {}) {
+    if (reason) return this.blockedEval(sha, reason);
+    const checksPage = await ci.pageCheckRuns(this.github, this.root, sha);
+    const statusPage = await ci.pageStatuses(this.github, this.root, sha);
+    const base = (await this.repoInfo()).default_branch || 'main';
+    const policy = await this.loadRequiredPolicy(base);
+    if (!policy.complete) {
+      return this.blockedEval(sha, 'required-check policy unreadable or incomplete', policy);
+    }
+    const classified = ci.classify({
+      sha,
+      checks: ci.latestChecks(checksPage.rows),
+      statuses: ci.latestStatuses(statusPage.rows),
+      required: policy.required,
+      truncated: checksPage.truncated || statusPage.truncated,
+    });
+    return this.compactEval(classified, policy);
+  }
+
+  async evaluateCi(pr) {
+    const defaultBranch = (await this.repoInfo()).default_branch || 'main';
+    const first = bindPr(await this.github('GET', `${this.root}/pulls/${pr.number}`), pr.branch);
+    if (!first || !SHA_RE.test(first.sha)) {
+      return this.blockedEval(pr.sha, 'bound PR could not be re-read for the current head SHA');
+    }
+    if (first.base !== defaultBranch) {
+      return this.blockedEval(first.sha, `PR targets non-default base \`${first.base}\``, { complete: false });
+    }
+    const evalResult = await this.evaluateSha(first.sha);
+    const second = bindPr(await this.github('GET', `${this.root}/pulls/${pr.number}`), pr.branch);
+    if (!second || second.sha !== first.sha) {
+      return this.blockedEval(second?.sha || first.sha, 'PR head moved during evaluation', {
+        sources: evalResult.policySources, complete: false,
+      });
+    }
+    if (second.base !== first.base || second.base !== defaultBranch) {
+      return this.blockedEval(second.sha, 'PR base moved during evaluation', {
+        sources: evalResult.policySources, complete: false,
+      });
+    }
+    evalResult.pr = first.number;
+    evalResult.sha = first.sha;
+    return evalResult;
+  }
+
+  autoCorrectionBlocked(state) {
+    if (state.suppressAutoCorrect) return true;
+    const intent = state.ciCorrectionIntent;
+    if (intent && ['rejected', 'pending', 'uncertain', 'accepted'].includes(intent.status) && intent.status === 'rejected') {
+      return true;
+    }
+    if ((state.ciCorrectionLog || []).some((row) => row.status === 'rejected')) return true;
+    return false;
+  }
+
+  alreadyCorrected(state, fingerprint) {
+    if (this.autoCorrectionBlocked(state)) return true;
+    const intent = state.ciCorrectionIntent;
+    if (intent && ['pending', 'uncertain'].includes(intent.status)) return true;
+    if (intent && intent.status === 'accepted' && intent.fingerprint === fingerprint) return true;
+    return (state.ciCorrectionLog || []).some((row) => row.fingerprint === fingerprint
+      && ['pending', 'uncertain', 'accepted'].includes(row.status));
+  }
+
+  reconcileCorrectionIntent(state, agent) {
+    const intent = state.ciCorrectionIntent;
+    if (!intent || !['pending', 'uncertain'].includes(intent.status)) return;
+    if (!agent.latestRunId || agent.latestRunId === intent.runId) return;
+    state.ciCorrectionIntent = { ...intent, status: 'accepted', runId: agent.latestRunId };
+    state.ciCorrectionLog = (state.ciCorrectionLog || []).map((row) => (
+      row.fingerprint === intent.fingerprint
+        ? { ...row, status: 'accepted', runId: agent.latestRunId }
+        : row
+    ));
+  }
+
+  async maybeCorrect(state) {
+    if (!this.enabled) return;
+    if (!state.ciCorrectionAuth?.enabled) return;
+    if (this.autoCorrectionBlocked(state)) return;
+    if (correctionDeadlinePassed(state, this.now())) return;
+    if (state.phase !== 'FINISHED') return;
+    if (!state.pr || state.pr.state !== 'open' || state.pr.merged) return;
+    if (state.followups >= MAX_FOLLOWUPS) return;
+    if (state.cancelIntent && ['pending', 'uncertain'].includes(state.cancelIntent.status)) return;
+    const evalResult = state.ciEval;
+    if (!evalResult || evalResult.verdict !== 'failed' || !evalResult.failures?.length) return;
+    if (evalResult.sha !== state.pr.sha) return;
+    const fingerprint = ci.failureFingerprint(state.pr.number, evalResult.sha, evalResult.failures);
+    if (this.alreadyCorrected(state, fingerprint)) return;
+
+    const defaultBranch = (await this.repoInfo()).default_branch || 'main';
+    const head = bindPr(await this.github('GET', `${this.root}/pulls/${state.pr.number}`), state.pr.branch);
+    if (!head || head.sha !== evalResult.sha || head.state !== 'open' || head.merged) {
+      state.ciEval = this.blockedEval(head?.sha || evalResult.sha, 'PR head moved during evaluation', {
+        sources: evalResult.policySources, complete: false,
+      });
+      return;
+    }
+    if (head.base !== defaultBranch) {
+      state.ciEval = this.blockedEval(head.sha, `PR targets non-default base \`${head.base}\``, {
+        sources: evalResult.policySources, complete: false,
+      });
+      return;
+    }
+
+    const text = prompt(ci.correctionText(evalResult, state.pr.url));
+    try {
+      await this.noOtherWork(state.agentId);
+    } catch (e) {
+      state.ciBlocker = e.message;
+      return;
+    }
+    const previousPhase = state.phase;
+    state.followups++;
+    state.phase = 'FOLLOWUP_PENDING';
+    state.ciCorrectionIntent = {
+      fingerprint, runId: state.runId, pr: state.pr.number, sha: evalResult.sha, status: 'pending',
+    };
+    state.ciCorrectionLog = [...(state.ciCorrectionLog || []), {
+      fingerprint, sha: evalResult.sha, status: 'pending',
+    }];
+    state.ciPhase = 'correction-running';
+    await this.save(state, `Persisted CI correction intent for ${evalResult.sha} before contacting Cursor.`);
+    try {
+      const result = await this.cursor('POST', `/v1/agents/${state.agentId}/runs`, { prompt: { text } });
+      state.runId = identifier(result.run?.id, 'run');
+      state.phase = 'CREATING';
+      state.ciCorrectionIntent = { ...state.ciCorrectionIntent, status: 'accepted', runId: state.runId };
+      state.ciCorrectionLog = (state.ciCorrectionLog || []).map((row) => (
+        row.fingerprint === fingerprint ? { ...row, status: 'accepted', runId: state.runId } : row
+      ));
+      await this.save(state, 'Automatic CI correction accepted.');
+    } catch (e) {
+      if (e.service === 'Cursor' && REJECTED_HTTP.has(e.status)) {
+        state.phase = previousPhase;
+        state.ciCorrectionIntent = { ...state.ciCorrectionIntent, status: 'rejected' };
+        state.ciCorrectionLog = (state.ciCorrectionLog || []).map((row) => (
+          row.fingerprint === fingerprint ? { ...row, status: 'rejected' } : row
+        ));
+        await this.save(state, 'Cursor rejected this automatic CI correction. It will not be replayed.');
+        return;
+      }
+      state.ciCorrectionIntent = { ...state.ciCorrectionIntent, status: 'uncertain' };
+      state.ciCorrectionLog = (state.ciCorrectionLog || []).map((row) => (
+        row.fingerprint === fingerprint ? { ...row, status: 'uncertain' } : row
+      ));
+      await this.save(state, 'Automatic CI correction outcome is uncertain. Check Cursor; this request will not be retried automatically.');
+      throw e;
+    }
   }
 
   async notify(state) {
@@ -317,6 +559,8 @@ class Bridge {
       `SHA: ${state.sha ? `\`${state.sha}\`` : 'not yet known'}`,
       `PR: ${state.pr ? `${state.pr.url} (${state.pr.state}${state.pr.draft ? ', draft' : ''})` : 'none'}`,
       state.prBlocker ? `Blocker: ${state.prBlocker}` : '',
+      state.ciEval?.summary ? `CI: ${state.ciEval.summary}` : '',
+      state.ciPhase ? `CI phase: ${state.ciPhase}` : '',
       '',
       `Next action: ${nextAction(state)}`,
       '',
@@ -394,15 +638,20 @@ class Bridge {
     }
   }
 
-  async refresh(state) {
+  async refresh(state, opts = {}) {
+    const allowCorrection = opts.allowCorrection === true;
     if (state.phase === 'REJECTED') return `Task #${state.issue}: start was rejected; no agent is tracked.`;
-    const before = JSON.stringify({
+    const snapshot = () => JSON.stringify({
       phase: state.phase, lastRunId: state.lastRunId, prs: state.prs, ci: state.ci, branch: state.branch,
       sha: state.sha, pr: state.pr, prBlocker: state.prBlocker, notifyKey: state.notifyKey, prIntent: state.prIntent,
-      handled: state.handled, cancelIntent: state.cancelIntent,
+      handled: state.handled, cancelIntent: state.cancelIntent, ciEval: state.ciEval, ciPhase: state.ciPhase,
+      ciCorrectionIntent: state.ciCorrectionIntent, followups: state.followups, ciBlocker: state.ciBlocker,
+      suppressAutoCorrect: state.suppressAutoCorrect,
     });
+    const before = snapshot();
     const agent = await this.agent(state.agentId);
     if (!agent.latestRunId) throw new Error('Agent has no run yet. Check Cursor before retrying.');
+    this.reconcileCorrectionIntent(state, agent);
     // Recover a POST whose response was lost, without replaying it.
     if (state.phase === 'FOLLOWUP_PENDING' && agent.latestRunId === state.runId) {
       return 'Follow-up outcome is unresolved. Check Cursor; this request will not be retried automatically.';
@@ -439,26 +688,42 @@ class Bridge {
     }
 
     if (state.pr?.sha && SHA_RE.test(state.pr.sha)) state.sha = state.pr.sha;
-    const ci = state.sha && SHA_RE.test(state.sha) ? [await this.ciSummary(state.pr, state.sha)] : [];
-    state.ci = ci;
+    let evalError = null;
+    try {
+      if (state.pr) {
+        state.ciEval = await this.evaluateCi(state.pr);
+        state.sha = state.ciEval.sha || state.sha;
+      } else if (state.sha && SHA_RE.test(state.sha)) {
+        state.ciEval = await this.evaluateSha(state.sha);
+      }
+    } catch (e) {
+      evalError = e;
+      state.ciEval = this.blockedEval(
+        state.pr?.sha || state.sha,
+        `GitHub CI evaluation failed (${e.status || 'error'}). Prior CI evidence is invalidated.`,
+        { sources: { protection: 'error', rules: 'error' }, complete: false },
+      );
+    }
+    state.ci = state.ciEval ? [state.ciEval.summary] : [];
+    state.ciPhase = ciPhaseFor(state, this.now());
     if (state.pr) state.prs = [state.pr.url];
+    if (allowCorrection && !evalError) await this.maybeCorrect(state);
+    state.ciPhase = ciPhaseFor(state, this.now());
     await this.notify(state);
 
-    const after = JSON.stringify({
-      phase: state.phase, lastRunId: state.lastRunId, prs: state.prs, ci: state.ci, branch: state.branch,
-      sha: state.sha, pr: state.pr, prBlocker: state.prBlocker, notifyKey: state.notifyKey, prIntent: state.prIntent,
-      handled: state.handled, cancelIntent: state.cancelIntent,
-    });
+    const after = snapshot();
     if (before !== after) {
       const note = [
         TERMINAL.has(state.phase) ? 'Run ended; inspect the result in Cursor and review any draft PR.' : 'Run in progress.',
         state.branch ? `Branch: ${state.branch}` : '',
         state.sha ? `SHA: ${state.sha}` : '',
         state.prBlocker || '',
-        ...ci,
+        state.ciEval?.summary || '',
+        state.ciPhase ? `CI phase: ${state.ciPhase}` : '',
       ].filter(Boolean).join('\n');
       await this.save(state, note);
     }
+    if (evalError) throw evalError;
     return `Task #${state.issue}: ${state.phase}.`;
   }
 
@@ -493,13 +758,13 @@ class Bridge {
       // Persist consumption before refresh: an unchanged snapshot would otherwise skip save().
       await this.save(state, 'Recorded authorised status command.');
     }
-    return this.refresh(state);
+    return this.refresh(state, { allowCorrection: false });
   }
 
   async followup(state, cmd) {
     const text = prompt(cmd.text);
     if (state.handled.includes(cmd.key)) return 'Command already processed; use status.';
-    await this.refresh(state);
+    await this.refresh(state, { allowCorrection: false });
     if (state.phase === 'REJECTED') throw new Error('Start was rejected. Create a new task issue after fixing the problem.');
     if (!TERMINAL.has(state.phase)) throw new Error('Wait for the active run to finish before sending a follow-up.');
     if (state.followups >= MAX_FOLLOWUPS) throw new Error('Three-follow-up limit reached. Review the task before creating another.');
@@ -519,16 +784,19 @@ class Bridge {
       throw e;
     }
     state.runId = identifier(result.run?.id, 'run'); state.phase = 'CREATING';
+    state.suppressAutoCorrect = false;
     await this.save(state, 'Follow-up accepted.');
     return `Sent follow-up for task #${state.issue}.`;
   }
 
   async cancel(state, cmd = {}) {
     if (cmd.key && state.handled.includes(cmd.key)) return 'Command already processed; use status.';
-    await this.refresh(state);
+    await this.refresh(state, { allowCorrection: false });
     if (cmd.key && state.handled.includes(cmd.key)) return 'Command already processed; use status.';
     if (TERMINAL.has(state.phase)) {
-      if (cmd.key) { state.handled.push(cmd.key); await this.save(state, 'Cancel recorded after the run had already ended.'); }
+      state.suppressAutoCorrect = true;
+      if (cmd.key) { state.handled.push(cmd.key); }
+      await this.save(state, 'Cancel recorded after the run had already ended. Automatic CI correction will not start.');
       return 'Run has already ended.';
     }
     if (!state.runId) throw new Error('Resolve the run identity before cancelling.');
@@ -538,6 +806,7 @@ class Bridge {
       return 'Cancel outcome is unresolved. Check Cursor; this request will not be retried automatically.';
     }
     if (cmd.key) state.handled.push(cmd.key);
+    state.suppressAutoCorrect = true;
     state.cancelIntent = { runId, status: 'pending' };
     await this.save(state, `Cancelling run ${runId}. This command will not be retargeted to a later run.`);
     try {
@@ -553,7 +822,7 @@ class Bridge {
       throw e;
     }
     // Confirmation comes from a subsequent read, not an optimistic local status.
-    return this.refresh(state);
+    return this.refresh(state, { allowCorrection: false });
   }
 
   async monitor() {
@@ -566,9 +835,11 @@ class Bridge {
         if (!state) continue;
         const row = await this.github('GET', `${this.root}/issues/${state.issue}`);
         if (!TERMINAL.has(state.phase) || row.state === 'open') {
-          results.push(await this.refresh(state));
+          results.push(...await this.replayMissed(state));
           const latest = await this.state(state.issue);
-          if (latest) results.push(...await this.replayMissed(latest));
+          if (latest && (!TERMINAL.has(latest.phase) || row.state === 'open')) {
+            results.push(await this.refresh(latest, { allowCorrection: true }));
+          }
         }
       } catch (e) {
         results.push(`Task #${issue.number}: ${e.message}`);
@@ -598,4 +869,7 @@ class Bridge {
   }
 }
 
-module.exports = { Bridge, command, prompt, readState, signState, REPO, LABEL, MONITOR_EVENTS, NOTIFY_MARKER, commentPristine };
+module.exports = {
+  Bridge, command, prompt, readState, signState, REPO, LABEL, MONITOR_EVENTS, NOTIFY_MARKER,
+  commentPristine, MAX_FOLLOWUPS,
+};
