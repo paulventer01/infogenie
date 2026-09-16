@@ -166,7 +166,11 @@ function bindPr(pr, expectedBranch) {
   if (pr.head?.repo?.full_name && pr.head.repo.full_name !== REPO) return null;
   if (pr.base?.repo?.full_name && pr.base.repo.full_name !== REPO) return null;
   const branch = validBranch(pr.head?.ref, pr.base?.ref);
+  const base = typeof pr.base?.ref === 'string' ? pr.base.ref.replace(/^refs\/heads\//, '').trim() : '';
   if (!branch || (expectedBranch && branch !== expectedBranch)) return null;
+  if (!base || !BRANCH_RE.test(base) || base.includes('..') || base.startsWith('/') || base.endsWith('/')) {
+    return null;
+  }
   if (!SHA_RE.test(pr.head?.sha || '')) throw new Error('Invalid PR head SHA.');
   const merged = Boolean(pr.merged || pr.merged_at);
   return {
@@ -177,6 +181,7 @@ function bindPr(pr, expectedBranch) {
     draft: Boolean(pr.draft),
     sha: pr.head.sha,
     branch,
+    base,
   };
 }
 
@@ -404,14 +409,23 @@ class Bridge {
   }
 
   async evaluateCi(pr) {
+    const defaultBranch = (await this.repoInfo()).default_branch || 'main';
     const first = bindPr(await this.github('GET', `${this.root}/pulls/${pr.number}`), pr.branch);
     if (!first || !SHA_RE.test(first.sha)) {
       return this.blockedEval(pr.sha, 'bound PR could not be re-read for the current head SHA');
+    }
+    if (first.base !== defaultBranch) {
+      return this.blockedEval(first.sha, `PR targets non-default base \`${first.base}\``, { complete: false });
     }
     const evalResult = await this.evaluateSha(first.sha);
     const second = bindPr(await this.github('GET', `${this.root}/pulls/${pr.number}`), pr.branch);
     if (!second || second.sha !== first.sha) {
       return this.blockedEval(second?.sha || first.sha, 'PR head moved during evaluation', {
+        sources: evalResult.policySources, complete: false,
+      });
+    }
+    if (second.base !== first.base || second.base !== defaultBranch) {
+      return this.blockedEval(second.sha, 'PR base moved during evaluation', {
         sources: evalResult.policySources, complete: false,
       });
     }
@@ -466,10 +480,17 @@ class Bridge {
     const fingerprint = ci.failureFingerprint(state.pr.number, evalResult.sha, evalResult.failures);
     if (this.alreadyCorrected(state, fingerprint)) return;
 
+    const defaultBranch = (await this.repoInfo()).default_branch || 'main';
     const head = bindPr(await this.github('GET', `${this.root}/pulls/${state.pr.number}`), state.pr.branch);
     if (!head || head.sha !== evalResult.sha || head.state !== 'open' || head.merged) {
       state.ciEval = this.blockedEval(head?.sha || evalResult.sha, 'PR head moved during evaluation', {
-        sources: evalResult.policySources, complete: evalResult.policyComplete,
+        sources: evalResult.policySources, complete: false,
+      });
+      return;
+    }
+    if (head.base !== defaultBranch) {
+      state.ciEval = this.blockedEval(head.sha, `PR targets non-default base \`${head.base}\``, {
+        sources: evalResult.policySources, complete: false,
       });
       return;
     }

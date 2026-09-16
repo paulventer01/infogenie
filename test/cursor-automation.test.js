@@ -617,7 +617,7 @@ test('status key is persisted in steady state and kept if refresh later fails', 
 });
 
 const CORRECTION_START = 'ci-correction: authorized\nci-correction-window: 24h\nFix the bounded CI failure.';
-const { parseCiCorrectionAuth, latestChecks } = require('../scripts/cursor-automation/ci');
+const { parseCiCorrectionAuth, latestChecks, liveRequiredFromProtection, liveRequiredFromRules } = require('../scripts/cursor-automation/ci');
 
 function readablePolicy(f) {
   f.setProtection(0, { checks: [{ context: 'buildkite/infogenie' }] });
@@ -635,13 +635,13 @@ function checkRow(over = {}) {
   };
 }
 
-function attachPr(f, { number = 42, branch = 'cursor/task-ci', sha = 'b'.repeat(40), state = 'open', merged = false } = {}) {
+function attachPr(f, { number = 42, branch = 'cursor/task-ci', sha = 'b'.repeat(40), state = 'open', merged = false, base = 'main' } = {}) {
   f.pulls.set(number, {
     number, state, draft: true, merged, merged_at: merged ? '2026-09-01T00:00:00Z' : null,
     head: { sha, ref: branch, repo: { full_name: REPO } },
-    base: { ref: 'main', repo: { full_name: REPO } },
+    base: { ref: base, repo: { full_name: REPO } },
   });
-  return { number, branch, sha };
+  return { number, branch, sha, base };
 }
 
 async function finishBoundPr(f, prOpts = {}) {
@@ -1044,4 +1044,79 @@ test('a newer pending check without started_at is not hidden by an older success
   assert.equal(latest.length, 1);
   assert.equal(latest[0].id, 2);
   assert.equal(latest[0].status, 'in_progress');
+});
+
+test('inner malformed protection and ruleset rows cannot pass via the floor', async () => {
+  assert.throws(() => liveRequiredFromProtection({}), /malformed/);
+  assert.throws(() => liveRequiredFromProtection({ checks: [{}] }), /malformed/);
+  assert.throws(() => liveRequiredFromProtection({ checks: [{ context: 42 }] }), /malformed/);
+  assert.throws(() => liveRequiredFromProtection({ checks: [{ context: 'ok', app_id: '1' }] }), /malformed/);
+  assert.deepEqual(liveRequiredFromProtection({ checks: [], contexts: [] }), []);
+  assert.throws(() => liveRequiredFromRules([{ type: 'required_status_checks' }]), /malformed/);
+  assert.throws(() => liveRequiredFromRules([{ type: 'required_status_checks', parameters: {} }]), /malformed/);
+  assert.throws(() => liveRequiredFromRules([{
+    type: 'required_status_checks', parameters: { required_status_checks: [{ context: 42 }] },
+  }]), /malformed/);
+  assert.deepEqual(liveRequiredFromRules([{
+    type: 'required_status_checks', parameters: { required_status_checks: [] },
+  }]), []);
+
+  const sha = 'b'.repeat(40);
+  for (const body of [{}, { checks: [{}] }, { checks: [{ context: 42 }] }]) {
+    const f = fixture();
+    f.setProtection(0, body);
+    const result = await f.bridge.evaluateSha(sha);
+    assert.equal(result.verdict, 'blocked');
+    assert.equal(result.policyComplete, false);
+    assert.equal(result.policySources.protection, 'malformed');
+    assert.doesNotMatch(result.summary, /CI passed/);
+  }
+  const rules = fixture();
+  rules.setProtection(0, { checks: [], contexts: [] });
+  rules.setRules([{ type: 'required_status_checks', parameters: { required_status_checks: [{}] } }]);
+  const badRules = await rules.bridge.evaluateSha(sha);
+  assert.equal(badRules.verdict, 'blocked');
+  assert.equal(badRules.policySources.rules, 'malformed');
+  const empty = fixture();
+  empty.setProtection(0, { checks: [], contexts: [] });
+  const ok = await empty.bridge.evaluateSha(sha);
+  assert.equal(ok.verdict, 'passed');
+  assert.equal(ok.policyComplete, true);
+});
+
+test('PRs targeting a non-default base cannot pass or auto-correct', async () => {
+  const f = fixture(); readablePolicy(f);
+  f.setChecks([checkRow({ name: 'required-release', conclusion: 'failure' })]);
+  await f.start(CORRECTION_START);
+  await finishBoundPr(f, { number: 120, branch: 'cursor/release-pr', base: 'release' });
+  const state = await f.bridge.state(f.issueId());
+  assert.equal(state.pr.base, 'release');
+  assert.equal(state.ciEval.verdict, 'blocked');
+  assert.match(state.ci[0], /non-default base/);
+  assert.doesNotMatch(state.ci[0], /CI passed/);
+  assert.equal(f.runPosts().length, 0);
+});
+
+test('PR base retarget during evaluation invalidates evidence and does not correct', async () => {
+  const f = fixture(); readablePolicy(f);
+  f.setChecks([checkRow({ name: 'bridge-tests', conclusion: 'failure' })]);
+  await f.start(CORRECTION_START);
+  attachPr(f, { number: 121, branch: 'cursor/retarget' });
+  f.finish();
+  [...f.agents.values()][0].run.git.branches = [{ branch: 'cursor/retarget', prUrl: `https://github.com/${REPO}/pull/121` }];
+  let pullGets = 0;
+  const inner = f.bridge.github;
+  f.bridge.github = async (method, path, body) => {
+    if (method === 'GET' && path === `${ROOT}/pulls/121`) {
+      pullGets += 1;
+      if (pullGets >= 3) f.pulls.get(121).base.ref = 'release';
+    }
+    return inner(method, path, body);
+  };
+  await f.bridge.refresh(await f.bridge.state(f.issueId()), { allowCorrection: true });
+  const state = await f.bridge.state(f.issueId());
+  assert.equal(state.ciEval.verdict, 'blocked');
+  assert.match(state.ci[0], /base moved|non-default base/);
+  assert.doesNotMatch(state.ci[0], /CI passed/);
+  assert.equal(f.runPosts().length, 0);
 });

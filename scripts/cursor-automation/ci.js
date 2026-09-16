@@ -338,40 +338,57 @@ function trustedPolicyValid(complete, required = TRUSTED_DEFAULT_REQUIRED) {
     && required.every((row) => typeof row?.context === 'string' && row.context.trim());
 }
 
+function malformedPolicy() {
+  throw new Error('malformed required-check policy');
+}
+
+function requiredIdentity(row, idKey) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) malformedPolicy();
+  if (typeof row.context !== 'string' || !row.context.trim()) malformedPolicy();
+  const rawId = row[idKey];
+  if (rawId != null && !Number.isInteger(rawId)) malformedPolicy();
+  return {
+    context: row.context.trim().slice(0, 120),
+    appId: Number.isInteger(rawId) ? rawId : null,
+  };
+}
+
 function liveRequiredFromProtection(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('malformed required-check policy');
-  if (body.checks !== undefined && !Array.isArray(body.checks)) throw new Error('malformed required-check policy');
-  if (body.contexts !== undefined && !Array.isArray(body.contexts)) throw new Error('malformed required-check policy');
+  if (!body || typeof body !== 'object' || Array.isArray(body)) malformedPolicy();
+  const hasChecks = Object.prototype.hasOwnProperty.call(body, 'checks');
+  const hasContexts = Object.prototype.hasOwnProperty.call(body, 'contexts');
+  if (!hasChecks && !hasContexts) malformedPolicy();
+  if (hasChecks && !Array.isArray(body.checks)) malformedPolicy();
+  if (hasContexts && !Array.isArray(body.contexts)) malformedPolicy();
   const out = [];
-  const checks = Array.isArray(body.checks) ? body.checks : [];
-  for (const row of checks) {
-    if (typeof row?.context === 'string') {
-      out.push({
-        context: row.context,
-        appId: Number.isInteger(row.app_id) ? row.app_id : null,
-        source: 'protection',
-      });
+  if (hasChecks) {
+    for (const row of body.checks) {
+      const id = requiredIdentity(row, 'app_id');
+      out.push({ ...id, source: 'protection' });
     }
+    return out;
   }
-  if (!checks.length && Array.isArray(body.contexts)) {
-    for (const context of body.contexts) {
-      if (typeof context === 'string') out.push({ context, appId: null, source: 'protection' });
-    }
+  for (const context of body.contexts) {
+    if (typeof context !== 'string' || !context.trim()) malformedPolicy();
+    out.push({ context: context.trim().slice(0, 120), appId: null, source: 'protection' });
   }
   return out;
 }
 
 function liveRequiredFromRules(rules) {
-  if (!Array.isArray(rules)) throw new Error('malformed required-check policy');
+  if (!Array.isArray(rules)) malformedPolicy();
   const out = [];
   for (const rule of rules) {
-    if (rule?.type !== 'required_status_checks') continue;
-    const rows = rule.parameters?.required_status_checks;
-    if (rows !== undefined && !Array.isArray(rows)) throw new Error('malformed required-check policy');
-    for (const row of Array.isArray(rows) ? rows : []) {
-      if (typeof row?.context !== 'string') continue;
-      const appId = Number.isInteger(row.integration_id) ? row.integration_id : null;
-      out.push({ context: row.context, appId, source: 'ruleset' });
+    if (!rule || typeof rule !== 'object' || Array.isArray(rule)) malformedPolicy();
+    if (rule.type !== 'required_status_checks') continue;
+    if (!rule.parameters || typeof rule.parameters !== 'object' || Array.isArray(rule.parameters)) {
+      malformedPolicy();
+    }
+    const rows = rule.parameters.required_status_checks;
+    if (!Array.isArray(rows)) malformedPolicy();
+    for (const row of rows) {
+      const id = requiredIdentity(row, 'integration_id');
+      out.push({ ...id, source: 'ruleset' });
     }
   }
   return out;
