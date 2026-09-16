@@ -175,6 +175,8 @@ async function publisherHarness(t, opts = {}) {
     patchCalls: [],
     selfHealCalls: [],
     submitCalls: [],
+    publishCalls: [],
+    publishHandler: opts.publishHandler || null,
     nextDraftId: 200,
   };
   const dom = new JSDOM('<div id="root"></div>', {
@@ -197,6 +199,14 @@ async function publisherHarness(t, opts = {}) {
     fetch: async (url, options = {}) => {
       const method = options.method || 'GET';
       if (url.includes('/api/social-publisher/')) {
+        if (method === 'POST' && /\/api\/social-publisher\/post$/.test(url)) {
+          const payload = JSON.parse(options.body || '{}');
+          state.publishCalls.push(payload);
+          const response = state.publishHandler
+            ? await state.publishHandler(payload, state)
+            : { ok: true, scheduled: false, content_safety_warnings: [] };
+          return json(response, safetyStatus(response));
+        }
         if (url.includes('/profiles')) return json({ ok: true, profiles: [{ id: 'prof1', name: 'Main profile' }] });
         if (url.includes('/accounts')) return json({ ok: true, accounts: [] });
         if (url.includes('/posts')) return json({ ok: true, posts: [] });
@@ -281,6 +291,7 @@ async function publisherHarness(t, opts = {}) {
   });
   const clickSelfHeal = clickBy(/Self-heal|Self-healing/, 'Self-heal');
   const clickSubmitApproval = clickBy(/Submit for approval|Submitting…/, 'Submit for approval');
+  const clickPublishNow = clickBy(/Publish now|Publishing…/, 'Publish now');
   const editDraftFromCalendar = async (snippet) => act(async () => {
     const editBtn = [...dom.window.document.querySelectorAll('button')]
       .find((b) => b.textContent === 'Edit' && b.closest('div')?.textContent?.includes(snippet));
@@ -299,6 +310,7 @@ async function publisherHarness(t, opts = {}) {
     clickSaveDraft,
     clickSelfHeal,
     clickSubmitApproval,
+    clickPublishNow,
     openCalendar: () => clickTab('Calendar'),
     editDraftFromCalendar,
     waitForAlert: () => waitFor(() => !!dom.window.document.querySelector('[role="alert"]'), 20, 'role=alert'),

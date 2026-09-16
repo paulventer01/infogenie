@@ -1,7 +1,7 @@
 # Step 6 — Content Safety Coverage Audit
 
 **Status:** Partial  
-**Audited from:** `main` @ `7804cbe9` (2026-09-16)  
+**Audited from:** `main` @ `59ac7a46` (2026-09-16)  
 **Scope:** Routes that generate, regenerate, save/edit, approve, or publish marketing copy toward external delivery.
 
 One **canonical row** per `method + path`. Lifecycle sections below reference these rows by **ID** only — they do not assign separate classifications.
@@ -16,15 +16,15 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Classification | Count | Meaning |
 |----------------|------:|---------|
-| **covered** | 30 | Gate before side effect; field scan complete |
+| **covered** | 31 | Gate before side effect; field scan complete |
 | **partial** | 16 | Gate present but incomplete scan, timing, status, or warning handling |
-| **gap** | 49 | In-scope lifecycle step with no Step 6 gate |
+| **gap** | 48 | In-scope lifecycle step with no Step 6 gate |
 | **out of scope** | 30 | Deferred with explicit justification (§5) |
 | **Total** | **125** | One row per `method + path` (CR-001–CR-124, CR-128) |
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **22** batches covering all **65** gap/partial rows |
+| Implementation batches (§4) | **21** remaining batches covering all **64** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
@@ -157,7 +157,7 @@ Routes using `JSON.stringify` for gate text without flattening are **`partial`**
 | CR-059 | POST | `/api/social-drafts/:id/submit-approval` | approve | covered | `gateRouteText` on final copy (post self-heal) | complete | — | pr10h1b, pr10h6 |
 | CR-060 | POST | `/api/social-drafts/:id/approve` | approve, publish | covered | `gateRouteText` re-scan before approve/publish | complete | — | pr10h1b, pr10h6 |
 | CR-061 | POST | `/api/social-drafts/:id/publish` | publish | covered | `gateRouteText` re-scan before delivery | complete | — | pr10h1b, pr10h6 |
-| CR-062 | POST | `/api/social-publisher/post` | publish | gap | approval block only | n/a | PR-1c | pr10h6 |
+| CR-062 | POST | `/api/social-publisher/post` | publish | covered | `gateRouteText` + `socialPublisherGateText` before Zernio | complete | — | pr10h1c, pr10h6 |
 
 ### 2.6 WordPress, review rules, tier-2 generate
 
@@ -293,8 +293,8 @@ References **CR-###** from §2. No separate classifications here.
 | Batch | Routes (IDs) | Est. size | Risk |
 |-------|----------------|----------:|------|
 | **PR-1a** | — (merged) | — | High |
-| **PR-1b** | CR-058,059,060,061 | ~600 lines | High |
-| **PR-1c** | CR-062 | ~250 lines | High |
+| **PR-1b** | — (merged) | — | High |
+| **PR-1c** | — (merged) | — | High |
 | **PR-2** | CR-063 | ~300 lines | High |
 | **PR-3a** | CR-013 | ~200 lines | High |
 | **PR-3b** | CR-019 | ~200 lines | High |
@@ -373,7 +373,8 @@ Aligned with §2 **Field scan** column. `complete` ↔ `covered`; `partial:*` �
 | `proofreadGateText` (CR-014) | summary, improved_copy, issues | `\n` | — |
 | `adCopyGateText` (CR-004–006) | all leaf values | `\n` | — |
 | `reviewReplyGateText` (CR-012) | reply | n/a | — |
-| `socialDraftGateText` (CR-055–057) | text, meta alt fields | `\n` | Tested: newlines/tabs, alt_text |
+| `socialDraftGateText` (CR-055–061) | text, meta alt fields | `\n` | Tested: newlines/tabs, alt_text |
+| `socialPublisherGateText` (CR-062) | text, caption, copy, captions, media alt | `\n` | Tested: secondary captions, alt_text, full suffix |
 | `ad_creative/generate` prompt (CR-007) | all input copy fields in prompt | space-joined | Image defer CR-007 |
 | `_respondGatedJson` text routes (CR-039–044) | route-specific primary text | n/a | complete |
 | `JSON.stringify` routes (CR-018,020–021,027,045–050) | whole payload | JSON | **partial:json-flatten** → PR-8c |
@@ -398,7 +399,9 @@ Aligned with §2 **Field scan** column. `complete` ↔ `covered`; `partial:*` �
 | `test/pr10h1a-social-draft-save-safety-ui.test.js` | CR-055,057 UI |
 | `test/pr10h1b-social-draft-approval-publish-safety.test.js` | CR-058–061 |
 | `test/pr10h1b-social-draft-approval-publish-safety-ui.test.js` | CR-058–061 UI |
-| `test/pr10h6-social-publish-approval.test.js` | CR-059–062 (approval authz; safety in pr10h1b for CR-059–061) |
+| `test/pr10h1c-social-publisher-post-safety.test.js` | CR-062 |
+| `test/pr10h1c-social-publisher-post-safety-ui.test.js` | CR-062 UI |
+| `test/pr10h6-social-publish-approval.test.js` | CR-059–062 (approval authz; safety in pr10h1b/pr10h1c) |
 | `test/pr10h7-cold-email-review-reply-safety.test.js` | CR-009,012 |
 | `test/pr10h8`–`pr10h13` | CR-004–011,001–003 |
 | `test/site-builder-isolation.test.js` | CR-100,101 (tenant isolation, not safety) |

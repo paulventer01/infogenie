@@ -206,7 +206,7 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     return r.draft.id;
   }
 
-  function beginDraftAction(kind: "submit" | "self-heal", message: string) {
+  function beginDraftAction(kind: "submit" | "self-heal" | "publish", message: string) {
     const reqSeq = actionRequestRef.current += 1;
     clearSaveError();
     setActionBusy(kind);
@@ -234,6 +234,7 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
       code !== "content_safety_blocked"
       && code !== "content_safety_block"
       && code !== "content_safety_unavailable"
+      && code !== "content_too_long"
     ) return false;
     setSaveError(String(resp.userMessage || resp.error || "Save blocked by content safety checks."));
     setContentSafetyWarnings(priorWarnings);
@@ -633,16 +634,25 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
       setResult({ color: "#991B1B", text: "⚠ Select at least one platform." });
       return;
     }
-    setResult({ color: "#6B7280", text: "📤 Sending to Zernio…" });
-    const body: Record<string, unknown> = { text: t, platforms, profileId };
+    const { reqSeq, operationDraftId, textSnapshot, priorWarnings } = beginDraftAction(
+      "publish",
+      "📤 Sending to Zernio…",
+    );
+    const body: Record<string, unknown> = { text: t, platforms, profileId, meta: draftMeta };
     if (schedule) body.scheduledFor = new Date(schedule).toISOString();
     if (m) body.mediaUrls = [m];
-    const r = await apiPost<{ ok: boolean; error?: string; scheduled?: boolean }>("/api/social-publisher/post", body);
-    if (!r.ok) {
-      setResult({ color: "#991B1B", html: true, text: `❌ ${r.error}` });
-      return;
-    }
-    // Also keep a draft record for calendar visibility
+    if (draftMeta.alt_text) body.alt_text = draftMeta.alt_text;
+    if (draftMeta.media_alt) body.media_alt = draftMeta.media_alt;
+    if (Array.isArray(draftMeta.media_alts)) body.media_alts = draftMeta.media_alts;
+    const r = await apiPost<DraftWriteResult & { scheduled?: boolean }>(
+      "/api/social-publisher/post",
+      body,
+    );
+    if (staleOrSwitched(reqSeq, operationDraftId)) return;
+    setActionBusy(null);
+    if (!r.ok) return void failBusy(r, priorWarnings, "publish failed");
+    const warnings = r.content_safety_warnings || [];
+    applyIfEditorUnchanged(textSnapshot, () => setContentSafetyWarnings(warnings));
     await apiPost("/api/social-drafts", {
       profileId,
       text: t,
@@ -652,11 +662,13 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
       status: schedule ? "scheduled" : "published",
       meta: { ...draftMeta, direct_publish: true },
     }).catch(() => null);
+    if (staleOrSwitched(reqSeq, operationDraftId)) return;
     setResult({
       color: "#065F46",
       html: true,
       text: `✅ ${r.scheduled ? "Scheduled" : "Published"} to ${platforms.length} platform${platforms.length > 1 ? "s" : ""}!`,
     });
+    if (textRef.current !== textSnapshot) return;
     setText("");
     setSchedule("");
     setMedia("");
@@ -1010,8 +1022,8 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
                 <button onClick={() => saveDraft(true)} style={{ background: "linear-gradient(135deg,#0D9488 0%,#14B8A6 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
                   📤 Save &amp; publish
                 </button>
-                <button onClick={publishDirect} style={{ background: "linear-gradient(135deg,#FF5722 0%,#FF7043 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer", gridColumn: "1 / -1" }}>
-                  ⚡ Publish now
+                <button onClick={publishDirect} disabled={actionBusy === "publish"} style={{ background: "linear-gradient(135deg,#FF5722 0%,#FF7043 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: actionBusy === "publish" ? "wait" : "pointer", opacity: actionBusy === "publish" ? 0.7 : 1, gridColumn: "1 / -1" }}>
+                  {actionBusy === "publish" ? "Publishing…" : "⚡ Publish now"}
                 </button>
               </div>
               <div style={{ marginTop: 10, fontSize: "0.78rem" }}>

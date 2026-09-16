@@ -9,6 +9,8 @@ const LEGACY_ALT_LIMIT = 2_000;
 const SELF_HEAL_PATH = require.resolve('../../services/social_drafts/self_heal');
 const API_PATH = require.resolve('../../services/social_drafts/api');
 const GATE_PATH = require.resolve('../../services/ai_governance/route_gate');
+const PUBLISHER_PATH = require.resolve('../../services/social_publisher/api');
+const KG_PATH = require.resolve('../../services/knowledge_graph/api');
 
 function captionWithProhibitedSuffix() {
   return `${'x'.repeat(LEGACY_CAPTION_LIMIT + 1)}${PROHIBITED}`;
@@ -235,6 +237,46 @@ async function setupPr10h1bPostgres(fixtureTag) {
   };
 }
 
+function mountPublisherApp(opts = {}) {
+  const { app, draftsRouter } = mountApp(opts);
+  delete require.cache[PUBLISHER_PATH];
+  const publisher = require(PUBLISHER_PATH);
+  const zernioCalls = [];
+  publisher._zernio = async (...args) => {
+    zernioCalls.push({ method: args[0], path: args[1], body: args[2] });
+    if (typeof opts.zernio === 'function') return opts.zernio(...args);
+    if (opts.zernio) return opts.zernio;
+    return { ok: true, data: { post: { id: 'z-test' } } };
+  };
+  const kg = require(KG_PATH);
+  const origIngest = kg.ingestMemoryNode;
+  const ingestCalls = [];
+  kg.ingestMemoryNode = async (payload) => {
+    ingestCalls.push(payload);
+    return { id: 'mem-test' };
+  };
+  app.use('/api/social-publisher', publisher);
+  return {
+    app,
+    draftsRouter,
+    publisher,
+    zernioCalls,
+    ingestCalls,
+    restore() {
+      kg.ingestMemoryNode = origIngest;
+    },
+  };
+}
+
+function assertNoUsableCopy(body) {
+  const assert = require('node:assert/strict');
+  assert.equal(body.post, undefined);
+  assert.equal(body.text, undefined);
+  assert.equal(body.caption, undefined);
+  assert.equal(body.draft, undefined);
+  assert.equal(body.content, undefined);
+}
+
 function assertParallelSubmitWinner(results) {
   const assert = require('node:assert/strict');
   assert.equal(results.filter((r) => r.status === 200).length, 1);
@@ -267,7 +309,9 @@ module.exports = {
   GATE_BLOCKED,
   assertApproveSafetyHold,
   mountMemServer,
+  mountPublisherApp,
   setupPr10h1bPostgres,
   pgDraftRow,
   assertParallelSubmitWinner,
+  assertNoUsableCopy,
 };
