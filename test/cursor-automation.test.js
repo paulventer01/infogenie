@@ -1229,7 +1229,7 @@ test('verify-policy reports sanitized blocked state and makes no Cursor request'
   const event = {repository:{full_name:REPO},sender:{login:'paulventer01'},inputs:{action:'verify-policy'}};
   for (const status of [401, 403, 404, 500]) {
     const result = await execute('workflow_dispatch',event,env,async(url,options)=>{
-      assert.equal(options.method,'GET'); assert.ok(!url.includes('cursor.com'));
+      assert.equal(options.method,'GET'); assert.equal(new URL(url).origin,'https://api.github.com');
       return url.endsWith(ROOT) ? {ok:true,status:200,json:async()=>({default_branch:'main'})}
         : {ok:false,status,json:async()=>({secret:POLICY_SENTINEL})};
     });
