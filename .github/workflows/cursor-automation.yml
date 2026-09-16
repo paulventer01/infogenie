@@ -1,0 +1,65 @@
+name: Cursor automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Verify credentials, start a task, or control an existing task'
+        type: choice
+        options: [verify, start, follow-up, status, cancel]
+        default: verify
+        required: true
+      issue_number:
+        description: 'Tracking issue number (required for follow-up/status/cancel)'
+        type: string
+      prompt:
+        description: 'Bounded task or follow-up instructions (not credentials)'
+        type: string
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: '17,47 * * * *'
+
+# Never check out a task/PR branch with automation credentials.
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  checks: read
+  statuses: read
+
+# Serialises state transitions across all event types. Pending runs may be coalesced
+# by GitHub; ignored commands can be submitted again after the active job finishes.
+concurrency:
+  group: cursor-automation-control
+  cancel-in-progress: false
+
+jobs:
+  bridge:
+    if: >-
+      github.repository == 'paulventer01/infogenie' &&
+      (github.event_name != 'workflow_dispatch' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) &&
+      (github.event_name == 'workflow_dispatch' ||
+       (vars.CURSOR_AUTOMATION_ENABLED == 'true' &&
+        (github.event_name == 'schedule' ||
+         (github.event_name == 'issues' && startsWith(github.event.issue.body, '/cursor start')) ||
+         (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/cursor ')))))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Execute authorised automation command
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CURSOR_AUTOMATION_ACTORS: ${{ vars.CURSOR_AUTOMATION_ACTORS }}
+          CURSOR_AUTOMATION_ENABLED: ${{ vars.CURSOR_AUTOMATION_ENABLED }}
+        run: node scripts/cursor-automation/run.js
