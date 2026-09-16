@@ -187,6 +187,26 @@ describe('PR-1b social draft submit-approval gate (CR-059)', () => {
     assert.equal(got.body.draft.status, 'draft');
   });
 
+  it('self_heal_failed returns sanitized payload without draft copy', async () => {
+    const selfHealPath = require.resolve('../services/social_drafts/self_heal');
+    const realSelfHeal = require(selfHealPath).selfHealDraft;
+    require(selfHealPath).selfHealDraft = async () => ({
+      ok: false,
+      passed: false,
+      text: PROHIBITED,
+      final_verdict: 'fail',
+      attempts: [{ attempt: 1, verdict: 'fail', text_preview: PROHIBITED }],
+    });
+    const draft = await seedDraft(draftsRouter, 11, { text: 'guaranteed results' });
+    const r = await jsonFetch(server, 'POST', `/api/social-drafts/${draft.id}/submit-approval`, {});
+    require(selfHealPath).selfHealDraft = realSelfHeal;
+    assert.equal(r.status, 403);
+    assert.equal(r.body.draft, undefined);
+    assert.equal(r.body.self_heal?.text, undefined);
+    const got = await jsonFetch(server, 'GET', `/api/social-drafts/${draft.id}`);
+    assert.equal(got.body.draft.status, 'draft');
+  });
+
   it('gates healed copy before pending_approval', async () => {
     const selfHealPath = require.resolve('../services/social_drafts/self_heal');
     const realSelfHeal = require(selfHealPath).selfHealDraft;
@@ -359,6 +379,51 @@ describe('PR-1b social draft approve/publish gates (CR-060–CR-061)', () => {
     assert.ok([400, 403].includes(mediaAltRes.status));
   });
 
+  it('parallel submit retains one pending_approval write under version locking', async () => {
+    const draft = await seedDraft(draftsRouter, 28, { text: SAFE_TEXT });
+    const results = await Promise.all([
+      jsonFetch(server, 'POST', `/api/social-drafts/${draft.id}/submit-approval`, {
+        tid: 28,
+        body: { skip_self_heal: true },
+      }),
+      jsonFetch(server, 'POST', `/api/social-drafts/${draft.id}/submit-approval`, {
+        tid: 28,
+        body: { skip_self_heal: true },
+      }),
+    ]);
+    assert.equal(results.filter((r) => r.status === 200).length, 1);
+    const loser = results.find((r) => r.status !== 200);
+    assert.ok(loser);
+    assert.ok([400, 409].includes(loser.status));
+    const got = await draftsRouter._getDraft(28, draft.id);
+    assert.equal(got.status, 'pending_approval');
+    assert.equal(got.text, SAFE_TEXT);
+  });
+
+  it('self-heal write rejects stale snapshot after concurrent edit', async () => {
+    const selfHealPath = require.resolve('../services/social_drafts/self_heal');
+    const realSelfHeal = require(selfHealPath).selfHealDraft;
+    require(selfHealPath).selfHealDraft = async () => ({
+      ok: true,
+      passed: true,
+      text: 'Healed caption text.',
+      final_verdict: 'pass',
+      attempts: [],
+    });
+    const draft = await seedDraft(draftsRouter, 29, { text: SAFE_TEXT });
+    const snapshot = await draftsRouter._getDraft(29, draft.id);
+    await draftsRouter._updateDraft(29, draft.id, { text: 'Edited before heal write' });
+    const write = await draftsRouter._updateDraftAtVersion(29, draft.id, snapshot, {
+      text: 'Healed caption text.',
+      content_safety_warnings: [],
+    }, { requireStatuses: ['draft', 'approved'] });
+    require(selfHealPath).selfHealDraft = realSelfHeal;
+    assert.equal(write.ok, false);
+    assert.equal(write.error, 'conflict');
+    const got = await draftsRouter._getDraft(29, draft.id);
+    assert.equal(got.text, 'Edited before heal write');
+  });
+
   it('duplicate concurrent publish retains single provider call', async () => {
     let publishCalls = 0;
     const origPublish = draftsRouter._publishViaZernio;
@@ -387,6 +452,8 @@ describe('PR-1b social draft publish safety postgres', { skip: pgSkip }, () => {
   let server;
   let tenantId;
   let realGate;
+  let gateCached;
+  let draftId;
   const fixtureTag = `pr10h1b-pub-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
 
   before(async () => {
@@ -401,20 +468,43 @@ describe('PR-1b social draft publish safety postgres', { skip: pgSkip }, () => {
       `INSERT INTO tenants (name, slug, status) VALUES ($1, $2, 'active') RETURNING id`,
       [`PR10H1B ${fixtureTag}`, fixtureTag],
     )).rows[0].id;
-    const routeGate = require('../services/ai_governance/route_gate');
-    realGate = routeGate.gateRouteText;
-    routeGate.gateRouteText = async () => ({ ok: false, error: 'content_safety_blocked', userMessage: 'blocked' });
     require('../services/tenants/context').resolveTenantId = async (req) => Number(req.headers['x-test-tid'] || tenantId);
     process.env.ZERNIO_API_KEY = 'test-key-live';
-    server = await listen(mountApp().app);
+    server = await listen(mountApp({ useDb: true }).app);
+
+    const created = await jsonFetch(server, 'POST', '/api/social-drafts', {
+      tid: tenantId,
+      body: { profileId: 'p1', text: SAFE_TEXT, platforms: ['linkedin'] },
+    });
+    assert.equal(created.status, 200);
+    assert.ok(created.body.draft?.id);
+    draftId = created.body.draft.id;
+    const submitted = await jsonFetch(server, 'POST', `/api/social-drafts/${draftId}/submit-approval`, {
+      tid: tenantId,
+      body: { skip_self_heal: true },
+    });
+    assert.equal(submitted.status, 200);
+    assert.equal(submitted.body.draft.status, 'pending_approval');
+
+    const gatePath = require.resolve('../services/ai_governance/route_gate');
+    gateCached = require.cache[gatePath];
+    realGate = gateCached.exports.gateRouteText;
+    gateCached.exports.gateRouteText = async () => ({
+      ok: false,
+      error: 'content_safety_blocked',
+      userMessage: 'blocked',
+    });
+    delete require.cache[require.resolve('../services/social_drafts/api')];
+    server = await listen(mountApp({ useDb: true }).app);
   });
 
   after(async () => {
-    if (realGate) require('../services/ai_governance/route_gate').gateRouteText = realGate;
+    if (gateCached && realGate) gateCached.exports.gateRouteText = realGate;
     if (server) await new Promise((r) => server.close(r));
     delete require.cache[require.resolve('../services/social_drafts/api')];
     if (!PG_URL || !tenantId) return;
     const p = db.getPool();
+    await p.query('DELETE FROM approval_requests WHERE tenant_id = $1', [tenantId]).catch(() => {});
     await p.query('DELETE FROM social_post_drafts WHERE tenant_id = $1', [tenantId]).catch(() => {});
     await p.query('DELETE FROM tenants WHERE id = $1', [tenantId]).catch(() => {});
   });
@@ -424,24 +514,94 @@ describe('PR-1b social draft publish safety postgres', { skip: pgSkip }, () => {
     let publishCalls = 0;
     const origPublish = draftsRouter._publishViaZernio;
     draftsRouter._publishViaZernio = async () => { publishCalls += 1; return { ok: true, post: { id: 'z-pg' } }; };
-    const created = await jsonFetch(server, 'POST', '/api/social-drafts', {
-      tid: tenantId,
-      body: { profileId: 'p1', text: SAFE_TEXT, platforms: ['linkedin'] },
-    });
-    const id = created.body.draft.id;
-    await jsonFetch(server, 'POST', `/api/social-drafts/${id}/submit-approval`, {
-      tid: tenantId,
-      body: { skip_self_heal: true },
-    });
-    const blocked = await jsonFetch(server, 'POST', `/api/social-drafts/${id}/approve`, { tid: tenantId });
+    const blocked = await jsonFetch(server, 'POST', `/api/social-drafts/${draftId}/approve`, { tid: tenantId });
     draftsRouter._publishViaZernio = origPublish;
     assert.equal(blocked.status, 403);
+    assert.equal(blocked.body.draft, undefined);
     assert.equal(publishCalls, 0);
     const row = (await db.getPool().query(
       `SELECT status, meta FROM social_post_drafts WHERE id=$1 AND tenant_id=$2`,
-      [id, tenantId],
+      [draftId, tenantId],
     )).rows[0];
     assert.equal(row.status, 'pending_approval');
     assert.equal(row.meta?.publishing_claim || null, null);
+  });
+
+  it('parallel submit-approval retains a single pending row under postgres locking', async () => {
+    const row = (await db.getPool().query(
+      `INSERT INTO social_post_drafts
+         (tenant_id, profile_id, status, text, media_urls, platforms, meta)
+       VALUES ($1,$2,'draft',$3,'[]'::jsonb,$4::jsonb,'{}'::jsonb)
+       RETURNING id`,
+      [tenantId, 'p1', SAFE_TEXT, JSON.stringify(['linkedin'])],
+    )).rows[0];
+    gateCached.exports.gateRouteText = async () => ({ ok: true, warnings: [] });
+    delete require.cache[require.resolve('../services/social_drafts/api')];
+    const openServer = await listen(mountApp({ useDb: true }).app);
+    try {
+      const results = await Promise.all([
+        jsonFetch(openServer, 'POST', `/api/social-drafts/${row.id}/submit-approval`, {
+          tid: tenantId,
+          body: { skip_self_heal: true },
+        }),
+        jsonFetch(openServer, 'POST', `/api/social-drafts/${row.id}/submit-approval`, {
+          tid: tenantId,
+          body: { skip_self_heal: true },
+        }),
+      ]);
+      assert.equal(results.filter((r) => r.status === 200).length, 1);
+      const loser = results.find((r) => r.status !== 200);
+      assert.ok(loser);
+      assert.ok([400, 409].includes(loser.status));
+      const finalRow = (await db.getPool().query(
+        `SELECT status, text FROM social_post_drafts WHERE id=$1 AND tenant_id=$2`,
+        [row.id, tenantId],
+      )).rows[0];
+      assert.equal(finalRow.status, 'pending_approval');
+      assert.equal(finalRow.text, SAFE_TEXT);
+    } finally {
+      gateCached.exports.gateRouteText = async () => ({
+        ok: false,
+        error: 'content_safety_blocked',
+        userMessage: 'blocked',
+      });
+      delete require.cache[require.resolve('../services/social_drafts/api')];
+      await new Promise((r) => openServer.close(r));
+    }
+  });
+
+  it('leaves no claim and zero provider calls when approve gate is unavailable', async () => {
+    gateCached.exports.gateRouteText = async () => ({
+      ok: false,
+      error: 'content_safety_unavailable',
+      userMessage: 'Content safety checks are temporarily unavailable.',
+    });
+    delete require.cache[require.resolve('../services/social_drafts/api')];
+    const tmpServer = await listen(mountApp({ useDb: true }).app);
+    const draftsRouter = require('../services/social_drafts/api');
+    let publishCalls = 0;
+    const origPublish = draftsRouter._publishViaZernio;
+    draftsRouter._publishViaZernio = async () => { publishCalls += 1; return { ok: true, post: { id: 'z-unavail' } }; };
+    try {
+      const unavailable = await jsonFetch(tmpServer, 'POST', `/api/social-drafts/${draftId}/approve`, { tid: tenantId });
+      assert.equal(unavailable.status, 503);
+      assert.equal(unavailable.body.draft, undefined);
+      assert.equal(publishCalls, 0);
+      const row = (await db.getPool().query(
+        `SELECT status, meta FROM social_post_drafts WHERE id=$1 AND tenant_id=$2`,
+        [draftId, tenantId],
+      )).rows[0];
+      assert.equal(row.status, 'pending_approval');
+      assert.equal(row.meta?.publishing_claim || null, null);
+    } finally {
+      draftsRouter._publishViaZernio = origPublish;
+      await new Promise((r) => tmpServer.close(r));
+      gateCached.exports.gateRouteText = async () => ({
+        ok: false,
+        error: 'content_safety_blocked',
+        userMessage: 'blocked',
+      });
+      delete require.cache[require.resolve('../services/social_drafts/api')];
+    }
   });
 });

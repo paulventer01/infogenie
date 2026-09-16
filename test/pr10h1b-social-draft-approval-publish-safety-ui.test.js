@@ -155,30 +155,196 @@ test('SocialPublisher self-heal shows alert and preserves caption on block', asy
   assert.match(h.text(), /Existing warning/);
 });
 
+test('SocialPublisher preserves edits made while self-heal is in flight', async (t) => {
+  const { publisherHarness } = require('./helpers/social-publisher-ui-harness');
+  let finish;
+  const h = await publisherHarness(t, {
+    drafts: {
+      70: {
+        id: 70,
+        profile_id: 'prof1',
+        status: 'draft',
+        text: 'Caption to heal',
+        platforms: ['instagram'],
+        meta: {},
+        content_safety_warnings: [],
+      },
+    },
+    saveHandler: async () => ({
+      ok: true,
+      draft: { id: 70, profile_id: 'prof1', status: 'draft', text: 'Caption to heal', platforms: ['instagram'], meta: {}, content_safety_warnings: [] },
+    }),
+    selfHealHandler: async () => new Promise((resolve) => {
+      finish = () => resolve({
+        ok: true,
+        draft: { id: 70, text: 'Server healed stale caption.', content_safety_warnings: ['Heal warning.'] },
+        content_safety_warnings: ['Heal warning.'],
+      });
+    }),
+  });
+  await h.openCalendar();
+  await h.waitForCalendarDrafts();
+  await h.editDraftFromCalendar('Caption to heal');
+  await h.waitForDraftEditor(70);
+  await act(async () => {
+    const btn = [...h.document.querySelectorAll('button')].find((b) => /Self-heal/.test(b.textContent || ''));
+    assert.ok(btn);
+    btn.click();
+  });
+  await waitFor(() => h.text().includes('Self-healing'), 20, 'self-heal loading');
+  await h.setCaption('Edited again while self-healing.');
+  await act(async () => finish());
+  await waitFor(() => h.captionInput().value === 'Edited again while self-healing.', 20, 'preserved caption');
+});
+
+test('SocialPublisher preserves edits made while submit is in flight', async (t) => {
+  const { publisherHarness } = require('./helpers/social-publisher-ui-harness');
+  let finish;
+  const h = await publisherHarness(t, {
+    drafts: {
+      71: {
+        id: 71,
+        profile_id: 'prof1',
+        status: 'draft',
+        text: 'Submit me',
+        platforms: ['instagram'],
+        meta: {},
+        content_safety_warnings: [],
+      },
+    },
+    saveHandler: async () => ({
+      ok: true,
+      draft: { id: 71, profile_id: 'prof1', status: 'draft', text: 'Submit me', platforms: ['instagram'], meta: {}, content_safety_warnings: [] },
+    }),
+    submitHandler: async () => new Promise((resolve) => {
+      finish = () => resolve({
+        ok: true,
+        draft: { id: 71, status: 'pending_approval', text: 'Server submit stale caption.', content_safety_warnings: ['Submit warning.'] },
+        content_safety_warnings: ['Submit warning.'],
+      });
+    }),
+  });
+  await h.openCalendar();
+  await h.waitForCalendarDrafts();
+  await h.editDraftFromCalendar('Submit me');
+  await h.waitForDraftEditor(71);
+  await h.clickSubmitApproval();
+  await waitFor(() => h.text().includes('Submitting'), 20, 'submit loading');
+  await h.setCaption('Edited again while submitting.');
+  await act(async () => finish());
+  await waitFor(() => h.captionInput().value === 'Edited again while submitting.', 20, 'preserved caption');
+});
+
+test('SocialPublisher ignores late blocked self-heal response after switching drafts', async (t) => {
+  const { publisherHarness } = require('./helpers/social-publisher-ui-harness');
+  let finish;
+  const draftA = { id: 72, profile_id: 'prof1', status: 'draft', text: 'Draft A heal', platforms: ['instagram'], meta: {}, content_safety_warnings: [] };
+  const draftB = { id: 73, profile_id: 'prof1', status: 'draft', text: 'Draft B caption', platforms: ['linkedin'], meta: {}, content_safety_warnings: [] };
+  const h = await publisherHarness(t, {
+    drafts: { 72: draftA, 73: draftB },
+    saveHandler: async ({ method, draftId }) => ({
+      ok: true,
+      draft: method === 'PATCH' ? { ...draftA, id: draftId } : draftA,
+    }),
+    selfHealHandler: async ({ draftId }) => new Promise((resolve) => {
+      if (draftId === 72) {
+        finish = () => resolve({
+          ok: false,
+          error: 'content_safety_blocked',
+          userMessage: 'Late blocked self-heal for draft A.',
+          httpStatus: 403,
+        });
+        return;
+      }
+      resolve({ ok: true, draft: { id: draftId, text: 'Healed', content_safety_warnings: [] } });
+    }),
+  });
+  await h.openCalendar();
+  await h.waitForCalendarDrafts();
+  await h.editDraftFromCalendar('Draft A heal');
+  await h.waitForDraftEditor(72);
+  await h.clickSelfHeal();
+  await waitFor(() => h.state.selfHealCalls.length === 1, 20, 'self-heal initiation');
+  await h.openCalendar();
+  await h.waitForCalendarDrafts();
+  await h.editDraftFromCalendar('Draft B caption');
+  await h.waitForDraftEditor(73);
+  await act(async () => { assert.ok(finish); finish(); });
+  await waitFor(() => h.captionInput().value === 'Draft B caption', 20, 'draft B editor');
+  assert.equal(h.document.querySelector('[role="alert"]'), null);
+});
+
+test('SocialPublisher ignores late submit response after switching drafts', async (t) => {
+  const { publisherHarness } = require('./helpers/social-publisher-ui-harness');
+  let finish;
+  const draftA = { id: 74, profile_id: 'prof1', status: 'draft', text: 'Draft A submit', platforms: ['instagram'], meta: {}, content_safety_warnings: [] };
+  const draftB = { id: 75, profile_id: 'prof1', status: 'draft', text: 'Draft B caption', platforms: ['linkedin'], meta: {}, content_safety_warnings: [] };
+  const h = await publisherHarness(t, {
+    drafts: { 74: draftA, 75: draftB },
+    saveHandler: async ({ method, draftId }) => ({
+      ok: true,
+      draft: method === 'PATCH' ? { ...draftA, id: draftId } : draftA,
+    }),
+    submitHandler: async ({ draftId }) => new Promise((resolve) => {
+      if (draftId === 74) {
+        finish = () => resolve({
+          ok: true,
+          draft: { id: 74, status: 'pending_approval', text: 'Server submit should not apply.', content_safety_warnings: [] },
+        });
+        return;
+      }
+      resolve({ ok: true, draft: { id: draftId, status: 'pending_approval', text: draftB.text, content_safety_warnings: [] } });
+    }),
+  });
+  await h.openCalendar();
+  await h.waitForCalendarDrafts();
+  await h.editDraftFromCalendar('Draft A submit');
+  await h.waitForDraftEditor(74);
+  await h.clickSubmitApproval();
+  await waitFor(() => h.state.submitCalls.length === 1, 20, 'submit initiation');
+  await h.openCalendar();
+  await h.waitForCalendarDrafts();
+  await h.editDraftFromCalendar('Draft B caption');
+  await h.waitForDraftEditor(75);
+  await act(async () => { assert.ok(finish); finish(); });
+  await waitFor(() => h.captionInput().value === 'Draft B caption', 20, 'draft B editor');
+  assert.doesNotMatch(h.text(), /Server submit should not apply/);
+});
+
 test('SocialPublisher resets self-heal loading after response', async (t) => {
   const { publisherHarness } = require('./helpers/social-publisher-ui-harness');
   let finish;
   const h = await publisherHarness(t, {
-    saveHandler: async () => ({ ok: true, draft: { id: 61, profile_id: 'prof1', status: 'draft', text: 'Heal me', platforms: ['instagram'], meta: {}, content_safety_warnings: [] } }),
-  });
-  const origFetch = global.fetch;
-  global.fetch = async (url, options = {}) => {
-    if (url.includes('/self-heal')) {
-      return new Promise((resolve) => {
-        finish = () => resolve(json({ ok: true, draft: { id: 61, text: 'Healed copy', content_safety_warnings: ['Heal warning.'] }, content_safety_warnings: ['Heal warning.'] }));
+    drafts: {
+      61: {
+        id: 61,
+        profile_id: 'prof1',
+        status: 'draft',
+        text: 'Heal me',
+        platforms: ['instagram'],
+        meta: {},
+        content_safety_warnings: [],
+      },
+    },
+    saveHandler: async () => ({
+      ok: true,
+      draft: { id: 61, profile_id: 'prof1', status: 'draft', text: 'Heal me', platforms: ['instagram'], meta: {}, content_safety_warnings: [] },
+    }),
+    selfHealHandler: async () => new Promise((resolve) => {
+      finish = () => resolve({
+        ok: true,
+        draft: { id: 61, text: 'Healed copy', content_safety_warnings: ['Heal warning.'] },
+        content_safety_warnings: ['Heal warning.'],
       });
-    }
-    return origFetch(url, options);
-  };
-  t.after(() => { global.fetch = origFetch; });
-  await h.setCaption('Heal me');
-  await h.selectInstagram();
-  await act(async () => {
-    const btn = [...h.document.querySelectorAll('button')].find((b) => /Self-heal/.test(b.textContent || ''));
-    btn.click();
+    }),
   });
-  await waitFor(() => h.text().includes('Self-healing'), 20, 'self-heal loading');
-  await act(async () => finish());
+  await h.openCalendar();
+  await h.waitForCalendarDrafts();
+  await h.editDraftFromCalendar('Heal me');
+  await h.waitForDraftEditor(61);
+  await h.clickSelfHeal();
+  await waitFor(() => /Self-healing|Running self-heal/.test(h.text()), 20, 'self-heal loading');
+  await act(async () => { assert.ok(finish); finish(); });
   await waitFor(() => h.text().includes('Heal warning'), 20, 'heal warnings');
   const btn = [...h.document.querySelectorAll('button')].find((b) => /Self-heal/.test(b.textContent || ''));
   assert.ok(btn);

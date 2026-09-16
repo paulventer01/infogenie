@@ -59,8 +59,12 @@ async function publisherHarness(t, opts = {}) {
   const state = {
     drafts: opts.drafts || {},
     saveHandler: opts.saveHandler || null,
+    selfHealHandler: opts.selfHealHandler || null,
+    submitHandler: opts.submitHandler || null,
     postCalls: [],
     patchCalls: [],
+    selfHealCalls: [],
+    submitCalls: [],
     nextDraftId: 200,
   };
   const dom = new JSDOM('<div id="root"></div>', {
@@ -107,6 +111,24 @@ async function publisherHarness(t, opts = {}) {
         return json(response, safetyStatus(response));
       }
       if (url.includes('/api/social-drafts/list')) return json({ ok: true, drafts: Object.values(state.drafts) });
+      const selfHealMatch = url.match(/\/api\/social-drafts\/(\d+)\/self-heal$/);
+      if (selfHealMatch && method === 'POST') {
+        const draftId = Number(selfHealMatch[1]);
+        state.selfHealCalls.push({ draftId });
+        const response = state.selfHealHandler
+          ? await state.selfHealHandler({ draftId }, state)
+          : { ok: true, draft: { id: draftId, text: 'Healed caption', content_safety_warnings: [] }, content_safety_warnings: [] };
+        return json(response, safetyStatus(response));
+      }
+      const submitMatch = url.match(/\/api\/social-drafts\/(\d+)\/submit-approval$/);
+      if (submitMatch && method === 'POST') {
+        const draftId = Number(submitMatch[1]);
+        state.submitCalls.push({ draftId });
+        const response = state.submitHandler
+          ? await state.submitHandler({ draftId }, state)
+          : { ok: true, draft: { id: draftId, status: 'pending_approval', text: state.drafts[draftId]?.text || 'Submitted', content_safety_warnings: [] }, content_safety_warnings: [] };
+        return json(response, safetyStatus(response));
+      }
       return json({ ok: true });
     },
   };
@@ -127,6 +149,10 @@ async function publisherHarness(t, opts = {}) {
   });
   await clickTab('Compose');
   await waitFor(() => !!dom.window.document.querySelector('textarea'), 40);
+  await waitFor(() => {
+    const sel = dom.window.document.querySelector('select');
+    return sel && String(sel.value || '').length > 0;
+  }, 40, 'profile selected');
   const captionInput = () => dom.window.document.querySelector('textarea');
   const setCaption = async (value) => act(async () => {
     const el = captionInput();
@@ -147,6 +173,16 @@ async function publisherHarness(t, opts = {}) {
     assert.ok(btn, 'Save draft');
     btn.click();
   });
+  const clickSelfHeal = async () => act(async () => {
+    const btn = [...dom.window.document.querySelectorAll('button')].find((b) => /Self-heal|Self-healing/.test(b.textContent || ''));
+    assert.ok(btn, 'Self-heal');
+    btn.click();
+  });
+  const clickSubmitApproval = async () => act(async () => {
+    const btn = [...dom.window.document.querySelectorAll('button')].find((b) => /Submit for approval|Submitting…/.test(b.textContent || ''));
+    assert.ok(btn, 'Submit for approval');
+    btn.click();
+  });
   const editDraftFromCalendar = async (snippet) => act(async () => {
     const editBtn = [...dom.window.document.querySelectorAll('button')]
       .find((b) => b.textContent === 'Edit' && b.closest('div')?.textContent?.includes(snippet));
@@ -163,6 +199,8 @@ async function publisherHarness(t, opts = {}) {
     setCaption,
     selectInstagram,
     clickSaveDraft,
+    clickSelfHeal,
+    clickSubmitApproval,
     openCalendar: () => clickTab('Calendar'),
     editDraftFromCalendar,
     waitForAlert: () => waitFor(() => !!dom.window.document.querySelector('[role="alert"]'), 20, 'role=alert'),

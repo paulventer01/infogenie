@@ -146,10 +146,28 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
   const saveRequestRef = useRef(0);
   const actionRequestRef = useRef(0);
   const editingDraftIdRef = useRef<number | null>(null);
+  const textRef = useRef(text);
+  const warningsRef = useRef(contentSafetyWarnings);
 
   useEffect(() => {
     editingDraftIdRef.current = editingDraftId;
   }, [editingDraftId]);
+
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
+
+  useEffect(() => {
+    warningsRef.current = contentSafetyWarnings;
+  }, [contentSafetyWarnings]);
+
+  function applyIfEditorUnchanged(sentText: string, apply: () => void) {
+    if (textRef.current === sentText) apply();
+  }
+
+  function actionTargetMismatch(operationDraftId: number | null): boolean {
+    return editingDraftIdRef.current !== operationDraftId;
+  }
 
   function clearSaveError() {
     setSaveError(null);
@@ -413,7 +431,7 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
         return;
       }
       const warnings = pr.content_safety_warnings || pr.draft?.content_safety_warnings || [];
-      if (text === textSnapshot) setContentSafetyWarnings(warnings);
+      applyIfEditorUnchanged(textSnapshot, () => setContentSafetyWarnings(warnings));
       draftId = draftIdAtStart;
     } else {
       const r = await apiPost<{
@@ -434,7 +452,7 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
         return;
       }
       const warnings = r.content_safety_warnings || r.draft?.content_safety_warnings || [];
-      if (text === textSnapshot) setContentSafetyWarnings(warnings);
+      applyIfEditorUnchanged(textSnapshot, () => setContentSafetyWarnings(warnings));
       draftId = r.draft.id;
       setEditingDraftId(draftId);
     }
@@ -461,7 +479,7 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
         return;
       }
       const pubWarnings = pub.content_safety_warnings || pub.draft?.content_safety_warnings || [];
-      if (text === textSnapshot) setContentSafetyWarnings(pubWarnings);
+      applyIfEditorUnchanged(textSnapshot, () => setContentSafetyWarnings(pubWarnings));
       if (saveRequestRef.current !== reqSeq) return;
       setResult({
         color: "#065F46",
@@ -485,7 +503,6 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
   }
 
   async function submitForApproval() {
-    // Ensure draft exists then submit
     const t = text.trim();
     const platforms = Array.from(selected);
     if (!profileId || (!t && !media.trim()) || !platforms.length) {
@@ -494,13 +511,13 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     }
     const reqSeq = actionRequestRef.current + 1;
     actionRequestRef.current = reqSeq;
-    const draftIdAtStart = editingDraftId;
-    const textSnapshot = text;
-    const priorWarnings = contentSafetyWarnings;
+    let operationDraftId: number | null = editingDraftId;
+    const textSnapshot = textRef.current;
+    const priorWarnings = warningsRef.current;
     clearSaveError();
     setActionBusy("submit");
     setResult({ color: "#6B7280", text: "Submitting for approval…" });
-    let draftId = editingDraftId;
+
     const body: Record<string, unknown> = {
       profileId,
       text: t,
@@ -510,20 +527,53 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     if (schedule) body.scheduled_for = new Date(schedule).toISOString();
     if (media.trim()) body.media_urls = [media.trim()];
 
-    if (draftId) {
-      const pr = await apiPatch<{ ok: boolean; error?: string }>(`/api/social-drafts/${draftId}`, body);
+    if (operationDraftId) {
+      const pr = await apiPatch<{
+        ok: boolean;
+        error?: string;
+        userMessage?: string;
+        draft?: SocialDraft;
+        content_safety_warnings?: string[];
+      }>(`/api/social-drafts/${operationDraftId}`, body);
+      if (actionRequestRef.current !== reqSeq) return;
+      if (actionTargetMismatch(operationDraftId)) {
+        setActionBusy(null);
+        return;
+      }
       if (!pr.ok) {
-        setResult({ color: "#991B1B", text: `❌ ${pr.error}` });
+        setActionBusy(null);
+        if (handleSafetyBlock(pr, priorWarnings)) {
+          setResult(null);
+          return;
+        }
+        setResult({ color: "#991B1B", text: `❌ ${pr.userMessage || pr.error}` });
         return;
       }
     } else {
-      const r = await apiPost<{ ok: boolean; error?: string; draft?: SocialDraft }>("/api/social-drafts", body);
+      const r = await apiPost<{
+        ok: boolean;
+        error?: string;
+        userMessage?: string;
+        draft?: SocialDraft;
+        content_safety_warnings?: string[];
+      }>("/api/social-drafts", body);
+      if (actionRequestRef.current !== reqSeq) return;
       if (!r.ok || !r.draft) {
-        setResult({ color: "#991B1B", text: `❌ ${r.error || "save failed"}` });
+        setActionBusy(null);
+        if (handleSafetyBlock(r, priorWarnings)) {
+          setResult(null);
+          return;
+        }
+        setResult({ color: "#991B1B", text: `❌ ${r.userMessage || r.error || "save failed"}` });
         return;
       }
-      draftId = r.draft.id;
-      setEditingDraftId(draftId);
+      operationDraftId = r.draft.id;
+      setEditingDraftId(operationDraftId);
+      if (actionRequestRef.current !== reqSeq) return;
+      if (actionTargetMismatch(operationDraftId)) {
+        setActionBusy(null);
+        return;
+      }
     }
 
     const sub = await apiPost<{
@@ -534,8 +584,12 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
       draft?: SocialDraft;
       content_safety_warnings?: string[];
       self_heal?: { passed?: boolean; final_verdict?: string; attempts?: unknown[] };
-    }>(`/api/social-drafts/${draftId}/submit-approval`, {});
-    if (actionRequestRef.current !== reqSeq || editingDraftIdRef.current !== draftIdAtStart) return;
+    }>(`/api/social-drafts/${operationDraftId}/submit-approval`, {});
+    if (actionRequestRef.current !== reqSeq) return;
+    if (actionTargetMismatch(operationDraftId)) {
+      setActionBusy(null);
+      return;
+    }
     setActionBusy(null);
     if (!sub.ok) {
       if (handleSafetyBlock(sub, priorWarnings)) {
@@ -543,25 +597,27 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
         return;
       }
       if (sub.error === "self_heal_failed") {
-        if (sub.draft?.text && text === textSnapshot) setText(sub.draft.text);
         setResult({
           color: "#991B1B",
           text: `❌ Self-heal blocked submit (${sub.self_heal?.final_verdict || "fail"}). Edit the caption, run Self-heal, or fix claims manually.`,
         });
         return;
       }
-      setResult({ color: "#991B1B", text: `❌ ${sub.error}` });
+      setResult({ color: "#991B1B", text: `❌ ${sub.userMessage || sub.error}` });
       return;
     }
     const warnings = sub.content_safety_warnings || sub.draft?.content_safety_warnings || [];
-    if (text === textSnapshot) setContentSafetyWarnings(warnings);
+    const editorUnchanged = textRef.current === textSnapshot;
+    applyIfEditorUnchanged(textSnapshot, () => {
+      setContentSafetyWarnings(warnings);
+      if (sub.draft?.text && sub.draft.text !== t) setText(sub.draft.text);
+    });
     const healNote = sub.self_heal
       ? ` · self-heal ${sub.self_heal.passed ? "passed" : sub.self_heal.final_verdict || "caution"}`
       : "";
-    if (sub.draft?.text && sub.draft.text !== t && text === textSnapshot) setText(sub.draft.text);
-    setResult({ color: "#9A3412", text: `✅ Submitted for approval (draft #${draftId})${healNote}.` });
+    setResult({ color: "#9A3412", text: `✅ Submitted for approval (draft #${operationDraftId})${healNote}.` });
     setCalRefresh((n) => n + 1);
-    setTab("approvals");
+    if (editorUnchanged) setTab("approvals");
   }
 
   async function runSelfHeal() {
@@ -572,15 +628,21 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     }
     const reqSeq = actionRequestRef.current + 1;
     actionRequestRef.current = reqSeq;
-    const draftIdAtStart = editingDraftId;
-    const textSnapshot = text;
-    const priorWarnings = contentSafetyWarnings;
+    let operationDraftId: number | null = editingDraftId;
+    const textSnapshot = textRef.current;
+    const priorWarnings = warningsRef.current;
     clearSaveError();
     setActionBusy("self-heal");
     setResult({ color: "#6B7280", text: "Running self-heal (verify → fix → re-verify)…" });
-    let draftId = editingDraftId;
-    if (!draftId) {
-      const r = await apiPost<{ ok: boolean; error?: string; draft?: SocialDraft }>("/api/social-drafts", {
+
+    if (!operationDraftId) {
+      const r = await apiPost<{
+        ok: boolean;
+        error?: string;
+        userMessage?: string;
+        draft?: SocialDraft;
+        content_safety_warnings?: string[];
+      }>("/api/social-drafts", {
         profileId,
         text: t,
         platforms: Array.from(selected).length ? Array.from(selected) : ["instagram"],
@@ -593,44 +655,78 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
           setResult(null);
           return;
         }
-        setResult({ color: "#991B1B", text: `❌ ${r.error || "save failed"}` });
+        setResult({ color: "#991B1B", text: `❌ ${r.userMessage || r.error || "save failed"}` });
         return;
       }
-      draftId = r.draft.id;
-      setEditingDraftId(draftId);
+      operationDraftId = r.draft.id;
+      setEditingDraftId(operationDraftId);
+      if (actionRequestRef.current !== reqSeq) return;
+      if (actionTargetMismatch(operationDraftId)) {
+        setActionBusy(null);
+        return;
+      }
     } else {
-      await apiPatch(`/api/social-drafts/${draftId}`, { text: t, profileId, platforms: Array.from(selected), meta: draftMeta });
-      if (actionRequestRef.current !== reqSeq || editingDraftIdRef.current !== draftIdAtStart) return;
+      const pr = await apiPatch<{
+        ok: boolean;
+        error?: string;
+        userMessage?: string;
+        draft?: SocialDraft;
+        content_safety_warnings?: string[];
+      }>(`/api/social-drafts/${operationDraftId}`, {
+        text: t,
+        profileId,
+        platforms: Array.from(selected),
+        meta: draftMeta,
+      });
+      if (actionRequestRef.current !== reqSeq) return;
+      if (actionTargetMismatch(operationDraftId)) {
+        setActionBusy(null);
+        return;
+      }
+      if (!pr.ok) {
+        setActionBusy(null);
+        if (handleSafetyBlock(pr, priorWarnings)) {
+          setResult(null);
+          return;
+        }
+        setResult({ color: "#991B1B", text: `❌ ${pr.userMessage || pr.error || "save failed"}` });
+        return;
+      }
     }
+
     const heal = await apiPost<{
       ok: boolean;
       error?: string;
       userMessage?: string;
       draft?: SocialDraft;
       content_safety_warnings?: string[];
-      self_heal?: { passed?: boolean; final_verdict?: string; text?: string; attempts?: unknown[] };
-    }>(`/api/social-drafts/${draftId}/self-heal`, {});
+      self_heal?: { passed?: boolean; final_verdict?: string; attempts?: number };
+    }>(`/api/social-drafts/${operationDraftId}/self-heal`, {});
     if (actionRequestRef.current !== reqSeq) return;
-    if (draftIdAtStart != null && editingDraftIdRef.current !== draftIdAtStart) return;
+    if (actionTargetMismatch(operationDraftId)) {
+      setActionBusy(null);
+      return;
+    }
     setActionBusy(null);
     if (!heal.ok) {
       if (handleSafetyBlock(heal, priorWarnings)) {
         setResult(null);
         return;
       }
-      setResult({ color: "#991B1B", text: `❌ ${heal.error || "self-heal failed"}` });
+      setResult({ color: "#991B1B", text: `❌ ${heal.userMessage || heal.error || "self-heal failed"}` });
       return;
     }
     const warnings = heal.content_safety_warnings || heal.draft?.content_safety_warnings || [];
-    if (text === textSnapshot) {
+    const healedText = heal.draft?.text;
+    applyIfEditorUnchanged(textSnapshot, () => {
       setContentSafetyWarnings(warnings);
-      if (heal.draft?.text) setText(heal.draft.text);
-      else if (heal.self_heal?.text) setText(heal.self_heal.text);
-    }
+      if (healedText) setText(healedText);
+    });
     const v = heal.self_heal?.final_verdict || (heal.self_heal?.passed ? "pass" : "caution");
+    const attemptCount = heal.self_heal?.attempts ?? 0;
     setResult({
       color: heal.self_heal?.passed ? "#065F46" : v === "fail" ? "#991B1B" : "#92400E",
-      text: `🩹 Self-heal ${heal.self_heal?.passed ? "passed" : v} (${heal.self_heal?.attempts?.length || 0} attempt(s)).`,
+      text: `🩹 Self-heal ${heal.self_heal?.passed ? "passed" : v} (${attemptCount} attempt(s)).`,
     });
     setCalRefresh((n) => n + 1);
   }
@@ -702,6 +798,7 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
     setSaving(false);
     setActionBusy(null);
     clearSaveError();
+    textRef.current = d.text || "";
     setText(d.text || "");
     setSchedule(d.scheduled_for ? toDatetimeLocal(d.scheduled_for) : "");
     setMedia((d.media_urls || [])[0] || "");

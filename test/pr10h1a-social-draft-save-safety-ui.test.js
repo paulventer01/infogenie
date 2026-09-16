@@ -112,8 +112,7 @@ test('SocialPublisher preserves edits made while a save is in flight', async (t)
   await waitFor(() => h.state.postCalls.length === 1, 20, 'save request initiation');
   await h.setCaption('Edited again while saving.');
   await act(async () => finish());
-  await waitFor(() => h.text().includes('Saved warning.'), 20, 'saved warning banner');
-  assert.equal(h.captionInput().value, 'Edited again while saving.');
+  await waitFor(() => h.captionInput().value === 'Edited again while saving.', 20, 'preserved caption');
 });
 
 test('SocialPublisher ignores a late blocked save response after switching drafts', async (t) => {

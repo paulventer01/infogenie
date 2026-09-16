@@ -15,17 +15,18 @@ function altWithProhibitedSuffix() {
   return `${'a'.repeat(LEGACY_ALT_LIMIT + 1)}${PROHIBITED}`;
 }
 
-const db = require('../../db');
-db.hasDb = () => false;
-
 const tenantCtx = require('../../services/tenants/context');
 tenantCtx.resolveTenantId = async (req) => {
   const h = req?.headers?.['x-test-tid'] || req?.headers?.['x-test-tenant'];
   return h ? parseInt(h, 10) : 11;
 };
 
-function mountApp() {
+function mountApp(opts = {}) {
   delete require.cache[require.resolve('../../services/social_drafts/api')];
+  const db = require('../../db');
+  db.hasDb = opts.useDb
+    ? () => !!process.env.DATABASE_URL
+    : () => false;
   const draftsRouter = require('../../services/social_drafts/api');
   const app = express();
   app.use(express.json());
