@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import styles from "@/styles/reporting-workspace.module.css";
 import { apiGet, apiPut } from "@/lib/api";
 import ClientReportingReport from "@/components/features/manage/ClientReportingReport";
 import ClientReportingRecipient from "@/components/features/manage/ClientReportingRecipient";
@@ -13,7 +14,7 @@ import { API, BRAND_FIELDS, PERIOD_HELP, accessLost, draftError, newDraft, profi
   type Client, type ClientsResponse, type Context, type Draft, type ProfileResponse } from "@/lib/clientReporting";
 import { REPORTING_PERIODS, defaultMetrics, orderedMetricEditor } from "@/lib/clientReportingMetrics";
 
-const card: CSSProperties = { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 12, padding: 20, marginTop: 20 };
+const card: CSSProperties = { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 24, marginTop: 16 };
 const grid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 };
 const input: CSSProperties = { border: "1px solid #94A3B8", borderRadius: 6, padding: 9, width: "100%", boxSizing: "border-box", background: "#FFFFFF", color: "#0F172A" };
 const button: CSSProperties = { background: "#0F766E", color: "#FFFFFF", border: 0, borderRadius: 6, padding: "10px 14px", marginRight: 8, marginTop: 8 };
@@ -192,18 +193,34 @@ export default function ClientReportingProfiles() {
   }
   const protectedVisible = !checking && !accessError && !!context.current;
   const selected = clients.find((client) => client.id === clientId);
-  return <main style={{ background: "#F8FAFC", color: "#0F172A", minHeight: "100%", padding: 24 }}>
-    <div style={{ maxWidth: 1000, margin: "0 auto" }}>
-      <h1>Client Reporting Profiles</h1>
-      <p>Save each client&apos;s preferred report source, format, title and branding.</p>
-      <p>Preview, download and schedule reports using saved profiles, mapped client data and delivery recipients.</p>
+  const ready = !!clientId && !!draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError;
+  function goStep(id: string) {
+    const target = document.getElementById(id);
+    target?.scrollIntoView({ behavior: "auto", block: "start" }); target?.focus({ preventScroll: true });
+  }
+  return <main className={styles.workspace} data-ig-no-enhance>
+    <div className={styles.inner}>
+      <header className={styles.hero}>
+        <p className={styles.eyebrow}>Workspace / Client reporting</p>
+        <h1>Turn results into a clear story.</h1>
+        <p>Build a client report from the data you trust. Preview the details, get approval and give your client a place to respond.</p>
+      </header>
+      <nav className={styles.steps} aria-label="Reporting journey">
+        {[{id:"report-client",title:"Choose client",note:"Start with a workspace",enabled:protectedVisible},
+          {id:"report-setup",title:"Build report",note:"Profile and data sources",enabled:protectedVisible && !!clientId},
+          {id:"report-review",title:"Preview & approve",note:"Check before sharing",enabled:protectedVisible && ready},
+          {id:"report-share",title:"Share & follow up",note:"Portal and delivery",enabled:protectedVisible && ready}].map((step,index)=><button
+            key={step.id} type="button" className={styles.step} disabled={!step.enabled} onClick={()=>goStep(step.id)}>
+            <span className={styles.number}>{index+1}</span><span><strong>{step.title}</strong><small>{step.note}</small></span>
+          </button>)}
+      </nav>
       {checking && <p role="status">Verifying account, workspace and access…</p>}
       {accessError && <><Failure>{accessError}</Failure><button style={button} onClick={() => {
         if (context.current && !denied.current) void checkAccess().then((valid) => { if (valid && !clients.length) void loadClients(); });
         else setAttempt((n) => n + 1);
       }}>Retry access</button></>}
       <div hidden={!protectedVisible}>
-        <section style={card} aria-label="Select client">
+        <section id="report-client" tabIndex={-1} className={styles.section} style={card} aria-label="Select client">
           <h2>Choose a client</h2>
           <Field label="Client"><select name="client_id" style={input} value={clientId || ""} disabled={saving || !!pendingClient || !clients.length} onChange={(event) => {
             const id = Number(event.target.value);
@@ -220,7 +237,8 @@ export default function ClientReportingProfiles() {
           {!listBusy && !listError && !clients.length && <p>No active clients are available. Ask your workspace administrator to add a client.</p>}
           {cursor && !listError && <button style={button} disabled={listBusy || saving} onClick={() => void loadClients(cursor)}>Load more clients</button>}
         </section>
-        {clientId && <section style={card} aria-label="Client profile">
+        {clientId && <div className={styles.context}><strong>{selected?.name || "Selected client"}</strong><span className={styles.pill}>{dirty ? "Unsaved changes" : version ? "Saved profile" : "Setup needed"}</span></div>}
+        {clientId && <section id="report-setup" tabIndex={-1} className={styles.section} style={card} aria-label="Client profile">
           <h2>{selected?.name || "Selected client"}</h2>
           {profileBusy && <p role="status">Loading reporting profile…</p>}
           {profileError && <Failure>{profileError}</Failure>}
@@ -288,14 +306,21 @@ export default function ClientReportingProfiles() {
             {dirty || reloadRequired ? "Discard changes and reload" : "Reload profile"}
           </button>}
         </section>}
-        {clientId && context.current && !pendingClient && <ClientReportingRecipient
-          key={`${context.current.userId}:${context.current.tenantId}:${clientId}:recipient`}
+        {clientId && context.current && !pendingClient && <ClientReportingMappings
+          key={`${context.current.userId}:${context.current.tenantId}:${clientId}`}
           clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
+        <div id="report-review" tabIndex={-1} className={styles.section}>
+
         {clientId && context.current && !pendingClient && (draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
           ? <ClientReportingReport key={`${context.current.userId}:${context.current.tenantId}:${clientId}:${version}`}
             clientId={clientId} version={version} format={draft.default_format} timezone={draft.reporting_timezone}
             checkAccess={checkAccess} clearContext={clearContext} />
           : <p>Save or reload the reporting profile before previewing and generating reports.</p>)}
+        </div>
+        <div id="report-share" tabIndex={-1} className={styles.section}>
+        {clientId && context.current && !pendingClient && <ClientReportingRecipient
+          key={`${context.current.userId}:${context.current.tenantId}:${clientId}:recipient`}
+          clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
         {clientId && context.current && !pendingClient && draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
           && <ClientReportingSchedule key={`${context.current.userId}:${context.current.tenantId}:${clientId}:schedule`}
             clientId={clientId} defaultFormat={draft.default_format} checkAccess={checkAccess} clearContext={clearContext} />}
@@ -305,9 +330,8 @@ export default function ClientReportingProfiles() {
         {clientId && context.current && !pendingClient && draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
           && <ClientReportingPortalFeedback key={`${context.current.userId}:${context.current.tenantId}:${clientId}:portal-feedback`}
             clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
-        {clientId && context.current && !pendingClient && <ClientReportingMappings
-          key={`${context.current.userId}:${context.current.tenantId}:${clientId}`}
-          clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
+
+        </div>
       </div>
     </div>
   </main>;

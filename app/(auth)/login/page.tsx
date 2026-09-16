@@ -117,17 +117,15 @@ export default function LoginPage() {
 
     try {
       const sawLogin = localStorage.getItem("ig-saw-login");
-      // Preview tunnels: always land on Log In with demo creds prefilled.
+      // Preview hosts start at login; each workspace supplies its own account.
       const host = window.location.hostname || "";
       const isPreview =
         host === "localhost" ||
         host === "127.0.0.1" ||
-        host.endsWith(".trycloudflare.com");
+        host.endsWith(".trycloudflare.com") || host.endsWith(".app.github.dev");
       setPreviewHost(isPreview);
       if (isPreview) {
         setMode("login");
-        setEmail("demo@infogenie.local");
-        setPass("preview123");
       } else {
         setMode(sawLogin ? "login" : "signup");
       }
@@ -321,7 +319,7 @@ export default function LoginPage() {
           <div className={styles.previewHint}>
             <strong>Preview login</strong>
             <span>
-              <code>demo@infogenie.local</code> / <code>preview123</code>
+              Use the test account supplied with your workspace.
             </span>
           </div>
         )}

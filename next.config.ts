@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const EXPRESS = process.env.EXPRESS_PROXY_TARGET || "http://localhost:8000";
 const isProd = process.env.NODE_ENV === "production";
+const isPreview = process.env.INFOGENIE_PREVIEW_WORKSPACE === "1";
 
 const nextConfig: NextConfig = {
   // Hide the black Next.js "N" / route indicator in preview tunnels and local
@@ -19,6 +20,7 @@ const nextConfig: NextConfig = {
   // Next 15 blocks /_next/* and the app appears blank after login.
   allowedDevOrigins: [
     "*.trycloudflare.com",
+    ...(isPreview ? ["*.app.github.dev"] : []),
     "referrals-explaining-explicitly-conferencing.trycloudflare.com",
     "musician-dust-dealtime-ignored.trycloudflare.com",
     "thompson-attorney-themes-settled.trycloudflare.com",
@@ -36,12 +38,12 @@ const nextConfig: NextConfig = {
       "object-src 'none'",
       "frame-ancestors 'self'",
       "form-action 'self'",
-      "img-src 'self' data: blob: https:",
+      isPreview ? "img-src 'self' data: blob:" : "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
       // Clarity loads https://scripts.clarity.ms; Amplitude CDN is used by legacy shell.
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://www.clarity.ms https://scripts.clarity.ms https://cdn.amplitude.com",
-      "connect-src 'self' https: wss:",
+      isPreview ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'" : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://www.clarity.ms https://scripts.clarity.ms https://cdn.amplitude.com",
+      isPreview ? "connect-src 'self'" : "connect-src 'self' https: wss:",
       "worker-src 'self' blob:",
     ].join("; ");
 
@@ -53,7 +55,7 @@ const nextConfig: NextConfig = {
         value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
       },
       {
-        key: isProd ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only",
+        key: isProd || isPreview ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only",
         value: csp,
       },
     ];

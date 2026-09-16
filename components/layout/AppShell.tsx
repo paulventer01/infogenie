@@ -58,7 +58,7 @@ function emptyGroups(): Record<string, boolean> {
   return {};
 }
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({ children, preview = false }: { children: React.ReactNode; preview?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const activeView = useMemo(() => pathToViewId(pathname || ""), [pathname]);
@@ -358,6 +358,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={shellClass} id="ig-app-shell">
+      <a className={styles.skipLink} href="#ig-shell-content">Skip to workspace</a>
       <button
         type="button"
         className={styles.backdrop}
@@ -423,7 +424,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
         </div>
 
-        <nav className={styles.railNav} id="navGroups">
+        <nav className={styles.railNav} id="navGroups" aria-label="Workspace navigation">
+          <p className={styles.navCaption}>YOUR WORKSPACE</p>
+          <button type="button" className={styles.reportingLink} aria-current={activeView === "client-reporting" ? "page" : undefined}
+            onClick={(event) => onNavClick(event, {view:"client-reporting",label:"Client reporting",icon:BRIEF_SVG})}>
+            <span aria-hidden="true">▤</span><span className={styles.gLabel}>Client reporting</span>
+          </button>
           {navReady ? (
             <>
               <button
@@ -497,7 +503,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               dangerouslySetInnerHTML={{ __html: MENU_SVG }}
             />
             <BackNav fallback="/" />
-            <div className={styles.crumb}>Workspace</div>
+            <div className={styles.crumb}>{activeView === "client-reporting" ? "Reports / Client workspace" : "Your marketing workspace"}</div>
           </div>
           <div className={styles.topbarRight}>
             {/* Empty SSR-stable slot — LiveAppTimerPortal fills this after legacy boot */}
@@ -557,7 +563,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         <CompanyContextBar />
         </div>
-        <div className={styles.content} id="ig-shell-content">
+        {preview && <div className={styles.previewNotice} role="note"><strong>Test workspace</strong> · Synthetic client data. External sending and background jobs are disabled.</div>}
+        <div className={styles.content} id="ig-shell-content" tabIndex={-1}>
           {children}
         </div>
       </div>

@@ -25,7 +25,7 @@ export default async function DashboardLayout({
   return (
     <>
       <link rel="stylesheet" href="/style.css" precedence="default" />
-      <AppShell>
+      <AppShell preview={process.env.INFOGENIE_PREVIEW_WORKSPACE === "1"}>
         <LegacyBody />
         <MigratedPanel />
         {children}

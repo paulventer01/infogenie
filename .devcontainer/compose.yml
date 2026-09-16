@@ -1,0 +1,27 @@
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm
+    volumes:
+      - ..:/workspaces/infogenie:cached
+    network_mode: service:database
+    command: sleep infinity
+    depends_on:
+      database:
+        condition: service_healthy
+  database:
+    build:
+      context: .
+      dockerfile: postgres.Dockerfile
+    environment:
+      POSTGRES_DB: infogenie_preview
+      POSTGRES_USER: preview
+      POSTGRES_PASSWORD: preview-container-only
+    volumes:
+      - preview-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U preview -d infogenie_preview"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+volumes:
+  preview-data:

@@ -1,0 +1,48 @@
+name: Preview workspace
+on:
+  pull_request:
+    paths: ['.devcontainer/**', 'scripts/preview/**', 'test/*preview*', 'test/browser/preview-workspace.test.js', 'app/**', 'components/**', 'styles/**', 'package*.json', '.github/workflows/preview-workspace.yml']
+permissions:
+  contents: read
+jobs:
+  preview:
+    name: Preview login, persistence and responsive journey
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx --no-install puppeteer browsers install chrome
+      - name: Start dedicated preview database with TLS
+        run: |
+          docker build -f .devcontainer/postgres.Dockerfile -t infogenie-preview-db .devcontainer
+          docker run -d --name preview-db -p 127.0.0.1:5432:5432 -e POSTGRES_DB=infogenie_preview -e POSTGRES_USER=preview -e POSTGRES_PASSWORD=preview-container-only infogenie-preview-db
+          for attempt in {1..30}; do
+            docker exec preview-db pg_isready -U preview -d infogenie_preview && break
+            test "$attempt" -lt 30 || exit 1
+            sleep 1
+          done
+      - run: node --test --test-reporter=tap test/preview-workspace.test.js
+      - name: Exercise actual preview launcher with Chromium
+        env:
+          INFOGENIE_REQUIRE_PREVIEW_TEST: '1'
+        shell: bash
+        run: |
+          set -o pipefail
+          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/browser/preview-workspace.test.js | tee /tmp/preview-browser.tap
+          grep -Eq '^# tests [1-9][0-9]*$' /tmp/preview-browser.tap
+          grep -Eq '^# fail 0$' /tmp/preview-browser.tap
+          grep -Eq '^# skipped 0$' /tmp/preview-browser.tap
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-workspace-screenshots
+          path: /tmp/preview-artifacts
+          if-no-files-found: warn
+          retention-days: 7
