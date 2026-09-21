@@ -292,6 +292,22 @@ if (!HAS_DB) {
     await fx.cleanup();
   });
 
+  test('guided creation rejects changed tenant or actor before writes and replay', async () => {
+    const body = createBody({ tenant_id: tenantA.id, expected_actor_user_id: ownerA.id });
+    const key = ik('guided');
+    const created = await orch('POST', '', { cookie: cookieA, body, key });
+    assert.strictEqual(created.status, 201);
+    const replay = await orch('POST', '', { cookie: cookieA, body, key });
+    assert.strictEqual(replay.json.workflow.id, created.json.workflow.id);
+    for (const changes of [{ tenant_id: tenantB.id }, { expected_actor_user_id: ownerB.id }]) {
+      for (const requestKey of [key, ik('changed')]) {
+        const rejected = await orch('POST', '', { cookie: cookieA, body: { ...body, ...changes }, key: requestKey });
+        assert.strictEqual(rejected.status, 409);
+        assert.strictEqual(rejected.json.error, 'context_changed');
+      }
+    }
+  });
+
   test('1. create + list are tenant-scoped', async () => {
     const wf = await createWf(cookieA, { name: 'Tenant A only' });
     assert.strictEqual(wf.current_state, 'draft');

@@ -223,6 +223,12 @@ function mutation(action, permissionFn, handler) {
       if (!tid) return sendError(res, 400, 'validation_failed');
       const perm = typeof permissionFn === 'function' ? permissionFn(req) : permissionFn;
       if (!guardPerm(req, res, perm)) return;
+      // The guided setup binds creation to the session context it displayed.
+      // Check before idempotency replay as well as before a new write.
+      if (action === 'create' && (
+        (req.body?.tenant_id != null && req.body.tenant_id !== tid) ||
+        (req.body?.expected_actor_user_id != null && req.body.expected_actor_user_id !== actorId(req))
+      )) return sendError(res, 409, 'context_changed');
       const key = extractIdempotencyKey(req);
       if (!key) return sendError(res, 400, 'validation_failed');
       if (!_db.hasDb()) return sendError(res, 503, 'validation_failed');
