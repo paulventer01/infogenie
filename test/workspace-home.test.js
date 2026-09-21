@@ -58,6 +58,11 @@ test('real client selection has setup guidance and a scoped reporting link witho
   assert.match(h.text(),/Setup needed/);assert.ok(h.links().includes('/manage/client-reporting?client=11'));
   assert.ok(h.calls.every(c=>c.method==='GET'));assert.doesNotMatch(h.text(),/No approvals|0 pending/);
 });
+test('access rechecks preserve the selected client and scoped reporting link',async t=>{
+  const h=await harness(t);await h.select(11);await h.event();
+  assert.match(h.text(),/Client 11/);assert.ok(h.links().includes('/manage/client-reporting?client=11'));
+  assert.equal(h.calls.filter(c=>c.url.endsWith('/clients/11/profile')).length,2);
+});
 test('missing and malformed client data have distinct honest states',async t=>{
   let malformed=false;
   const h=await harness(t,url=>url.includes('/clients?')?{ok:true,clients:malformed?[{id:1}]:[],has_more:false,next_cursor:null}:undefined);

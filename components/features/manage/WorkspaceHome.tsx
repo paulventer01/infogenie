@@ -16,6 +16,7 @@ export default function WorkspaceHome() {
   const [error, setError] = useState<string | null>(null);
   const context = useRef<Context | undefined>(undefined);
   const sequence = useRef(0);
+  const selectedRef = useRef<number | null>(null);
   const mounted = useRef(false);
 
   // Every refresh clears client data first. Responses from an older selection or
@@ -25,7 +26,7 @@ export default function WorkspaceHome() {
     const current = () => mounted.current && request === sequence.current;
     setBusy(true); setError(null); setProfile(null);
     if (!after) { setClients([]); setCursor(null); }
-    setSelected(id);
+    selectedRef.current = id; setSelected(id);
     try {
       const before = await verifyAccess(context.current);
       if (!current()) return;
@@ -52,7 +53,7 @@ export default function WorkspaceHome() {
       setCursor(page.next_cursor!); setProfile(detail);
     } catch (failure) {
       if (!current()) return;
-      setClients([]); setCursor(null); setSelected(null); setProfile(null);
+      setClients([]); setCursor(null); selectedRef.current = null; setSelected(null); setProfile(null);
       context.current = undefined;
       setError(failure instanceof Error ? failure.message : "Could not load this workspace. Please try again.");
     } finally { if (current()) setBusy(false); }
@@ -62,7 +63,7 @@ export default function WorkspaceHome() {
   useEffect(() => {
     mounted.current = true;
     void load();
-    const recheck = () => { if (document.visibilityState === "visible") void load(); };
+    const recheck = () => { if (document.visibilityState === "visible") void load(selectedRef.current); };
     const windowEvents = ["focus", "pageshow", "storage"];
     const documentEvents = ["visibilitychange", "ig:navperms-ready"];
     windowEvents.forEach(event => window.addEventListener(event, recheck));
