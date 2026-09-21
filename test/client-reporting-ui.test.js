@@ -214,7 +214,7 @@ test("missing or archived client and malformed profile never expose a writable f
   const h = await harness(t, (c) => c.url.endsWith("/profile") ? response : undefined); await h.select();
   assert.equal(h.query('[name="report_title"]'), null); assert.ok(h.query('[role="alert"]'));
   response = { ok: true, client: client(), configured: true, profile: profile({ client_id: 22 }) };
-  await h.click("Reload profile"); assert.equal(h.query('[name="report_title"]'), null); assert.equal(h.writes().length, 0);
+  await h.select(); assert.equal(h.query('[name="report_title"]'), null); assert.equal(h.writes().length, 0);
 });
 test("failed access verification after a write withholds success and requires explicit reload", async (t) => {
   let fail = false;
@@ -325,4 +325,15 @@ test("workspace link cannot load an inaccessible client", async t => {
   assert.equal(h.query('form[aria-label="Reporting profile"]'), null);
   assert.match(h.text(), /no longer available/);
   assert.equal(h.writes().length, 0);
+});
+test("unverified deep-linked client never mounts client-scoped panels", async t => {
+  const pending = deferred();
+  const h = await harness(t, c => c.url.includes("/clients/99/profile") ? pending.promise : undefined, "?client=99");
+  assert.equal(h.query('[name="client_id"]').value, "");
+  assert.equal(h.query('form[aria-label="Reporting profile"]'), null);
+  assert.equal(h.reads().filter(c => c.url.includes("/clients/99")).length, 1);
+  await h.resolve(pending, {ok:false,error:"client_not_found"});
+  assert.match(h.text(), /no longer available/);
+  assert.equal(h.query('[name="client_id"]').value, "");
+  assert.equal(h.reads().filter(c => c.url.includes("/clients/99")).length, 1);
 });

@@ -95,7 +95,9 @@ export default function ClientReportingProfiles() {
   const loadProfile = useCallback(async (id: number) => {
     const sequence = ++profileSequence.current, epoch = generation.current;
     const current = () => live.current && epoch === generation.current && sequence === profileSequence.current;
-    setClientId(id); setPendingClient(null); setDraft(null); setDirty(false); setProfileBusy(true);
+    // Do not promote a requested/deep-linked ID into shared child panels until
+    // the server has verified that the client belongs to this workspace.
+    setClientId(null); setLinkedClient(null); setVersion(0); setPendingClient(null); setDraft(null); setDirty(false); setProfileBusy(true);
     setProfileError(null); setSaveError(null); setSaved(false); setReloadRequired(false);
     try {
       if (!await checkAccess() || !current()) return;
@@ -107,7 +109,8 @@ export default function ClientReportingProfiles() {
       if (error && accessLost(error)) return clearContext(error);
       if (!await checkAccess() || !current()) return;
       if (error) { setProfileError(error === "client_not_found" ? "This client is no longer available in this workspace." : error); return; }
-      setLinkedClient(result.client!); setVersion(result.profile?.version || 0); setDraft(result.profile ? profileDraft(result.profile) : newDraft());
+      setLinkedClient(result.client!); setClientId(id); setVersion(result.profile?.version || 0);
+      setDraft(result.profile ? profileDraft(result.profile) : newDraft());
     } finally { if (current()) setProfileBusy(false); }
   }, [checkAccess, clearContext]);
 
@@ -240,6 +243,8 @@ export default function ClientReportingProfiles() {
             <button style={button} onClick={() => void loadProfile(pendingClient)}>Discard changes and switch</button>
             <button style={button} onClick={() => setPendingClient(null)}>Keep editing</button></div>}
           {listBusy && <p role="status">Loading clients…</p>}
+          {profileBusy && !clientId && <p role="status">Verifying the selected client…</p>}
+          {!clientId && profileError && <Failure>{profileError}</Failure>}
           {listError && <><Failure>{listError}</Failure><button style={button} disabled={listBusy || saving} onClick={() => void loadClients(cursor)}>Retry clients</button></>}
           {!listBusy && !listError && !clients.length && <p>No active clients are available. Ask your workspace administrator to add a client.</p>}
           {cursor && !listError && <button style={button} disabled={listBusy || saving} onClick={() => void loadClients(cursor)}>Load more clients</button>}
