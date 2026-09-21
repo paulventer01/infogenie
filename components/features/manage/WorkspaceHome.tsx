@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet } from "@/lib/api";
-import { API, responseError, validPage, validProfile, validClient, verifyAccess,
+import { API, responseError, validPage, validProfile, validClient, verifyWorkspace,
   type Client, type ClientsResponse, type Context, type ProfileResponse } from "@/lib/clientReporting";
 import styles from "@/styles/workspace-home.module.css";
 
@@ -14,6 +14,8 @@ export default function WorkspaceHome() {
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [canManageReporting, setCanManageReporting] = useState<boolean | null>(null);
   const context = useRef<Context | undefined>(undefined);
   const sequence = useRef(0);
   const selectedRef = useRef<number | null>(null);
@@ -28,10 +30,15 @@ export default function WorkspaceHome() {
     if (!after) { setClients([]); setCursor(null); }
     selectedRef.current = id; setSelected(id);
     try {
-      const before = await verifyAccess(context.current);
+      const before = await verifyWorkspace(context.current);
       if (!current()) return;
       if (before.error || !before.context) throw new Error(before.error || "Workspace access could not be verified.");
       context.current = before.context;
+      setPermissions(before.permissions || []); setCanManageReporting(!!before.canManageReporting);
+      if (!before.canManageReporting) {
+        setClients([]); setCursor(null); selectedRef.current = null; setSelected(null); setProfile(null);
+        return;
+      }
       const page = await apiGet<ClientsResponse>(`${API}?limit=50${after ? `&cursor=${after}` : ""}`);
       if (!current()) return;
       const pageError = responseError(page);
@@ -46,15 +53,22 @@ export default function WorkspaceHome() {
           throw new Error(detailError || "The reporting setup could not be verified.");
         }
       }
-      const afterAccess = await verifyAccess(context.current);
+      const afterAccess = await verifyWorkspace(context.current);
       if (!current()) return;
       if (afterAccess.error) throw new Error(afterAccess.error);
+      if (!afterAccess.canManageReporting) {
+        setPermissions(afterAccess.permissions || []); setCanManageReporting(false);
+        setClients([]); setCursor(null); selectedRef.current = null; setSelected(null); setProfile(null);
+        return;
+      }
+      setPermissions(afterAccess.permissions || []); setCanManageReporting(true);
       setClients(rows => after ? [...rows, ...page.clients!] : page.clients!);
       setCursor(page.next_cursor!); setProfile(detail);
     } catch (failure) {
       if (!current()) return;
       setClients([]); setCursor(null); selectedRef.current = null; setSelected(null); setProfile(null);
       context.current = undefined;
+      setPermissions([]); setCanManageReporting(null);
       setError(failure instanceof Error ? failure.message : "Could not load this workspace. Please try again.");
     } finally { if (current()) setBusy(false); }
   }, []);
@@ -76,21 +90,29 @@ export default function WorkspaceHome() {
   }, [load, stop]);
 
   const reporting = selected && profile ? `/manage/client-reporting?client=${selected}` : "/manage/client-reporting";
+  const canCampaign = permissions.includes("orchestrator.workflows.view");
+  const canBrief = permissions.includes("reports.view");
+  const canAnalyse = permissions.includes("dashboard.view");
+  const primaryHref = canCampaign ? "/manage/campaign-journey" : canBrief ? "/manage/marketing-brief" : canAnalyse ? "/analyse" : null;
+  const primaryLabel = canCampaign ? "Open campaign journey" : canBrief ? "Open marketing brief" : "Open analysis";
   return <section className={styles.workspace} data-ig-no-enhance="true" aria-label="Workspace overview">
     <header className={styles.hero}>
       <p className={styles.eyebrow}>YOUR WORKSPACE</p>
       <h1>A clear place to start.</h1>
-      <p>Choose a client, prepare their report, and review it before sharing.</p>
-      <Link className={styles.primary} href={reporting}>Open client reporting <span aria-hidden="true">→</span></Link>
+      <p>{canManageReporting ? "Choose a client, prepare their report, and review it before sharing."
+        : "Continue with the marketing tools available to your workspace role."}</p>
+      {canManageReporting ? <Link className={styles.primary} href={reporting}>Open client reporting <span aria-hidden="true">→</span></Link>
+        : canManageReporting === false && primaryHref && <Link className={styles.primary} href={primaryHref}>{primaryLabel} <span aria-hidden="true">→</span></Link>}
     </header>
     <div className={styles.columns}>
       <section className={styles.card} aria-labelledby="workspace-client-title" aria-busy={busy}>
-        <p className={styles.eyebrow}>01 / CLIENT CONTEXT</p>
-        <h2 id="workspace-client-title">Who are you working on?</h2>
-        <p>Reporting clients available to your current account and workspace.</p>
+        <p className={styles.eyebrow}>01 / {canManageReporting === false ? "YOUR ROLE" : "CLIENT CONTEXT"}</p>
+        <h2 id="workspace-client-title">{canManageReporting === false ? "Your workspace is ready" : "Who are you working on?"}</h2>
+        <p>{canManageReporting === false ? "Use the shortcuts below to continue work allowed by your current role. Client reporting setup remains available to workspace administrators."
+          : "Reporting clients available to your current account and workspace."}</p>
         {busy && <p role="status">Loading your workspace…</p>}
         {error && <div role="alert" className={styles.error}><p>{error}</p><button type="button" onClick={() => void load()}>Try again</button></div>}
-        {!busy && !error && <>
+        {!busy && !error && canManageReporting && <>
           {clients.length > 0 ? <label className={styles.field}>Client
             <select name="workspace_client" value={selected ?? ""} onChange={event => void load(event.target.value ? Number(event.target.value) : null)}>
               <option value="">Choose a client</option>
@@ -114,27 +136,35 @@ export default function WorkspaceHome() {
             </>}
           </div>
         </>}
+        {!busy && !error && canManageReporting === false && <p>Access is active. No client reporting data has been loaded for this role.</p>}
       </section>
       <section className={styles.card} aria-labelledby="workspace-journey-title">
-        <p className={styles.eyebrow}>02 / YOUR REPORTING JOURNEY</p>
-        <h2 id="workspace-journey-title">From setup to a client-ready report</h2>
-        <ol className={styles.steps}>
-          <li><strong>Choose the client</strong><p>Keep work attached to the right client.</p></li>
-          <li><strong>Connect the evidence</strong><p>Map sources and check what data is available.</p></li>
-          <li><strong>Review and approve</strong><p>Inspect the report and complete the required approval.</p></li>
-          <li><strong>Share with confidence</strong><p>Use the reporting workspace’s delivery and portal controls.</p></li>
-        </ol>
-        <p className={styles.note}>A saved profile is setup progress. It does not mean a report has been approved or sent.</p>
+        {canManageReporting ? <>
+          <p className={styles.eyebrow}>02 / YOUR REPORTING JOURNEY</p>
+          <h2 id="workspace-journey-title">From setup to a client-ready report</h2>
+          <ol className={styles.steps}>
+            <li><strong>Choose the client</strong><p>Keep work attached to the right client.</p></li>
+            <li><strong>Connect the evidence</strong><p>Map sources and check what data is available.</p></li>
+            <li><strong>Review and approve</strong><p>Inspect the report and complete the required approval.</p></li>
+            <li><strong>Share with confidence</strong><p>Use the reporting workspace’s delivery and portal controls.</p></li>
+          </ol>
+          <p className={styles.note}>A saved profile is setup progress. It does not mean a report has been approved or sent.</p>
+        </> : <>
+          <p className={styles.eyebrow}>02 / PRACTICAL NEXT STEP</p>
+          <h2 id="workspace-journey-title">Continue without crossing role boundaries</h2>
+          <p>Your start page only presents tools granted to your current workspace role. Administrative client setup and reporting data stay hidden.</p>
+          <p className={styles.note}>If you need another tool, ask a workspace administrator to review your role.</p>
+        </>}
       </section>
     </div>
     <section className={styles.card} aria-labelledby="workspace-tools-title">
       <p className={styles.eyebrow}>03 / KEEP WORK MOVING</p>
       <h2 id="workspace-tools-title">Continue your work</h2>
       <div className={styles.shortcuts}>
-        <Link href="/manage/campaign-journey"><strong>Campaign journey →</strong><span>Turn a saved marketing brief into a campaign draft for approval.</span></Link>
-        <Link href="/manage/marketing-brief"><strong>Marketing brief →</strong><span>Review the brief for your next marketing task.</span></Link>
-        <Link href="/analyse"><strong>Analyse a business →</strong><span>Start a new business and competitor analysis.</span></Link>
-        <Link href={reporting}><strong>Client reporting →</strong><span>Prepare reports, review approvals and manage sharing.</span></Link>
+        {canCampaign && <Link href="/manage/campaign-journey"><strong>Campaign journey →</strong><span>Turn a saved marketing brief into a campaign draft for approval.</span></Link>}
+        {canBrief && <Link href="/manage/marketing-brief"><strong>Marketing brief →</strong><span>Review the brief for your next marketing task.</span></Link>}
+        {canAnalyse && <Link href="/analyse"><strong>Analyse a business →</strong><span>Start a new business and competitor analysis.</span></Link>}
+        {canManageReporting && <Link href={reporting}><strong>Client reporting →</strong><span>Prepare reports, review approvals and manage sharing.</span></Link>}
       </div>
     </section>
   </section>;

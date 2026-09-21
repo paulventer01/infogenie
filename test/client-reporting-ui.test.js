@@ -119,6 +119,16 @@ test("checks identity and membership before listing real clients; never auto-sel
   await h.select(); assert.equal(h.query('[name="report_title"]').value, "");
   assert.match(h.text(), /Not configured.*unsaved/); assert.equal(h.writes().length, 0);
 });
+test("retry restores a deep-linked client after transient access verification failure", async (t) => {
+  let fail = true;
+  const h = await harness(t, (c) => fail && c.url.endsWith("/me")
+    ? { ok: false, error: "verification_unavailable", httpStatus: 503 } : undefined, "?client=11");
+  assert.ok(h.query('[role="alert"]')); assert.equal(h.query('[name="report_title"]'), null);
+  fail = false; await h.click("Retry access");
+  assert.equal(h.query('[name="client_id"]').value, "11");
+  assert.equal(h.query('[name="report_title"]').value, "");
+  assert.equal(h.reads().filter((c) => c.url === API + "/11/profile").length, 1);
+});
 test("saves an explicit full profile, blocks duplicate submit, and uses persisted versions on updates", async (t) => {
   const h = await harness(t); await h.select(); await h.fill(); await h.submit(true);
   assert.equal(h.writes().length, 1);

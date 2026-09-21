@@ -130,7 +130,7 @@ export default function ClientReportingProfiles() {
   useEffect(() => {
     const id = Number(new URLSearchParams(window.location.search).get("client"));
     if (positiveId(id)) void loadProfile(id);
-  }, [loadProfile]);
+  }, [attempt, loadProfile]);
 
   function change(key: keyof Draft, value: string) {
     setDraft((previous) => {

@@ -63,6 +63,14 @@ test('access rechecks preserve the selected client and scoped reporting link',as
   assert.match(h.text(),/Client 11/);assert.ok(h.links().includes('/manage/client-reporting?client=11'));
   assert.equal(h.calls.filter(c=>c.url.endsWith('/clients/11/profile')).length,2);
 });
+test('non-admin members get a useful role-filtered workspace without client reporting reads',async t=>{
+  const h=await harness(t,(url,state)=>{if(url==='/api/tenants/active')state.permissions=['dashboard.view','reports.view','orchestrator.workflows.view'];});
+  assert.doesNotMatch(h.text(),/Access denied/);
+  assert.ok(h.links().includes('/analyse'));assert.ok(h.links().includes('/manage/marketing-brief'));
+  assert.ok(h.links().includes('/manage/campaign-journey'));assert.ok(!h.links().includes('/manage/client-reporting'));
+  assert.equal(h.calls.filter(c=>c.url.startsWith('/api/client-reporting')).length,0);
+  assert.match(h.text(),/No client reporting data has been loaded/);
+});
 test('missing and malformed client data have distinct honest states',async t=>{
   let malformed=false;
   const h=await harness(t,url=>url.includes('/clients?')?{ok:true,clients:malformed?[{id:1}]:[],has_more:false,next_cursor:null}:undefined);
@@ -84,7 +92,9 @@ test('late data from the previous workspace is discarded after a context switch'
 });
 test('revoked permission clears previously loaded clients',async t=>{
   const h=await harness(t);h.state.permissions=[];await h.event();
-  assert.match(h.text(),/Access denied/);assert.doesNotMatch(h.text(),/Client 11|Client 22/);
+  assert.doesNotMatch(h.text(),/Access denied|Client 11|Client 22/);
+  assert.match(h.text(),/No client reporting data has been loaded/);
+  assert.ok(!h.links().includes('/manage/client-reporting'));
 });
 test('a different client in a profile response is rejected',async t=>{
   const h=await harness(t,url=>url.includes('/clients/11/profile')?{ok:true,client:client(22),configured:false,profile:null}:undefined);
