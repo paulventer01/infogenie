@@ -1746,6 +1746,13 @@ export default function AgentOrchestrator() {
         <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
           <button
             type="button"
+            onClick={() => goToView(router, "campaign-journey")}
+            style={btnPrimary}
+          >
+            Open Campaign Journey
+          </button>
+          <button
+            type="button"
             disabled={actionsLocked}
             onClick={suggestAll}
             style={{ ...btnPrimary, cursor: actionsLocked ? "not-allowed" : "pointer", opacity: actionsLocked ? 0.6 : 1 }}
