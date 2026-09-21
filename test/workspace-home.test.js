@@ -71,6 +71,13 @@ test('non-admin members get a useful role-filtered workspace without client repo
   assert.equal(h.calls.filter(c=>c.url.startsWith('/api/client-reporting')).length,0);
   assert.match(h.text(),/No client reporting data has been loaded/);
 });
+test('campaign journey is hidden unless the role also has its required report permission',async t=>{
+  const h=await harness(t,(url,state)=>{if(url==='/api/tenants/active')state.permissions=['dashboard.view','orchestrator.workflows.view'];});
+  assert.ok(h.links().includes('/analyse'));
+  assert.ok(!h.links().includes('/manage/campaign-journey'));
+  assert.ok(!h.links().includes('/manage/marketing-brief'));
+  assert.equal(h.calls.filter(c=>c.url.startsWith('/api/client-reporting')).length,0);
+});
 test('missing and malformed client data have distinct honest states',async t=>{
   let malformed=false;
   const h=await harness(t,url=>url.includes('/clients?')?{ok:true,clients:malformed?[{id:1}]:[],has_more:false,next_cursor:null}:undefined);

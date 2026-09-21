@@ -90,8 +90,8 @@ export default function WorkspaceHome() {
   }, [load, stop]);
 
   const reporting = selected && profile ? `/manage/client-reporting?client=${selected}` : "/manage/client-reporting";
-  const canCampaign = permissions.includes("orchestrator.workflows.view");
   const canBrief = permissions.includes("reports.view");
+  const canCampaign = canBrief && permissions.includes("orchestrator.workflows.view");
   const canAnalyse = permissions.includes("dashboard.view");
   const primaryHref = canCampaign ? "/manage/campaign-journey" : canBrief ? "/manage/marketing-brief" : canAnalyse ? "/analyse" : null;
   const primaryLabel = canCampaign ? "Open campaign journey" : canBrief ? "Open marketing brief" : "Open analysis";
