@@ -330,7 +330,9 @@ test('the prefix is NOT exempt from the legacy owner gate', () => {
   // And the gate still denies non-owners on /api.
   const gateIdx = src.indexOf('_OWNER_GATE_ALLOW.some');
   assert.ok(gateIdx > start, 'the allow-list must still be consulted by the gate middleware');
-  const window = src.slice(gateIdx, gateIdx + 600);
+  const gateEnd = src.indexOf('\n});', gateIdx);
+  assert.ok(gateEnd > gateIdx, 'the full gate middleware must be locatable');
+  const window = src.slice(gateIdx, gateEnd);
   assert.match(window, /req\.user\.isOwner === true/);
   assert.match(window, /error: 'owner_only'/);
 });
