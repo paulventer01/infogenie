@@ -5,6 +5,7 @@ const { newId, insertAudit } = require('./runner');
 const { canonicalize, sha256Hex } = require('./hash');
 const { toBigInt } = require('./money');
 const C = require('./campaign_contracts');
+const { checkMarketingBrief } = require('./campaign_briefs');
 const {
   parseContract, contractHash, checkCreatives, checkCredentials, txt,
 } = require('./campaign_validate');
@@ -129,6 +130,7 @@ async function createDraft(pool, o) {
   const { label, notes } = parseLabelNotes(o.body);
   return withTx(pool, async (c) => {
     await requireWorkflow(c, o.tenantId, workflowId);
+    await checkMarketingBrief(c, o.tenantId, contract);
     const existing = await one(c, `SELECT * FROM orchestrator_campaign_drafts WHERE tenant_id=$1 AND idempotency_key=$2`, [o.tenantId, key]);
     if (existing) {
       const rev = await loadRev(c, o.tenantId, existing.id, existing.current_revision);
@@ -186,6 +188,8 @@ async function editDraft(pool, o) {
     if (!row) fail('not_found');
     if (row.status === 'cancelled') fail('invalid_transition');
     row = await maybeExpire(c, row);
+    if (o.body.expected_revision != null && (o.body.expected_revision !== Number(row.current_revision)
+      || o.body.expected_hash !== row.contract_hash)) fail('approval_stale');
     const { label, notes } = parseLabelNotes(o.body);
     const raw = contractFromBody(o.body);
     let material = false;
@@ -194,6 +198,7 @@ async function editDraft(pool, o) {
     if (raw) {
       contract = await parseContract(raw);
       if (contract.provenance.workflow_id !== row.workflow_id) fail('validation_failed', { field: 'provenance.workflow_id' });
+      await checkMarketingBrief(c, o.tenantId, contract);
       hash = contractHash(contract);
       material = hash !== row.contract_hash;
     }
@@ -229,6 +234,7 @@ async function validateDraft(pool, o) {
     row = await maybeExpire(c, row);
     if (row.status === 'approved_for_publish') fail('invalid_transition');
     let rev = await loadRev(c, o.tenantId, row.id, row.current_revision);
+    if (rev) await checkMarketingBrief(c, o.tenantId, rev.contract_json);
     if (rev && rev.validation_status === 'passed' && row.status === 'ready_for_approval') {
       return publicDraft(row, rev);
     }
@@ -360,6 +366,7 @@ async function approveDraft(pool, o) {
     const rev = await loadRev(c, o.tenantId, row.id, row.current_revision);
     if (row.status !== 'ready_for_approval' || !rev || rev.validation_status !== 'passed') fail('approval_required');
     const contract = rev.contract_json;
+    await checkMarketingBrief(c, o.tenantId, contract);
     if (Number(body.revision) !== Number(row.current_revision) || String(body.contract_hash || '') !== String(row.contract_hash)) {
       fail('approval_stale');
     }

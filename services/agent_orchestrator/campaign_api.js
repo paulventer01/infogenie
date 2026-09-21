@@ -37,6 +37,7 @@ function wrap(permission, handler, opts) {
       if (!_db.hasDb()) return sendError(res, 503, 'validation_failed');
       const userId = actorId(req);
       if (!userId) return sendError(res, 400, 'validation_failed');
+      if ((req.body?.contract?.provenance?.marketing_brief_id != null || req.body?.provenance?.marketing_brief_id != null) && !hasPermission(req, 'reports.view')) fail('permission_denied');
       const result = await handler(req, tid, userId, _db.getPool());
       return res.status(result.status || 200).json(result.body);
     } catch (err) {
@@ -49,6 +50,22 @@ function bodyOf(req) { return req.body && typeof req.body === 'object' ? req.bod
 function tenantMismatch(body, tid) {
   if (body.tenant_id != null && Number(body.tenant_id) !== Number(tid)) fail('validation_failed');
 }
+
+// Read-only prerequisites for the guided journey; opening it never generates AI
+// content, requests approval, or connects to an advertising provider.
+router.get('/journey-options', wrap(PERMS.view, async (req, tid, _userId, pool) => {
+  if (!hasPermission(req, 'reports.view')) fail('permission_denied');
+  const { publicBrief } = require('./campaign_briefs');
+  const briefs = (await pool.query(
+    'SELECT * FROM marketing_briefs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30', [tid])).rows.map(publicBrief);
+  const workflowId = String(req.query.workflow_id || '');
+  const creatives = workflowId ? (await pool.query(
+    `SELECT id, artifact_id, version, content_hash, payload->>'format' AS format,
+       payload->>'objective' AS objective FROM orchestrator_creative_artifacts
+     WHERE tenant_id=$1 AND workflow_id=$2 AND kind='creative_brief' AND status='approved'
+     ORDER BY created_at DESC LIMIT 100`, [tid, workflowId])).rows : [];
+  return { body: { ok: true, briefs, creatives } };
+}));
 
 router.post('/', capPayload, wrap(PERMS.edit, async (req, tid, userId, pool) => {
   const body = bodyOf(req);

@@ -291,6 +291,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "geofencing", legacyModule: null },
   { view: "local-listings", legacyModule: null },
   { view: "review-automation", legacyModule: null },
+  { view: "campaign-journey", legacyModule: null },
   { view: "marketing-brief", legacyModule: null },
   { view: "mmm", legacyModule: null },
   { view: "product-library", legacyModule: null },
