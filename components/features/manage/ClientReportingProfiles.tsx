@@ -126,12 +126,23 @@ export default function ClientReportingProfiles() {
     setClients([]); setClientId(null); setDraft(null); setAccessError(null); setCursor(null);
     void loadClients();
     const recheck = () => { if (document.visibilityState === "visible") void checkAccess(); };
-    const windowEvents = ["focus", "pageshow", "storage"];
+    // A browser can focus a background tab as part of dispatching the user's
+    // click. Defer that recheck one task so the click reaches its intended
+    // control before protected content is temporarily withheld.
+    let focusTimer: number | null = null;
+    const recheckAfterFocus = () => {
+      if (focusTimer !== null) return;
+      focusTimer = window.setTimeout(() => { focusTimer = null; recheck(); }, 0);
+    };
+    const windowEvents = ["pageshow", "storage"];
+    window.addEventListener("focus", recheckAfterFocus);
     const documentEvents = ["visibilitychange", "ig:navperms-ready"];
     windowEvents.forEach((event) => window.addEventListener(event, recheck));
     documentEvents.forEach((event) => document.addEventListener(event, recheck));
     return () => {
       stop();
+      window.removeEventListener("focus", recheckAfterFocus);
+      if (focusTimer !== null) window.clearTimeout(focusTimer);
       windowEvents.forEach((event) => window.removeEventListener(event, recheck));
       documentEvents.forEach((event) => document.removeEventListener(event, recheck));
     };

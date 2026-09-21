@@ -88,7 +88,10 @@ async function harness(t, handler = () => undefined, queryString = "") {
   return { state, calls, query, set, submit, button, click, fill, unmount, load, me,
     visible: (selector) => !!query(selector) && !query(selector).closest("[hidden]"),
     select: () => set("client_id", "11"), text: () => dom.window.document.body.textContent,
-    event: async (name = "focus") => act(async () => (["visibilitychange", "ig:navperms-ready"].includes(name) ? dom.window.document : dom.window).dispatchEvent(new dom.window.Event(name))),
+    event: async (name = "focus") => act(async () => {
+      (["visibilitychange", "ig:navperms-ready"].includes(name) ? dom.window.document : dom.window).dispatchEvent(new dom.window.Event(name));
+      if (name === "focus") await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+    }),
     resolve: async (pending, value) => act(async () => pending.resolve(value)),
     lists: () => calls.filter((c) => c.url.startsWith(API + "?")),
     reads: () => calls.filter((c) => c.url.startsWith(API) && c.method === "GET"), writes: () => calls.filter((c) => c.method !== "GET") };
