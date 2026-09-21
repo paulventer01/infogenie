@@ -59,6 +59,9 @@ test('PR10H.2 portal feedback browser journey', {
   t.after(async () => { await browser.close(); });
 
   const owner = await browser.newPage();
+  let stage = 'owner login';
+  // Keep diagnostics to stage names: portal URLs contain invitation tokens.
+  const step = (name) => { stage = name; t.diagnostic(`Portal feedback stage: ${stage}`); };
   owner.setDefaultTimeout(120_000);
   owner.setDefaultNavigationTimeout(120_000);
   await owner.goto(`${baseUrl}/login?next=${encodeURIComponent(ROUTE)}`, { waitUntil: 'networkidle2' });
@@ -84,6 +87,7 @@ test('PR10H.2 portal feedback browser journey', {
     if (!response.ok) throw new Error(await response.text());
   }, `${baseUrl}${profilePath(clientId)}`);
   await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
+  step('select client and create invitation');
   await selectClient(owner, clientId);
   await owner.waitForSelector(PORTAL, { visible: true });
   const invite = await responseFor(owner, 'POST', `${API}/clients/${clientId}/portal/invitations`,
@@ -92,6 +96,7 @@ test('PR10H.2 portal feedback browser journey', {
 
   const portalContext = await browser.createBrowserContext();
   const portal = await portalContext.newPage();
+  step('client opens invitation and submits feedback');
   portal.setDefaultTimeout(120_000);
   portal.setDefaultNavigationTimeout(120_000);
   await portal.goto(inviteUrl, { waitUntil: 'networkidle2' });
@@ -107,6 +112,10 @@ test('PR10H.2 portal feedback browser journey', {
   ]);
   await text(portal, 'Please adjust the executive summary.', 'main');
 
+  // Switch tabs as a user would before interacting. Filling a background page
+  // otherwise races its focus/visibility access recheck when the click activates it.
+  step('return to agency and load feedback');
+  await owner.bringToFront();
   await owner.reload({ waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
   await owner.waitForSelector(FEEDBACK, { visible: true });
@@ -116,6 +125,7 @@ test('PR10H.2 portal feedback browser journey', {
   await owner.evaluate((selector) => {
     document.querySelector(selector)?.scrollIntoView({ block: 'center', inline: 'nearest' });
   }, agencyReply);
+  step('agency replies');
   await owner.locator(agencyReply).fill('Thanks — we will revise the summary.');
   await Promise.all([
     owner.waitForResponse((r) => r.request().method() === 'POST'
@@ -123,9 +133,12 @@ test('PR10H.2 portal feedback browser journey', {
     button(owner, 'Send reply', FEEDBACK),
   ]);
   await text(owner, 'Thanks — we will revise the summary.', FEEDBACK);
+  step('agency resolves feedback');
   await button(owner, 'Mark resolved', FEEDBACK);
   await text(owner, 'resolved', FEEDBACK);
 
+  step('client verifies persisted reply and resolution');
+  await portal.bringToFront();
   await portal.reload({ waitUntil: 'networkidle2' });
   await text(portal, 'Thanks — we will revise the summary.', 'main');
   await text(portal, 'resolved', 'main');
