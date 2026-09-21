@@ -137,6 +137,7 @@ export default function CampaignJourney() {
     onChange={e => { setForm(v => ({ ...v, [name]: e.target.value })); setDirty(true); setConfirm(false); }} /></label>;
   const select = (name: keyof Form, label: string, values: string[]) => <label>{label}<select name={name} value={form[name]} required onChange={e => { setForm(v => ({ ...v, [name]: e.target.value })); setDirty(true); setConfirm(false); }}>
     <option value="">Choose {label.toLowerCase()}</option>{values.map(v => <option key={v} value={v}>{v}</option>)}</select></label>;
+  const expired = saved?.status === "approved_for_publish" && (!saved.approval_expires_at || Date.parse(saved.approval_expires_at) <= Date.now());
   const approvalReady = saved?.status === "ready_for_approval" && saved.validation_status === "passed" && !dirty && !error;
   return <section className={styles.journey} data-ig-no-enhance="true" aria-label="Campaign journey">
     <header className={styles.hero}><p className={styles.eyebrow}>CAMPAIGN WORKSPACE</p><h1>Turn a brief into a reviewed campaign.</h1><p>Choose your source, prepare the details, then approve the saved version.</p>
@@ -174,7 +175,7 @@ export default function CampaignJourney() {
       </section>}</div>
       <aside className={styles.card}><h2>3. Review and approve</h2>
         {!saved ? <p>Save a campaign to see its approval checklist.</p> : <>
-          <h3>{saved.label}</h3><p className={styles.badge}>{saved.status.replaceAll("_", " ")}</p><p>Saved revision {saved.current_revision}{dirty ? " · edits not saved" : ""}</p>
+          <h3>{saved.label}</h3><p className={styles.badge}>{expired ? "approval expired — refresh status" : saved.status.replaceAll("_", " ")}</p><p>Saved revision {saved.current_revision}{dirty ? " · edits not saved" : ""}</p>
           <dl><dt>Source brief</dt><dd>{saved.contract.provenance.marketing_brief_id}</dd><dt>Objective</dt><dd>{saved.contract.objective}</dd>
             <dt>Platforms</dt><dd>{saved.contract.platforms.join(", ")}</dd><dt>Budget</dt><dd>{saved.contract.budget.amount_micros / 1e6} {saved.contract.budget.currency}</dd>
             <dt>Landing page</dt><dd>{saved.contract.destination.landing_page_url}</dd><dt>Start</dt><dd>{saved.contract.schedule.start_at}</dd>
@@ -188,7 +189,7 @@ export default function CampaignJourney() {
           {approvalReady && <><p>Validation passed. Approval applies to this saved campaign’s details and creative versions.</p>
             {allowed(context, APPROVE) ? <><label className={styles.confirm}><input type="checkbox" checked={confirm} disabled={busy} onChange={e => setConfirm(e.target.checked)} />I have reviewed this saved campaign and its budget.</label>
               <button disabled={busy || !confirm} onClick={() => transition("approve")}>Approve saved campaign</button></> : <p>Ask a workspace member with campaign publishing approval permission to review this saved draft.</p>}</>}
-          {saved.status === "approved_for_publish" && <div className={styles.notice}><strong>Approved — not published</strong><p>Approval expires: {saved.approval_expires_at}. Publishing and activation remain separate controlled steps.</p>
+          {saved.status === "approved_for_publish" && !expired && <div className={styles.notice}><strong>Approved — not published</strong><p>Approval expires: {saved.approval_expires_at}. Publishing and activation remain separate controlled steps.</p>
             {allowed(context, APPROVE) && <button disabled={busy || dirty} onClick={() => transition("revoke")}>Withdraw approval</button>}</div>}
         </>}
       </aside>

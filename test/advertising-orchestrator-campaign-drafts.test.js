@@ -278,6 +278,27 @@ if (!HAS_DB) {
     assert.equal(approved.json.draft.published,false);
   });
 
+  test('non-owner journey actions retain tenant grants and cannot reach provider publishing', async () => {
+    const admin = await fx.seedUser({tenantId:tenantA.id,owner:false,roleKey:'tenant_admin'});
+    const marketer = await fx.seedUser({tenantId:tenantA.id,owner:false,roleKey:'marketer'});
+    const adminCookie = (await login(app.baseUrl,admin.email,admin.password)).cookie;
+    const marketerCookie = (await login(app.baseUrl,marketer.email,marketer.password)).cookie;
+    await seedCreds(admin.id);
+    assert.equal((await api('GET','/journey-options',{cookie:adminCookie})).status,200);
+    const d = await createOk(adminCookie,wfA,artA);
+    const validated = await validateOk(adminCookie,d.id);
+    assert.equal(validated.status,'ready_for_approval');
+    const forbidden = await api('POST','/'+d.id+'/approve',{cookie:marketerCookie,body:approveBody(validated)});
+    assert.equal(forbidden.status,403,forbidden.text);
+    const approved = await api('POST','/'+d.id+'/approve',{cookie:adminCookie,body:approveBody(validated)});
+    assert.equal(approved.status,200,approved.text);
+    const publish = await api('POST','/'+d.id+'/publishing-requests',{cookie:adminCookie,body:{}});
+    assert.equal(publish.status,403,publish.text);
+    const lookalike = await request(app.baseUrl,'GET','/api/agent-orchestrator/campaign-drafts-export',{cookie:adminCookie});
+    assert.equal(lookalike.status,403,lookalike.text);
+    await clearCreds(admin.id);
+  });
+
   test('1 create + revision on material edit', async () => {
     const d = await createOk(cookieA, wfA, artA);
     assert.equal(d.object_kind, 'campaign_draft');

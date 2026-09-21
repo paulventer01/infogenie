@@ -13,7 +13,7 @@ function publicBrief(row) {
 async function checkMarketingBrief(pool, tenantId, contract) {
   const source = contract.provenance || {};
   if (source.marketing_brief_id == null) return;
-  const row = (await pool.query('SELECT * FROM marketing_briefs WHERE tenant_id=$1 AND id=$2',
+  const row = (await pool.query('SELECT * FROM marketing_briefs WHERE tenant_id=$1 AND id=$2 FOR SHARE',
     [tenantId, source.marketing_brief_id])).rows[0];
   if (!row || publicBrief(row).content_hash !== source.marketing_brief_hash) {
     fail('validation_failed', { field: 'provenance.marketing_brief_id', reason: 'brief_missing_or_changed' });
