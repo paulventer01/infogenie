@@ -37,6 +37,24 @@ module.exports = async function campaignJourney(page, account, origin) {
     await page.goto(origin + '/manage/campaign-journey', {waitUntil:'networkidle2'});
     await page.waitForSelector('[name="marketing_brief"]:enabled');
     await page.select('[name="marketing_brief"]',String(brief.id));
+    const click = async text => {
+      await page.waitForFunction(t=>[...document.querySelectorAll('section[aria-label="Campaign journey"] button')].some(b=>b.textContent===t&&!b.disabled),{},text);
+      await page.evaluate(t=>[...document.querySelectorAll('section[aria-label="Campaign journey"] button')].find(b=>b.textContent===t).click(),text);
+    };
+    await click('Create campaign workspace');
+    await page.type('[name="workspace_name"]','DEMO inline workspace');
+    await page.type('[name="workspace_landing"]','https://example.com');
+    await page.setViewport({width:390,height:844});
+    await page.waitForFunction(()=>document.documentElement.scrollWidth<=innerWidth+1);
+    await page.screenshot({path:'/tmp/preview-artifacts/campaign-workspace-setup-mobile.png',fullPage:true});
+    await click('Create and select workspace');
+    await page.waitForFunction(()=>document.body.innerText.includes('Campaign workspace created and selected.'));
+    const createdId=await page.$eval('[name="campaign_workflow"]',el=>el.value);
+    assert.ok(createdId && createdId!==wf);
+    assert.equal(await page.$eval('[name="marketing_brief"]',el=>el.value),String(brief.id));
+    const created=(await pool.query('SELECT tenant_id,credit_ceiling_micros,current_state FROM orchestrator_workflows WHERE id=$1',[createdId])).rows[0];
+    assert.equal(created.tenant_id,tid);assert.equal(Number(created.credit_ceiling_micros),0);assert.equal(created.current_state,'draft');
+    await page.setViewport({width:1440,height:1000});
     await page.select('[name="campaign_workflow"]',wf);
     await page.waitForFunction(()=>document.querySelector('[name="creative"] option')?.parentElement?.options.length>1);
     await page.select('[name="creative"]',art);
@@ -44,10 +62,6 @@ module.exports = async function campaignJourney(page, account, origin) {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,value);
       el.dispatchEvent(new Event('input',{bubbles:true}));
     },new Date(Date.now()+864e5).toISOString().slice(0,16));
-    const click = async text => {
-      await page.waitForFunction(t=>[...document.querySelectorAll('section[aria-label="Campaign journey"] button')].some(b=>b.textContent===t&&!b.disabled),{},text);
-      await page.evaluate(t=>[...document.querySelectorAll('section[aria-label="Campaign journey"] button')].find(b=>b.textContent===t).click(),text);
-    };
     await click('Save campaign draft');
     await page.waitForFunction(()=>document.body.innerText.includes('Campaign draft saved.'));
     await click('Validate saved campaign');

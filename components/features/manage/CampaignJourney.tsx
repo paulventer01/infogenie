@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { apiGet, apiPost, apiPatch, type ApiResult } from "@/lib/api";
+import { apiGet, apiPost, apiPatch, apiFetch, type ApiResult } from "@/lib/api";
 import { API, EDIT, APPROVE, access, allowed, requireOk, emptyForm, buildContract, approvalBody, verifiedDraft,
   type Context, type Brief, type Creative, type Workflow, type Form, type Campaign } from "@/lib/campaignJourney";
 import styles from "@/styles/campaign-journey.module.css";
 
+const CREATE = "orchestrator.workflows.create";
+const newWorkspace = () => ({ name: "", objective: "traffic", landing: "", platform: "meta", currency: "USD" });
 type Options = ApiResult & { briefs: Brief[]; creatives: Creative[] };
 export default function CampaignJourney() {
   const [context, setContext] = useState<Context | null>(null);
@@ -16,12 +18,14 @@ export default function CampaignJourney() {
   const [form, setForm] = useState<Form>(emptyForm), [saved, setSaved] = useState<Campaign | null>(null);
   const [dirty, setDirty] = useState(false), [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
+  const [creating, setCreating] = useState(false), [workspace, setWorkspace] = useState(newWorkspace);
+  const createKeys = useRef(new Map<string, string>());
   const bound = useRef<Context | null>(null), generation = useRef(0), pending = useRef(false);
   const keys = useRef(new Map<string, string>());
   const brief = briefs.find(b => String(b.id) === briefId);
   const creative = creatives.find(c => c.id === form.creative);
   const keyFor = (body: object) => { const fingerprint = JSON.stringify(body); if (!keys.current.has(fingerprint)) keys.current.set(fingerprint, crypto.randomUUID()); return keys.current.get(fingerprint)!; };
-  const clear = () => { setBriefs([]); setWorkflows([]); setCreatives([]); setDrafts([]); setSaved(null); setForm(emptyForm()); setWorkflowId(""); setBriefId(""); setConfirm(false); setDirty(false); setContext(null); };
+  const clear = () => { setCreating(false); setWorkspace(newWorkspace()); setBriefs([]); setWorkflows([]); setCreatives([]); setDrafts([]); setSaved(null); setForm(emptyForm()); setWorkflowId(""); setBriefId(""); setConfirm(false); setDirty(false); setContext(null); };
   async function run(action: (ctx: Context, current: () => boolean) => Promise<void>, permission?: string) {
     if (pending.current) return;
     pending.current = true; const request = ++generation.current;
@@ -74,21 +78,47 @@ export default function CampaignJourney() {
     // All asynchronous work is bound to the verified workspace and request generation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  function chooseWorkflow(id: string) {
+  function selectWorkflow(wf?: Workflow) {
+    const id = wf?.id || "";
     keys.current.clear();
     setWorkflowId(id); setSaved(null); setDrafts([]); setCreatives([]); setConfirm(false); setDirty(false);
-    const wf = workflows.find(w => w.id === id);
     setForm({ ...emptyForm(), label: brief?.headline.slice(0,200) || "", objective: wf?.objective || "", landing: wf?.landing_page_url || "",
       amount: wf?.advertising_budget ? String(wf.advertising_budget) : "", currency: wf?.currency || "",
       country: wf?.target_markets?.find(m => /^[A-Z]{2}$/.test(m)) || "", audience: wf?.target_audiences?.[0] || "", platform: wf?.selected_platforms?.[0] || "" });
-    if (!id) return;
-    void run(async (ctx, current) => {
+  }
+  async function loadWorkflow(id: string, ctx: Context, current: () => boolean) {
       const options = await verified(apiGet<Options>(API + "/journey-options?workflow_id=" + encodeURIComponent(id)), ctx, current);
       const list = await verified(apiGet<ApiResult & { drafts: Campaign[] }>(API + "?workflow_id=" + encodeURIComponent(id)), ctx, current);
       if (!Array.isArray(options.creatives) || !Array.isArray(list.drafts)) throw new Error("The saved campaigns could not be verified.");
       setBriefs(options.briefs); setCreatives(options.creatives);
       setDrafts(list.drafts.filter(d => d.contract?.provenance?.marketing_brief_id).map(d => verifiedDraft(d, ctx.tenantId, id)));
-    });
+  }
+  function chooseWorkflow(id: string) {
+    selectWorkflow(workflows.find(w => w.id === id));
+    if (id) void run((ctx, current) => loadWorkflow(id, ctx, current));
+  }
+  function createWorkspace() {
+    void run(async (ctx, current) => {
+      let landing: URL;
+      try { landing = new URL(workspace.landing.trim()); } catch { throw new Error("Enter a valid HTTPS landing page."); }
+      if (landing.protocol !== "https:" || landing.username || landing.password) throw new Error("Enter a valid HTTPS landing page.");
+      if (!workspace.name.trim()) throw new Error("Enter a campaign workspace name.");
+      const body = { expected_tenant_id: ctx.tenantId, expected_actor_user_id: ctx.userId, name: workspace.name.trim(),
+        objective: workspace.objective, landing_page_url: landing.href, selected_platforms: [workspace.platform],
+        currency: workspace.currency, advertising_budget: 0, credit_ceiling_micros: 0 };
+      const fingerprint = JSON.stringify(body);
+      if (!createKeys.current.has(fingerprint)) createKeys.current.set(fingerprint, crypto.randomUUID());
+      const result = await verified(apiFetch<ApiResult & { workflow: Workflow }>("/api/agent-orchestrator/workflows", {
+        method: "POST", headers: { "Idempotency-Key": createKeys.current.get(fingerprint)! }, body: JSON.stringify(body),
+      }), ctx, current);
+      const wf = result.workflow;
+      if (!wf || typeof wf.id !== "string" || !wf.id || typeof wf.name !== "string") throw new Error("The new workspace could not be verified. Reload saved journey before trying again.");
+      createKeys.current.delete(fingerprint);
+      setWorkflows(rows => [wf, ...rows.filter(w => w.id !== wf.id)]);
+      selectWorkflow(wf); setCreating(false); setWorkspace(newWorkspace());
+      await loadWorkflow(wf.id, ctx, current);
+      setNotice("Campaign workspace created and selected. Complete creative review to prepare your draft.");
+    }, CREATE);
   }
   function showDraft(draft: Campaign) {
     const c = draft.contract;
@@ -148,21 +178,38 @@ export default function CampaignJourney() {
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
     {context && <div className={styles.columns}>
       <div><section className={styles.card}><h2>1. Start with the marketing brief</h2>
-        <fieldset disabled={busy || dirty}><label>Saved marketing brief<select name="marketing_brief" value={briefId} onChange={e => { setBriefId(e.target.value); setWorkflowId(""); setSaved(null); setDrafts([]); setCreatives([]); setConfirm(false); }}>
-          <option value="">Choose a brief</option>{briefs.map(b => <option key={b.id} value={b.id}>{b.brand} — {b.headline}</option>)}</select></label>
+        <fieldset disabled={busy || dirty || creating}><label>Saved marketing brief<select name="marketing_brief" value={briefId} onChange={e => { setBriefId(e.target.value); setWorkflowId(""); setSaved(null); setDrafts([]); setCreatives([]); setConfirm(false); }}>
+          <option value="">Choose a brief</option>{briefs.map(b => <option key={b.id} value={b.id}>{b.brand} — {b.headline} · Brief {b.id}</option>)}</select></label>
           {brief && <div className={styles.source}><h3>{brief.headline}</h3><p>{brief.greeting}</p><small>Source: {brief.generated_by}. Review its evidence before using it.</small><details><summary>Review this saved brief’s evidence</summary>{brief.signals?.map((signal,i) => <p key={i}><strong>{signal.headline}</strong> {signal.detail}</p>)}{brief.sections?.map((section,i) => <div key={i}><h4>{section.title}</h4><ul>{section.items?.map((item,j) => <li key={j}>{item}</li>)}</ul></div>)}{!brief.signals?.length && !brief.sections?.length && <p>No supporting evidence is stored in this brief.</p>}</details>{brief.content_safety_warnings?.map((warning,i) => <p key={i} role="alert">{typeof warning === "string" ? warning : JSON.stringify(warning)}</p>)}</div>}
           {!briefs.length && <p>No saved briefs yet. <Link href="/manage/marketing-brief">Prepare a marketing brief</Link>, then reload this journey.</p>}
           <label>Campaign workspace<select name="campaign_workflow" value={workflowId} disabled={!brief || busy} onChange={e => chooseWorkflow(e.target.value)}>
             <option value="">Choose a campaign workspace</option>{workflows.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></label>
         </fieldset>
+        {!workflows.length && <p className={styles.notice}>No campaign workspaces yet. Create one here to continue with your selected brief.</p>}
+        {!brief && <p>Choose a saved marketing brief first.</p>}
+        {allowed(context, CREATE) ? <>
+          {!creating ? <button disabled={busy || dirty || !brief} onClick={() => setCreating(true)}>Create campaign workspace</button> :
+            <form onSubmit={e => { e.preventDefault(); createWorkspace(); }}>
+              <h3>Create campaign workspace</h3>
+              <fieldset disabled={busy} className={styles.fields}>
+                <label>Workspace name<input name="workspace_name" value={workspace.name} maxLength={200} required onChange={e => setWorkspace(v => ({ ...v, name: e.target.value }))} /></label>
+                <label>Workspace landing page<input name="workspace_landing" type="url" value={workspace.landing} maxLength={2048} required placeholder="https://your-site.com" onChange={e => setWorkspace(v => ({ ...v, landing: e.target.value }))} /></label>
+                {([['objective', 'Workspace objective', ['awareness','traffic','leads','sales','app']], ['platform', 'Workspace platform', ['meta','google','tiktok']], ['currency', 'Workspace currency', ['USD','EUR','GBP','AUD','CAD']]] as const).map(([name,label,values]) =>
+                  <label key={name}>{label}<select name={'workspace_' + name} value={workspace[name]} onChange={e => setWorkspace(v => ({ ...v, [name]: e.target.value }))}>{values.map(value => <option key={value} value={value}>{value}</option>)}</select></label>)}
+                <button type="submit">Create and select workspace</button>
+                <button type="button" onClick={() => setCreating(false)}>Cancel workspace setup</button>
+              </fieldset>
+              <p className={styles.help}>This creates a planning workspace with no spending authorised. Set the campaign budget when preparing your draft.</p>
+            </form>}
+        </> : <p>Ask a workspace administrator to create a campaign workspace or grant you access to create one.</p>}
         <p className={styles.help}>Showing the latest 30 briefs and 100 campaign workspaces. <Link href="/manage/agent-orchestrator">Manage campaign workspaces and creative approvals</Link>.</p>
       </section>
       {workflowId && <section className={styles.card}><h2>2. Prepare the campaign draft</h2>
-        <label>Continue a saved campaign<select name="saved_campaign" disabled={busy || dirty} value={saved?.id || ""} onChange={e => { const d = drafts.find(d => d.id === e.target.value); if (d) showDraft(d); else chooseWorkflow(workflowId); }}>
+        <label>Continue a saved campaign<select name="saved_campaign" disabled={busy || dirty || creating} value={saved?.id || ""} onChange={e => { const d = drafts.find(d => d.id === e.target.value); if (d) showDraft(d); else chooseWorkflow(workflowId); }}>
           <option value="">New campaign draft</option>{drafts.map(d => <option key={d.id} value={d.id}>{d.label} · revision {d.current_revision}</option>)}</select></label>
-        {!creatives.length && <p className={styles.notice}>An approved creative brief is needed before saving. Complete creative review in the campaign workspace, then reload.</p>}
+        {!creatives.length && <p className={styles.notice}>An approved creative brief is needed before saving. Open <Link href="/manage/agent-orchestrator">creative approvals</Link>, select this campaign workspace and complete creative review. Then return here and <button disabled={busy || dirty || creating} onClick={() => chooseWorkflow(workflowId)}>Refresh creative briefs</button>.</p>}
         {!editable && <p>This draft needs the <Link href="/manage/agent-orchestrator">full campaign editor</Link> to preserve its multiple assets, markets or delivery state.</p>}
-        <form onSubmit={e => { e.preventDefault(); void save(); }}><fieldset disabled={busy || !editable || !allowed(context, EDIT)} className={styles.fields}>
+        <form onSubmit={e => { e.preventDefault(); void save(); }}><fieldset disabled={busy || creating || !editable || !allowed(context, EDIT)} className={styles.fields}>
           {field("label", "Campaign name")}{select("objective", "Objective", ["awareness", "traffic", "leads", "sales", "app"])}
           {select("platform", "Platform", ["meta", "google", "tiktok"])}{field("landing", "Landing page", "url", 2048)}
           {field("amount", "Total advertising budget", "text", 20)}{select("currency", "Currency", ["USD", "EUR", "GBP", "AUD", "CAD"])}

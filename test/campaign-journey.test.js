@@ -25,7 +25,7 @@ async function harness(t,handler=()=>undefined){
   const calls=[];
   const values={window:dom.window,document:dom.window.document,navigator:dom.window.navigator,HTMLElement:dom.window.HTMLElement,IS_REACT_ACT_ENVIRONMENT:true,
     fetch:async(url,opts={})=>{
-      const request={url,method:opts.method||'GET',body:opts.body?JSON.parse(opts.body):null};calls.push(request);
+      const request={url,headers:opts.headers,method:opts.method||'GET',body:opts.body?JSON.parse(opts.body):null};calls.push(request);
       let body=await handler(request,state);
       if(body===undefined){
         if(url==='/api/tenants/me')body={ok:true,user:{id:1},activeTenantId:state.tenant,memberships:[{tenantId:state.tenant}]};
@@ -114,4 +114,50 @@ test('label edit preserves explicit account owner, audience notes and exact sche
  assert.equal(payload.contract.schedule.start_at,'2030-01-01T10:00:32.123Z');
  assert.equal(payload.contract.schedule.end_at,'2030-01-02T10:00:32.123Z');
  assert.equal(payload.expected_revision,1);assert.equal(payload.expected_hash,'d'.repeat(64));
+});
+
+async function setupWorkspace(h) {
+ await h.set('marketing_brief','11');await h.click('Create campaign workspace');
+ await h.set('workspace_name','New workspace');await h.set('workspace_landing','https://example.com');
+}
+test('empty workspace setup creates once, selects it, and preserves the source brief',async t=>{
+ const h=await harness(t,(r,state)=>{
+  state.permissions.push('orchestrator.workflows.create');
+  if(r.url.endsWith('/workflows'))return r.method==='POST'?{ok:true,workflow}:{ok:true,workflows:[]};
+ });
+ assert.match(h.text(),/No campaign workspaces yet/);await setupWorkspace(h);await h.click('Create and select workspace');
+ assert.equal(document.querySelector('[name="campaign_workflow"]').value,'workflow');
+ assert.equal(document.querySelector('[name="marketing_brief"]').value,'11');
+ assert.match(h.text(),/2. Prepare the campaign draft/);
+ const calls=h.calls.filter(r=>r.method==='POST');assert.equal(calls.length,1);
+ assert.equal(calls[0].body.expected_tenant_id,7);assert.equal(calls[0].body.expected_actor_user_id,1);
+ assert.equal(calls[0].body.credit_ceiling_micros,0);assert.equal(calls[0].body.advertising_budget,0);
+ assert.ok(calls[0].headers['Idempotency-Key']);
+});
+test('retry after an uncertain create reuses the same idempotency key',async t=>{
+ let attempts=0;
+ const h=await harness(t,(r,state)=>{
+  state.permissions.push('orchestrator.workflows.create');
+  if(r.method==='POST'&&r.url.endsWith('/workflows'))return ++attempts===1?{ok:false,error:'network_error'}:{ok:true,workflow};
+ });
+ await setupWorkspace(h);await h.click('Create and select workspace');assert.match(h.text(),/network_error/);
+ await h.click('Create and select workspace');
+ const creates=h.calls.filter(r=>r.method==='POST');assert.equal(creates.length,2);
+ assert.equal(creates[0].headers['Idempotency-Key'],creates[1].headers['Idempotency-Key']);
+});
+test('creation permission is rechecked before sending the mutation',async t=>{
+ let initial=true;
+ const h=await harness(t,(_r,state)=>{if(initial){state.permissions.push('orchestrator.workflows.create');initial=false;}});
+ await setupWorkspace(h);
+ h.state.permissions=h.state.permissions.filter(p=>p!=='orchestrator.workflows.create');
+ await h.click('Create and select workspace');assert.equal(h.calls.filter(r=>r.method==='POST').length,0);
+ assert.match(h.text(),/do not have permission/);
+});
+test('tenant switch while creating never selects a stale workspace',async t=>{
+ const h=await harness(t,(r,state)=>{
+  state.permissions.push('orchestrator.workflows.create');
+  if(r.method==='POST'){state.tenant=8;return {ok:true,workflow};}
+ });
+ await setupWorkspace(h);await h.click('Create and select workspace');
+ assert.match(h.text(),/workspace changed/);assert.doesNotMatch(h.text(),/New workspace|2. Prepare the campaign draft/);
 });
