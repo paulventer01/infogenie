@@ -46,13 +46,14 @@ export default function ClientReportingProfiles() {
   const [reloadRequired, setReloadRequired] = useState(false);
   const [saved, setSaved] = useState(false);
   const live = useRef(false), denied = useRef(false), submitting = useRef(false);
+  const verifiedClientId = useRef<number | null>(null);
   const context = useRef<Context | null>(null);
   const generation = useRef(0), listSequence = useRef(0), profileSequence = useRef(0), checks = useRef(0);
 
   const stop = useCallback(() => { live.current = false; ++generation.current; checks.current = 0; }, []);
   const clearContext = useCallback((message: string) => {
     ++generation.current; ++listSequence.current; ++profileSequence.current;
-    denied.current = true; context.current = null; checks.current = 0; submitting.current = false;
+    denied.current = true; context.current = null; checks.current = 0; submitting.current = false; verifiedClientId.current = null;
     setLinkedClient(null); setChecking(false); setAccessError(message); setClients([]); setCursor(null); setClientId(null); setPendingClient(null);
     setDraft(null); setDirty(false); setSaving(false); setSaved(false); setSaveError(null); setProfileError(null); setReloadRequired(false);
   }, []);
@@ -96,8 +97,14 @@ export default function ClientReportingProfiles() {
     const sequence = ++profileSequence.current, epoch = generation.current;
     const current = () => live.current && epoch === generation.current && sequence === profileSequence.current;
     // Do not promote a requested/deep-linked ID into shared child panels until
-    // the server has verified that the client belongs to this workspace.
-    setClientId(null); setLinkedClient(null); setVersion(0); setPendingClient(null); setDraft(null); setDirty(false); setProfileBusy(true);
+    // the server has verified that the client belongs to this workspace. A
+    // reload of the already verified client may retain that trusted ID while
+    // its profile is refreshed; clearing it here removes the button while the
+    // browser is still dispatching the reload click.
+    if (verifiedClientId.current !== id) {
+      verifiedClientId.current = null; setClientId(null); setLinkedClient(null);
+    }
+    setVersion(0); setPendingClient(null); setDraft(null); setDirty(false); setProfileBusy(true);
     setProfileError(null); setSaveError(null); setSaved(false); setReloadRequired(false);
     try {
       if (!await checkAccess() || !current()) return;
@@ -109,13 +116,13 @@ export default function ClientReportingProfiles() {
       if (error && accessLost(error)) return clearContext(error);
       if (!await checkAccess() || !current()) return;
       if (error) { setProfileError(error === "client_not_found" ? "This client is no longer available in this workspace." : error); return; }
-      setLinkedClient(result.client!); setClientId(id); setVersion(result.profile?.version || 0);
+      verifiedClientId.current = id; setLinkedClient(result.client!); setClientId(id); setVersion(result.profile?.version || 0);
       setDraft(result.profile ? profileDraft(result.profile) : newDraft());
     } finally { if (current()) setProfileBusy(false); }
   }, [checkAccess, clearContext]);
 
   useEffect(() => {
-    live.current = true; denied.current = false; context.current = null; ++generation.current;
+    live.current = true; denied.current = false; context.current = null; verifiedClientId.current = null; ++generation.current;
     setClients([]); setClientId(null); setDraft(null); setAccessError(null); setCursor(null);
     void loadClients();
     const recheck = () => { if (document.visibilityState === "visible") void checkAccess(); };
