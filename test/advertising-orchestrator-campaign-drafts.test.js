@@ -239,6 +239,66 @@ if (!HAS_DB) {
     await fx.cleanup();
   });
 
+  test('guided journey binds a tenant brief and rejects changed sources and stale edits', async (t) => {
+    await require('../services/marketing_brief/schema').ensureMarketingBriefSchema();
+    const row = (await p().query(`INSERT INTO marketing_briefs (tenant_id,brand,headline)
+      VALUES ($1,'TEST fixture','Campaign source') RETURNING *`, [tenantA.id])).rows[0];
+    t.after(() => p().query('DELETE FROM marketing_briefs WHERE tenant_id=$1 AND id=$2', [tenantA.id,row.id]));
+    const { publicBrief } = require('../services/agent_orchestrator/campaign_briefs');
+    const source = publicBrief(row);
+    const options = await api('GET', '/journey-options?workflow_id='+wfA, {cookie:cookieA});
+    assert.equal(options.status,200,options.text);
+    assert.ok(options.json.briefs.some(b=>b.id===row.id));
+    assert.ok(options.json.creatives.some(c=>c.artifact_id===artA.assetId));
+    const other = await api('GET', '/journey-options?workflow_id='+wfA, {cookie:cookieB});
+    assert.deepEqual(other.json.creatives,[]);
+    assert.ok(!other.json.briefs.some(b=>b.id===row.id));
+    const provenance = {workflow_id:wfA,marketing_brief_id:row.id,marketing_brief_hash:source.content_hash};
+    const cross = await api('POST','',{cookie:cookieB,body:createBody(wfB,artA,{contract:{provenance:{...provenance,workflow_id:wfB}}})});
+    assert.equal(cross.status,400,cross.text);
+    const d = await createOk(cookieA,wfA,artA,{contract:{provenance}});
+    assert.equal(d.contract.provenance.marketing_brief_hash,source.content_hash);
+    const editBody = {expected_revision:d.current_revision,expected_hash:d.contract_hash,
+      contract:{...d.contract,objective:'leads'}};
+    assert.equal((await api('PATCH','/'+d.id,{cookie:cookieA,body:editBody})).status,200);
+    const stale = await api('PATCH','/'+d.id,{cookie:cookieA,body:editBody});
+    assert.equal(stale.json.error,'approval_stale',stale.text);
+    const validated = await validateOk(cookieA,d.id);
+    assert.equal(validated.status,'ready_for_approval');
+    await p().query('UPDATE marketing_briefs SET headline=$3 WHERE tenant_id=$1 AND id=$2',[tenantA.id,row.id,'Changed source']);
+    const changed = await api('POST','/'+d.id+'/approve',{cookie:cookieA,body:approveBody(validated)});
+    assert.equal(changed.status,400,changed.text);
+    assert.equal(changed.json.error,'validation_failed');
+    const revalidate = await api('POST','/'+d.id+'/validate',{cookie:cookieA,body:{}});
+    assert.equal(revalidate.status,400,revalidate.text);
+    await p().query('UPDATE marketing_briefs SET headline=$3 WHERE tenant_id=$1 AND id=$2',[tenantA.id,row.id,row.headline]);
+    const approved = await api('POST','/'+d.id+'/approve',{cookie:cookieA,body:approveBody(validated)});
+    assert.equal(approved.status,200,approved.text);
+    assert.equal(approved.json.draft.status,'approved_for_publish');
+    assert.equal(approved.json.draft.published,false);
+  });
+
+  test('non-owner journey actions retain tenant grants and cannot reach provider publishing', async () => {
+    const admin = await fx.seedUser({tenantId:tenantA.id,owner:false,roleKey:'tenant_admin'});
+    const marketer = await fx.seedUser({tenantId:tenantA.id,owner:false,roleKey:'marketer'});
+    const adminCookie = (await login(app.baseUrl,admin.email,admin.password)).cookie;
+    const marketerCookie = (await login(app.baseUrl,marketer.email,marketer.password)).cookie;
+    await seedCreds(admin.id);
+    assert.equal((await api('GET','/journey-options',{cookie:adminCookie})).status,200);
+    const d = await createOk(adminCookie,wfA,artA);
+    const validated = await validateOk(adminCookie,d.id);
+    assert.equal(validated.status,'ready_for_approval');
+    const forbidden = await api('POST','/'+d.id+'/approve',{cookie:marketerCookie,body:approveBody(validated)});
+    assert.equal(forbidden.status,403,forbidden.text);
+    const approved = await api('POST','/'+d.id+'/approve',{cookie:adminCookie,body:approveBody(validated)});
+    assert.equal(approved.status,200,approved.text);
+    const publish = await api('POST','/'+d.id+'/publishing-requests',{cookie:adminCookie,body:{}});
+    assert.equal(publish.status,403,publish.text);
+    const lookalike = await request(app.baseUrl,'GET','/api/agent-orchestrator/campaign-drafts-export',{cookie:adminCookie});
+    assert.equal(lookalike.status,403,lookalike.text);
+    await clearCreds(admin.id);
+  });
+
   test('1 create + revision on material edit', async () => {
     const d = await createOk(cookieA, wfA, artA);
     assert.equal(d.object_kind, 'campaign_draft');

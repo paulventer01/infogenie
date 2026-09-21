@@ -727,10 +727,19 @@ const _CLIENT_REPORTING_OWNER_GATE_ALLOW = [
   [/^(POST|DELETE)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/mappings\/(search-intel|campaigns)\/[1-9]\d*\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/data\/(search-intel|campaigns)\/?$/],
 ];
+// Guided campaign assembly is tenant-scoped and gated by its router. Exempt
+// only these methods: publishing/provider execution paths retain the owner gate.
+const _CAMPAIGN_JOURNEY_OWNER_GATE_ALLOW = [
+  [/^(GET|HEAD|POST)$/, /^\/api\/agent-orchestrator\/campaign-drafts\/?$/],
+  [/^(GET|HEAD)$/, /^\/api\/agent-orchestrator\/campaign-drafts\/journey-options\/?$/],
+  [/^(GET|HEAD|PATCH)$/, /^\/api\/agent-orchestrator\/campaign-drafts\/[A-Za-z0-9_-]+\/?$/],
+  [/^POST$/, /^\/api\/agent-orchestrator\/campaign-drafts\/[A-Za-z0-9_-]+\/(validate|approve|revoke)\/?$/],
+];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
   if (_OWNER_GATE_ALLOW.some(rx => rx.test(req.path))) return next();
   if (_CAPACITY_OWNER_GATE_ALLOW.some(([method, route]) => method.test(req.method) && route.test(req.path))) return next();
+  if (_CAMPAIGN_JOURNEY_OWNER_GATE_ALLOW.some(([method, route]) => method.test(req.method) && route.test(req.path))) return next();
   if (_CLIENT_REPORTING_OWNER_GATE_ALLOW.some(([method, route]) => method.test(req.method) && route.test(req.path))) return next();
   if (!req.user) return next();              // API-key path already mapped to owner
   if (req.user.isOwner === true) return next();

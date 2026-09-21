@@ -158,6 +158,12 @@ async function parseContract(raw) {
   };
   rejectUnknown(raw.provenance, ALLOW.provenance, 'provenance');
   const provenance = { workflow_id: txt(raw.provenance.workflow_id, 1, 128, 'provenance.workflow_id') };
+  if (raw.provenance.marketing_brief_id != null || raw.provenance.marketing_brief_hash != null) {
+    if (!Number.isSafeInteger(raw.provenance.marketing_brief_id) || raw.provenance.marketing_brief_id < 1
+      || !C.HEX64.test(raw.provenance.marketing_brief_hash || '')) vf('provenance.marketing_brief_id', 'invalid');
+    provenance.marketing_brief_id = raw.provenance.marketing_brief_id;
+    provenance.marketing_brief_hash = raw.provenance.marketing_brief_hash;
+  }
   if (raw.provenance.proposal_id != null) provenance.proposal_id = txt(raw.provenance.proposal_id, 1, 128, 'provenance.proposal_id');
   if (raw.provenance.brief_artifact_id != null) provenance.brief_artifact_id = txt(raw.provenance.brief_artifact_id, 1, 128, 'provenance.brief_artifact_id');
   if (raw.provenance.evidence_hash != null) {

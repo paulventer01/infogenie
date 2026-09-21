@@ -41,7 +41,7 @@ const AUDIENCE = Object.freeze(['name', 'notes']);
 const PLACEMENT = Object.freeze(['type']);
 const CREATIVE = Object.freeze(['kind', 'asset_id', 'version', 'content_hash']);
 const TRACKING = Object.freeze(['utm_source', 'utm_medium', 'utm_campaign']);
-const PROVENANCE = Object.freeze(['workflow_id', 'proposal_id', 'brief_artifact_id', 'evidence_hash']);
+const PROVENANCE = Object.freeze(['workflow_id', 'proposal_id', 'brief_artifact_id', 'evidence_hash', 'marketing_brief_id', 'marketing_brief_hash']);
 const EXTENSION = Object.freeze(['optimization_goal', 'placement']);
 const NON_MATERIAL = Object.freeze(['label', 'notes']);
 
