@@ -109,6 +109,31 @@ test("mapping source selection leaves the unsaved reporting profile intact", asy
   assert.equal(h.query('[name="report_source"]').value, "search-intel"); assert.equal(h.query('[name="report_title"]').value, "Unsaved title");
   assert.equal(h.writes().length, 0);
 });
+test("background access rechecks keep portal actions visible for a verified client", async (t) => {
+  const pending = deferred();
+  let blockActive = false;
+  const h = await harness(t, (c) => {
+    if (blockActive && c.url.endsWith("/active")) return pending.promise;
+    if (/\/clients\/\d+\/recipient$/.test(c.url)) return { ok: true, client_id: 11, configured: false, recipient: null };
+    if (/\/clients\/\d+\/schedule$/.test(c.url)) return { ok: true, client_id: 11, configured: false, schedule: null };
+    if (/\/clients\/\d+\/delivery-history\?limit=10$/.test(c.url)) return { ok: true, client_id: 11, deliveries: [] };
+    if (/\/clients\/\d+\/portal$/.test(c.url)) {
+      return { ok: true, client_id: 11, portal: { enabled: false, pending_invitations: 0, active_sessions: 0 } };
+    }
+    if (/\/clients\/\d+\/portal\/feedback\/threads$/.test(c.url)) return { ok: true, client_id: 11, threads: [] };
+  });
+  h.state.profiles.set(11, profile());
+  await h.select();
+  assert.equal(h.visible('[name="client_id"]'), true);
+  assert.equal(h.visible('[aria-label="Client reporting portal access"] button'), true);
+  blockActive = true;
+  await h.event("pageshow");
+  assert.equal(h.visible('[name="client_id"]'), true);
+  assert.equal(h.visible('[aria-label="Client reporting portal access"] button'), true);
+  await h.resolve(pending, { ok: true, tenant: { id: 7, status: "active" }, permissions: grants, isPlatformAdmin: false });
+  assert.equal(h.visible('[name="client_id"]'), true);
+  assert.equal(h.visible('[aria-label="Client reporting portal access"] button'), true);
+});
 test("checks identity and membership before listing real clients; never auto-selects or auto-saves", async (t) => {
   const pending = deferred();
   const h = await harness(t, (c) => c.url.endsWith("/active") ? pending.promise : undefined);
@@ -258,11 +283,11 @@ for (const event of ["visibilitychange", "storage", "pageshow", "ig:navperms-rea
   const h = await harness(t); await h.select(); await h.fill(); h.state.permissions = []; await h.event(event);
   assert.equal(h.query('[name="report_title"]'), null); assert.equal(h.visible('[name="client_id"]'), false); assert.equal(h.writes().length, 0);
 });
-test("protected content is withheld while event verification is pending, then restored only for the same account", async (t) => {
+test("protected content stays visible while event verification is pending and preserves the verified draft", async (t) => {
   const pending = deferred(); let wait = false;
   const h = await harness(t, (c) => wait && c.url.endsWith("/me") ? pending.promise : undefined);
   await h.select(); await h.fill(); wait = true; await h.event();
-  assert.equal(h.visible('[name="report_title"]'), false); assert.equal(h.visible('[name="client_id"]'), false);
+  assert.equal(h.visible('[name="report_title"]'), true); assert.equal(h.visible('[name="client_id"]'), true);
   await h.resolve(pending, h.me()); assert.equal(h.query('[name="report_title"]').value, " Acme monthly "); assert.equal(h.writes().length, 0);
 });
 test("account switch while a read is pending is detected before rendering its result", async (t) => {

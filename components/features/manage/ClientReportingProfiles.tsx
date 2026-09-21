@@ -213,7 +213,7 @@ export default function ClientReportingProfiles() {
       setDraft(profileDraft(result.profile!)); setVersion(result.profile!.version); setDirty(false); setSaved(true); setReloadRequired(false); setSaveError(null);
     } finally { if (current()) { submitting.current = false; setSaving(false); } }
   }
-  const protectedVisible = !checking && !accessError && !!context.current;
+  const protectedVisible = !!context.current && !accessError;
   const selected = clients.find((client) => client.id === clientId) || (linkedClient?.id === clientId ? linkedClient : null);
   const ready = !!clientId && !!draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError;
   function goStep(id: string) {
