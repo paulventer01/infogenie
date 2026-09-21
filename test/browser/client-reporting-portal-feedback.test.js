@@ -33,6 +33,10 @@ async function responseFor(page, method, path, action, status = 200) {
   if (body && typeof body.ok === 'boolean' && status < 400) assert.equal(body.ok, true);
   return body;
 }
+async function activate(page) {
+  await page.bringToFront();
+  await page.waitForFunction(() => document.visibilityState === 'visible');
+}
 async function selectClient(page, id) {
   await page.waitForSelector(`${PANEL} select[name="client_id"]:enabled`, { visible: true });
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
@@ -112,10 +116,8 @@ test('PR10H.2 portal feedback browser journey', {
   ]);
   await text(portal, 'Please adjust the executive summary.', 'main');
 
-  // Switch tabs as a user would before interacting. Filling a background page
-  // otherwise races its focus/visibility access recheck when the click activates it.
   step('return to agency and load feedback');
-  await owner.bringToFront();
+  await activate(owner);
   await owner.reload({ waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
   await owner.waitForSelector(FEEDBACK, { visible: true });
@@ -127,10 +129,14 @@ test('PR10H.2 portal feedback browser journey', {
   }, agencyReply);
   step('agency replies');
   await owner.locator(agencyReply).fill('Thanks — we will revise the summary.');
+  await owner.waitForFunction((scope) => {
+    const submit = document.querySelector(`${scope} button[type="submit"]`);
+    return submit instanceof HTMLButtonElement && !submit.disabled;
+  }, {}, FEEDBACK);
   await Promise.all([
     owner.waitForResponse((r) => r.request().method() === 'POST'
       && /\/portal\/feedback\/threads\/\d+\/replies$/.test(new URL(r.url()).pathname)),
-    button(owner, 'Send reply', FEEDBACK),
+    owner.click(`${FEEDBACK} button[type="submit"]`),
   ]);
   await text(owner, 'Thanks — we will revise the summary.', FEEDBACK);
   step('agency resolves feedback');
@@ -138,7 +144,7 @@ test('PR10H.2 portal feedback browser journey', {
   await text(owner, 'resolved', FEEDBACK);
 
   step('client verifies persisted reply and resolution');
-  await portal.bringToFront();
+  await activate(portal);
   await portal.reload({ waitUntil: 'networkidle2' });
   await text(portal, 'Thanks — we will revise the summary.', 'main');
   await text(portal, 'resolved', 'main');
