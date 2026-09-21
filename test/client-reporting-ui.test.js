@@ -156,6 +156,27 @@ test("retry restores a deep-linked client after transient access verification fa
   assert.equal(h.query('[name="report_title"]').value, "");
   assert.equal(h.reads().filter((c) => c.url === API + "/11/profile").length, 1);
 });
+test("retry replays a deep link after post-profile access verification recovers", async (t) => {
+  let profileRead = false, failPostRead = false;
+  const h = await harness(t, (c) => {
+    if (c.url === API + "/11/profile" && c.method === "GET") {
+      profileRead = true;
+      return { ok: true, client: client(), configured: true, profile: profile() };
+    }
+    if (profileRead && failPostRead && c.url.endsWith("/active")) {
+      failPostRead = false;
+      return { ok: false, error: "verification_unavailable", httpStatus: 503 };
+    }
+  });
+  window.history.replaceState(null, "", "/manage/client-reporting-profiles?client=11");
+  failPostRead = true;
+  await h.select();
+  assert.ok(h.query('[role="alert"]')); assert.equal(h.query('[name="report_title"]'), null);
+  await h.click("Retry access");
+  assert.equal(h.query('[name="client_id"]').value, "11");
+  assert.equal(h.query('[name="report_title"]').value, "Monthly review");
+  assert.equal(h.reads().filter((c) => c.url === API + "/11/profile").length, 2);
+});
 test("saves an explicit full profile, blocks duplicate submit, and uses persisted versions on updates", async (t) => {
   const h = await harness(t); await h.select(); await h.fill(); await h.submit(true);
   assert.equal(h.writes().length, 1);
@@ -242,6 +263,27 @@ test("missing or archived client and malformed profile never expose a writable f
   assert.equal(h.query('[name="report_title"]'), null); assert.ok(h.query('[role="alert"]'));
   response = { ok: true, client: client(), configured: true, profile: profile({ client_id: 22 }) };
   await h.select(); assert.equal(h.query('[name="report_title"]'), null); assert.equal(h.writes().length, 0);
+});
+test("failed revalidation clears a formerly verified client and every client-scoped panel", async (t) => {
+  let missing = false;
+  const h = await harness(t, (c) => {
+    if (missing && c.url === API + "/11/profile") return { ok: false, error: "client_not_found", httpStatus: 404 };
+    if (/\/clients\/11\/recipient$/.test(c.url)) return { ok: true, client: client(), configured: true,
+      recipient: { client_id: 11, email: "private@example.test", enabled: true, updated_at: "2026-09-10T10:00:00.000Z" } };
+    if (/\/clients\/11\/schedule$/.test(c.url)) return { ok: true, client_id: 11, configured: false, schedule: null };
+    if (/\/clients\/11\/delivery-history\?limit=10$/.test(c.url)) return { ok: true, client_id: 11, deliveries: [] };
+    if (/\/clients\/11\/portal$/.test(c.url)) return { ok: true, client_id: 11,
+      portal: { enabled: false, pending_invitations: 0, active_sessions: 0 } };
+    if (/\/clients\/11\/portal\/feedback\/threads$/.test(c.url)) return { ok: true, client_id: 11, threads: [] };
+  });
+  h.state.profiles.set(11, profile()); await h.select();
+  assert.equal(h.query('[name="recipient_email"]').value, "private@example.test");
+  missing = true; await h.click("Reload profile");
+  assert.equal(h.query('[name="client_id"]').value, "");
+  assert.equal(h.query('form[aria-label="Reporting profile"]'), null);
+  assert.equal(h.query('[aria-label="Client report delivery recipient"]'), null);
+  assert.equal(h.query('[name="recipient_email"]'), null);
+  assert.match(h.text(), /no longer available/);
 });
 test("failed access verification after a write withholds success and requires explicit reload", async (t) => {
   let fail = false;

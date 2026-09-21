@@ -96,6 +96,9 @@ export default function ClientReportingProfiles() {
   const loadProfile = useCallback(async (id: number) => {
     const sequence = ++profileSequence.current, epoch = generation.current;
     const current = () => live.current && epoch === generation.current && sequence === profileSequence.current;
+    const clearVerifiedClient = () => {
+      verifiedClientId.current = null; setClientId(null); setLinkedClient(null); setVersion(0); setDraft(null);
+    };
     // Do not promote a requested/deep-linked ID into shared child panels until
     // the server has verified that the client belongs to this workspace. A
     // reload of the already verified client may retain that trusted ID while
@@ -107,15 +110,19 @@ export default function ClientReportingProfiles() {
     setVersion(0); setPendingClient(null); setDraft(null); setDirty(false); setProfileBusy(true);
     setProfileError(null); setSaveError(null); setSaved(false); setReloadRequired(false);
     try {
-      if (!await checkAccess(true) || !current()) return;
+      if (!await checkAccess(true) || !current()) { if (current()) clearVerifiedClient(); return; }
       const result = await apiGet<ProfileResponse>(`${API}/${id}/profile`);
       if (!current()) return;
       const error = responseError(result) || (!validClient(result.client) || result.client.id !== id
         || !(result.configured === false && result.profile === null || result.configured === true && validProfile(result.profile, id))
         ? "Reporting profile could not be verified. Reload to try again." : null);
       if (error && accessLost(error)) return clearContext(error);
-      if (!await checkAccess(true) || !current()) return;
-      if (error) { setProfileError(error === "client_not_found" ? "This client is no longer available in this workspace." : error); return; }
+      if (!await checkAccess(true) || !current()) { if (current()) clearVerifiedClient(); return; }
+      if (error) {
+        clearVerifiedClient();
+        setProfileError(error === "client_not_found" ? "This client is no longer available in this workspace." : error);
+        return;
+      }
       verifiedClientId.current = id; setLinkedClient(result.client!); setClientId(id); setVersion(result.profile?.version || 0);
       setDraft(result.profile ? profileDraft(result.profile) : newDraft());
     } finally { if (current()) setProfileBusy(false); }
@@ -238,7 +245,12 @@ export default function ClientReportingProfiles() {
       </nav>
       {checking && <p role="status">Verifying account, workspace and access…</p>}
       {accessError && <><Failure>{accessError}</Failure><button style={button} onClick={() => {
-        if (context.current && !denied.current) void checkAccess().then((valid) => { if (valid && !clients.length) void loadClients(); });
+        if (context.current && !denied.current) void checkAccess().then((valid) => {
+          if (!valid) return;
+          const linkedId = Number(new URLSearchParams(window.location.search).get("client"));
+          if (positiveId(linkedId) && verifiedClientId.current !== linkedId) void loadProfile(linkedId);
+          else if (!clients.length) void loadClients();
+        });
         else setAttempt((n) => n + 1);
       }}>Retry access</button></>}
       <div hidden={!protectedVisible}>
