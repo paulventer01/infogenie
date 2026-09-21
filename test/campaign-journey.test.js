@@ -9,7 +9,7 @@ function loader(){
     if(cache.has(file))return cache.get(file);
     const {outputText}=ts.transpileModule(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.ReactJSX}});
     const mod={exports:{}};
-    new Function('exports','require','module',outputText)(mod.exports,id=>id.startsWith('@/lib/')?load(id.slice(2)+'.ts')
+    new Function('exports','require','module',outputText)(mod.exports,id=>id==='next/navigation'?{useRouter:()=>({push(){}})}:id.startsWith('@/lib/')?load(id.slice(2)+'.ts')
       :id.endsWith('.module.css')?{default:{}}:id==='next/link'?{default:({children,...props})=>React.createElement('a',props,children)}:require(id),mod);
     cache.set(file,mod.exports);return mod.exports;
   }
@@ -19,8 +19,8 @@ function loader(){
 const brief={id:11,brand:'Example',headline:'Spring campaign',greeting:'Review this source',generated_by:'test',content_hash:'b'.repeat(64)};
 const creative={id:'creative-row',artifact_id:'asset',version:1,content_hash:'c'.repeat(64),format:'image',objective:'Traffic'};
 const workflow={id:'workflow',name:'Spring',objective:'traffic',landing_page_url:'https://example.com',advertising_budget:10,currency:'USD',target_markets:['US'],target_audiences:['Customers'],selected_platforms:['meta']};
-async function harness(t,handler=()=>undefined){
-  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost/',pretendToBeVisual:true});
+async function harness(t,handler=()=>undefined,options={}){
+  const dom=new JSDOM('<div id="root"></div>',{url:options.url||'http://localhost/',pretendToBeVisual:true});
   const state={tenant:7,permissions:['orchestrator.workflows.view','reports.view','orchestrator.workflows.edit','orchestrator.workflows.approve.campaign_publishing'],draft:null};
   const calls=[];
   const values={window:dom.window,document:dom.window.document,navigator:dom.window.navigator,HTMLElement:dom.window.HTMLElement,IS_REACT_ACT_ENVIRONMENT:true,
@@ -47,7 +47,7 @@ async function harness(t,handler=()=>undefined){
   for(const [key,value]of Object.entries(values))Object.defineProperty(global,key,{value,configurable:true,writable:true});
   const root=require('react-dom/client').createRoot(document.getElementById('root'));
   t.after(async()=>{await act(async()=>root.unmount());dom.window.close();for(const[k,d]of previous){if(d)Object.defineProperty(global,k,d);else delete global[k];}});
-  await act(async()=>root.render(React.createElement(React.StrictMode,null,React.createElement(loader()('components/features/manage/CampaignJourney.tsx').default))));
+  await act(async()=>root.render(React.createElement(React.StrictMode,null,React.createElement(loader()(options.component||'components/features/manage/CampaignJourney.tsx').default))));
   const h={state,calls,text:()=>document.body.textContent,
     set:async(name,value)=>act(async()=>{const el=document.querySelector('[name="'+name+'"]');assert.ok(el,name);
       Object.getOwnPropertyDescriptor(el.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype,'value').set.call(el,value);
@@ -161,3 +161,47 @@ test('tenant switch while creating never selects a stale workspace',async t=>{
  await setupWorkspace(h);await h.click('Create and select workspace');
  assert.match(h.text(),/workspace changed/);assert.doesNotMatch(h.text(),/New workspace|2. Prepare the campaign draft/);
 });
+
+
+test('creative handoff opens selected workspace separately and refresh preserves unsaved edits',async t=>{
+ let ready=false;
+ const h=await harness(t,r=>r.url.includes('journey-options')?{ok:true,briefs:[brief],creatives:ready?[creative]:[]}:undefined);
+ await h.set('marketing_brief','11');await h.set('campaign_workflow','workflow');
+ await h.set('label','My unsaved campaign');await h.set('audience','My unsaved audience');
+ const link=[...document.querySelectorAll('a')].find(a=>a.textContent.includes('creative approvals ('));
+ assert.equal(link.getAttribute('href'),'/manage/agent-orchestrator?workflow_id=workflow');
+ assert.equal(link.target,'_blank');assert.match(link.rel,/noopener/);
+ ready=true;await h.click('Refresh creative briefs');
+ assert.equal(document.querySelector('[name="label"]').value,'My unsaved campaign');
+ assert.equal(document.querySelector('[name="audience"]').value,'My unsaved audience');
+ assert.equal(document.querySelector('[name="marketing_brief"]').value,'11');
+ assert.equal(document.querySelector('[name="creative"]').options.length,2);
+ assert.equal(document.querySelector('[name="saved_campaign"]').disabled,true);
+ assert.equal(h.calls.filter(r=>r.method!=='GET').length,0);
+});
+test('creative refresh rejects changed tenant and clears stale edits',async t=>{
+ const h=await harness(t,r=>r.url.includes('journey-options')?{ok:true,briefs:[brief],creatives:[]}:undefined);
+ await h.set('marketing_brief','11');await h.set('campaign_workflow','workflow');await h.set('label','Unsaved old tenant');
+ h.state.tenant=8;await h.click('Refresh creative briefs');
+ assert.match(h.text(),/workspace changed/);assert.equal(document.querySelector('[name="label"]'),null);
+});
+for(const requested of ['workflow','foreign-workflow']){
+ test('creative review handoff only selects accessible workflow: '+requested,async t=>{
+  const h=await harness(t,r=>{
+   if(r.url==='/api/tenants/active')return {ok:true,permissions:[],isPlatformAdmin:false};
+   if(r.url.endsWith('/workflows'))return {ok:true,workflows:[workflow]};
+   if(r.url.endsWith('/workflows/workflow'))return {ok:true,workflow:{...workflow,current_state:'draft',current_phase:'research',version:1}};
+   return {ok:true};
+  },{component:'components/features/manage/AgentOrchestrator.tsx',url:'http://localhost/manage/agent-orchestrator?workflow_id='+requested});
+  if(requested==='workflow'){
+   assert.match(h.text(),/Creative review for Spring/);
+   assert.ok(document.querySelector('#campaign-workspace-details'));
+   assert.ok(h.calls.some(r=>r.url.endsWith('/workflows/workflow')));
+  }else{
+   assert.match(h.text(),/requested campaign workspace is not available/);
+   assert.equal(document.querySelector('#campaign-workspace-details'),null);
+   assert.ok(!h.calls.some(r=>r.url.includes('foreign-workflow')));
+  }
+  assert.equal(h.calls.filter(r=>r.method!=='GET').length,0);
+ });
+}
