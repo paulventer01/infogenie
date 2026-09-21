@@ -31,6 +31,7 @@ export interface MigratedView {
 }
 
 export const MIGRATED_VIEWS: MigratedView[] = [
+  { view: "workspace-home", legacyModule: null },
   { view: "seo-roadmap", legacyModule: "ig_seo_roadmap.js" },
   // deliverability / web-vitals / tech-stack builders all live INLINE in app.js
   // (window.buildDeliverability, window.buildWebVitals, window.buildTechStack),

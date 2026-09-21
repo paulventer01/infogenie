@@ -31,6 +31,7 @@ export function prefetchPanel(view: string | null | undefined): void {
 }
 
 export const MIGRATED_COMPONENTS: Record<string, Panel> = {
+  "workspace-home": L("workspace-home", () => import("@/components/features/manage/WorkspaceHome")),
   "seo-roadmap": L("seo-roadmap", () => import("@/components/features/reach/SeoRoadmap")),
   deliverability: L("deliverability", () => import("@/components/features/reach/Deliverability")),
   "web-vitals": L("web-vitals", () => import("@/components/features/reach/WebVitals")),

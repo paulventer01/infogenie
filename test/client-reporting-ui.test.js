@@ -33,8 +33,8 @@ function loader() {
   return load;
 }
 // Exercise the actual panel and same-origin API wrapper, with deterministic transport fixtures.
-async function harness(t, handler = () => undefined) {
-  const dom = new JSDOM("<div id='root'></div>", { url: "http://localhost/manage/client-reporting-profiles", pretendToBeVisual: true });
+async function harness(t, handler = () => undefined, queryString = "") {
+  const dom = new JSDOM("<div id='root'></div>", { url: "http://localhost/manage/client-reporting-profiles" + queryString, pretendToBeVisual: true });
   const calls = [], state = { user: 999, tenant: 7, permissions: [...grants], admin: false,
     clients: [client(), client(22, "Beta")], profiles: new Map() };
   const me = () => ({ ok: true, user: { id: state.user }, activeTenantId: state.tenant, memberships: [{ tenantId: state.tenant }] });
@@ -301,4 +301,18 @@ for (const change of ["user", "tenant"]) test("pending report preview cannot sur
   await h.resolve(pending, { ok: true, client: client(), profile_version: 1, format: "pdf", can_generate: true, brand: {},
     report: { title: "Private report", generated_at: "2026-01-01", sections: [{ kind: "table", title: "Private", headers: ["Name"], rows: [["Private data"]] }] } });
   assert.doesNotMatch(h.text(), /Private report|Private data/); assert.equal(h.button("Preview report"), undefined);
+});
+
+test("workspace link preselects only a server-verified client", async t => {
+  const h = await harness(t, () => undefined, "?client=22");
+  assert.equal(h.query('[name="client_id"]').value, "22");
+  assert.match(h.text(), /Beta/);
+  assert.ok(h.query('form[aria-label="Reporting profile"]'));
+  assert.equal(h.writes().length, 0);
+});
+test("workspace link cannot load an inaccessible client", async t => {
+  const h = await harness(t, c => c.url.includes("/clients/99/profile") ? {ok:false,error:"client_not_found"} : undefined, "?client=99");
+  assert.equal(h.query('form[aria-label="Reporting profile"]'), null);
+  assert.match(h.text(), /no longer available/);
+  assert.equal(h.writes().length, 0);
 });

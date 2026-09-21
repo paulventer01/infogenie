@@ -10,7 +10,7 @@ import ClientReportingPortal from "@/components/features/manage/ClientReportingP
 import ClientReportingPortalFeedback from "@/components/features/manage/ClientReportingPortalFeedback";
 import ClientReportingMappings from "@/components/features/manage/ClientReportingMappings";
 import { API, BRAND_FIELDS, PERIOD_HELP, accessLost, draftError, newDraft, profileDraft, profilePayload, responseError,
-  saveMatches, validClient, validPage, validProfile, verifyAccess,
+  saveMatches, positiveId, validClient, validPage, validProfile, verifyAccess,
   type Client, type ClientsResponse, type Context, type Draft, type ProfileResponse } from "@/lib/clientReporting";
 import { REPORTING_PERIODS, defaultMetrics, orderedMetricEditor } from "@/lib/clientReportingMetrics";
 
@@ -33,6 +33,7 @@ export default function ClientReportingProfiles() {
   const [cursor, setCursor] = useState<number | null>(null);
   const [listBusy, setListBusy] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
+  const [linkedClient, setLinkedClient] = useState<Client | null>(null);
   const [clientId, setClientId] = useState<number | null>(null);
   const [pendingClient, setPendingClient] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -52,7 +53,7 @@ export default function ClientReportingProfiles() {
   const clearContext = useCallback((message: string) => {
     ++generation.current; ++listSequence.current; ++profileSequence.current;
     denied.current = true; context.current = null; checks.current = 0; submitting.current = false;
-    setChecking(false); setAccessError(message); setClients([]); setCursor(null); setClientId(null); setPendingClient(null);
+    setLinkedClient(null); setChecking(false); setAccessError(message); setClients([]); setCursor(null); setClientId(null); setPendingClient(null);
     setDraft(null); setDirty(false); setSaving(false); setSaved(false); setSaveError(null); setProfileError(null); setReloadRequired(false);
   }, []);
   const checkAccess = useCallback(async () => {
@@ -106,7 +107,7 @@ export default function ClientReportingProfiles() {
       if (error && accessLost(error)) return clearContext(error);
       if (!await checkAccess() || !current()) return;
       if (error) { setProfileError(error === "client_not_found" ? "This client is no longer available in this workspace." : error); return; }
-      setVersion(result.profile?.version || 0); setDraft(result.profile ? profileDraft(result.profile) : newDraft());
+      setLinkedClient(result.client!); setVersion(result.profile?.version || 0); setDraft(result.profile ? profileDraft(result.profile) : newDraft());
     } finally { if (current()) setProfileBusy(false); }
   }, [checkAccess, clearContext]);
 
@@ -125,6 +126,11 @@ export default function ClientReportingProfiles() {
       documentEvents.forEach((event) => document.removeEventListener(event, recheck));
     };
   }, [attempt, checkAccess, loadClients, stop]);
+
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("client"));
+    if (positiveId(id)) void loadProfile(id);
+  }, [loadProfile]);
 
   function change(key: keyof Draft, value: string) {
     setDraft((previous) => {
@@ -192,7 +198,7 @@ export default function ClientReportingProfiles() {
     } finally { if (current()) { submitting.current = false; setSaving(false); } }
   }
   const protectedVisible = !checking && !accessError && !!context.current;
-  const selected = clients.find((client) => client.id === clientId);
+  const selected = clients.find((client) => client.id === clientId) || (linkedClient?.id === clientId ? linkedClient : null);
   const ready = !!clientId && !!draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError;
   function goStep(id: string) {
     const target = document.getElementById(id);
@@ -227,6 +233,7 @@ export default function ClientReportingProfiles() {
             if (!clients.some((client) => client.id === id) || id === clientId) return;
             if (dirty || reloadRequired) setPendingClient(id); else void loadProfile(id);
           }}><option value="" disabled>Choose an active client</option>
+            {linkedClient && !clients.some(client => client.id === linkedClient.id) && <option value={linkedClient.id}>{linkedClient.name} (#{linkedClient.id})</option>}
             {clients.map((client) => <option key={client.id} value={client.id}>{client.name} (#{client.id})</option>)}
           </select></Field>
           {pendingClient && <div role="alert"><p>Switching clients discards your unsaved changes.</p>

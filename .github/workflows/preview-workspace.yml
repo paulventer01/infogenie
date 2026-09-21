@@ -1,7 +1,7 @@
 name: Preview workspace
 on:
   pull_request:
-    paths: ['.devcontainer/**', 'scripts/preview/**', 'test/*preview*', 'test/browser/preview-workspace.test.js', 'app/**', 'components/**', 'styles/**', 'package*.json', '.github/workflows/preview-workspace.yml']
+    paths: ['.devcontainer/**', 'scripts/preview/**', 'test/*preview*', 'test/browser/preview-workspace.test.js', 'app/**', 'components/**', 'styles/**', 'lib/**', 'next.config.ts', 'server.js', 'db.js', 'services/**', 'test/helpers/**', 'test/workspace-home.test.js', 'package*.json', '.github/workflows/preview-workspace.yml']
 permissions:
   contents: read
 jobs:
@@ -28,7 +28,7 @@ jobs:
             test "$attempt" -lt 30 || exit 1
             sleep 1
           done
-      - run: node --test --test-reporter=tap test/preview-workspace.test.js
+      - run: node --test --test-reporter=tap test/preview-workspace.test.js test/workspace-home.test.js
       - name: Exercise actual preview launcher with Chromium
         env:
           INFOGENIE_REQUIRE_PREVIEW_TEST: '1'

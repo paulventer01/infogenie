@@ -12,8 +12,8 @@ It does not deploy production or enable autonomous sending.
 2. Run **`npm run preview:access`** in the Codespace terminal once to open the
    private login file in the editor. Copy its email and password, then close it. The account is unique to this workspace;
    it does not use your production login or the old hard-coded demo password.
-3. Open port **5000 → Open in Browser**, sign in and choose **Client reporting**
-   in the sidebar. This is the usable preview URL; bookmark that browser address.
+3. Open port **5000 → Open in Browser**, sign in to the **Workspace** home screen. Choose a client and follow
+   **Set up this client’s report** or **Continue this client’s report**. This is the usable preview URL; bookmark that browser address.
 4. Choose **DEMO — Cedar & Coast**. Save the report preferences, map the synthetic
    search query, preview the report, then use the approval and portal controls.
    No performance results are fabricated: the initial report has empty metrics.
@@ -47,6 +47,9 @@ a clean disposable workspace; do not point this launcher at a real database.
 - Next listens on 5000; Express is loopback-only on 8000. PostgreSQL shares the
   app's container network and has no host-published port in the devcontainer.
 - Only PATH, HOME and temporary-directory settings survive into the app process.
+  For Codespaces, the platform-provided name and forwarding domain are validated
+  to derive one exact HTTPS origin on port 5000 for CSRF checks. Other Codespaces
+  origins are not trusted; ambient PUBLIC_BASE_URL/APP_URL values are discarded.
   Provider keys, ambient database URLs and runtime overrides are discarded.
 - Random session/vault/API keys and the synthetic login are stored locally in
   ignored `.preview-workspace/` files, with directory mode 0700 and file mode 0600.
@@ -75,3 +78,20 @@ with real PostgreSQL/TLS. The preview test complements that acceptance suite.
 The visual slice preserves existing API contracts and approval requirements.
 Other panels, provider integration setup, production deployment and a public
 always-on staging URL remain separate work.
+
+## Workspace home
+
+The root URL `/` now opens a React workspace overview. The InfoGenie logo and
+Workspace sidebar shortcut return there. Existing `/analyse` bookmarks still
+open the analysis form. Reporting links carry the selected client ID; the
+reporting page validates it through the existing tenant-scoped API.
+
+Client lists and saved profile status require existing workspace settings access.
+Loading, empty, denied and failed states are distinct. Focus or workspace-access
+changes clear the prior selection and revalidate access. The overview does not
+claim live performance, pending approval counts or report delivery status.
+
+A report profile being saved is not approval to send. The existing reporting
+journey retains its approval and sharing checks. Marketing brief-to-campaign
+redesign, an all-role dashboard and consolidated cross-tool approval counts are
+follow-up work.

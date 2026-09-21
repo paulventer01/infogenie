@@ -566,7 +566,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
 // ── Derived routing maps ────────────────────────────────────────────────────
 // `view` -> canonical path (`/<group>/<view>`) and the reverse lookup.
 export const VIEW_TO_PATH: Record<string, string> = {};
-export const ALL_VIEW_IDS = new Set<string>();
+export const ALL_VIEW_IDS = new Set<string>(["workspace-home"]);
+VIEW_TO_PATH["workspace-home"] = "/";
 
 for (const group of NAV_GROUPS) {
   for (const section of group.sections) {
@@ -813,12 +814,11 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
 /**
  * Resolve a dashboard pathname to its `data-view` id. The group segment is
  * cosmetic — the last path segment is the view id, accepted only if it's a real
- * nav view (or a known alias). `/` maps to the marketing-brief home screen.
+ * nav view (or a known alias). `/` maps to the workspace overview.
  */
 export function pathToViewId(pathname: string): string | null {
-  // / → analysis form on first load; 'home' is not a migrated React view so
-  // MigratedPanel renders nothing and the legacy #view-home entry form shows.
-  if (!pathname || pathname === "/" || pathname === "/analyse") return "home";
+  if (!pathname || pathname === "/") return "workspace-home";
+  if (pathname === "/analyse") return "home";
   const segs = pathname.split("/").filter(Boolean);
   if (!segs.length) return null;
   const last = segs[segs.length - 1];
