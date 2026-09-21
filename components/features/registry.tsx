@@ -276,6 +276,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   geofencing: L("geofencing", () => import("@/components/features/reach/Geofencing")),
   "local-listings": L("local-listings", () => import("@/components/features/seo/LocalListings")),
   "review-automation": L("review-automation", () => import("@/components/features/compete/ReviewAutomation")),
+  "campaign-journey": L("campaign-journey", () => import("@/components/features/manage/CampaignJourney")),
   "marketing-brief": L("marketing-brief", () => import("@/components/features/manage/MarketingBrief")),
   mmm: L("mmm", () => import("@/components/features/grow/Mmm")),
   autoseo: L("autoseo", () => import("@/components/features/grow/Autoseo")),

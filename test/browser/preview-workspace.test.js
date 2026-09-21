@@ -115,6 +115,8 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
   assert.equal(await page.$eval('#report-client',el=>el.getBoundingClientRect().right<=innerWidth),true);
   assert.equal(await page.$eval('main header h1',el=>getComputedStyle(el).color),'rgb(255, 255, 255)');
   await page.screenshot({path:'/tmp/preview-artifacts/reporting-mobile.png',fullPage:true});
+  stage='campaign brief to approval';
+  await require('../helpers/campaign-journey-browser')(page,account,ORIGIN);
   await stop();
   fs.renameSync(accessPath,accessPath+'.pending'); // interrupted first boot after commit, before rename
   await new Promise(r=>setTimeout(r,2000));await start();

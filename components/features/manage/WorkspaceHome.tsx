@@ -130,6 +130,7 @@ export default function WorkspaceHome() {
       <p className={styles.eyebrow}>03 / KEEP WORK MOVING</p>
       <h2 id="workspace-tools-title">Continue your work</h2>
       <div className={styles.shortcuts}>
+        <Link href="/manage/campaign-journey"><strong>Campaign journey →</strong><span>Turn a saved marketing brief into a campaign draft for approval.</span></Link>
         <Link href="/manage/marketing-brief"><strong>Marketing brief →</strong><span>Review the brief for your next marketing task.</span></Link>
         <Link href="/analyse"><strong>Analyse a business →</strong><span>Start a new business and competitor analysis.</span></Link>
         <Link href={reporting}><strong>Client reporting →</strong><span>Prepare reports, review approvals and manage sharing.</span></Link>

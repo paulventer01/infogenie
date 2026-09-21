@@ -532,6 +532,7 @@ const COMPONENT_MATRIX = {
   'bulk-reports':         'reports.view',
   'weekly-report':        'reports.view',
   'digest':               'reports.view',
+  'campaign-journey': 'orchestrator.workflows.view',
   'marketing-brief':      'reports.view',
   'infographics':         'reports.view',
   'kpi-dashboard':        'analytics.view',

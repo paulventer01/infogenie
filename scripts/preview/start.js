@@ -66,6 +66,8 @@ async function main() {
   await db.ensureSchema(); await fixtures.ensureSchemas();
   await require('../../services/search_intel/schema').ensureSearchIntelSchema();
   await require('../../services/optimizer/schema').ensureOptimizerSchema();
+  await require('../../services/marketing_brief/schema').ensureMarketingBriefSchema();
+  await require('../../services/agent_orchestrator/schema').ensureAgentOrchestratorSchema();
   const schema = require('../../services/client_reporting/schema');
   await schema.ensureClientReportingSchema(); await schema.ensureClientReportingMappingSchema();
   const pending = ACCESS + '.pending';

@@ -424,6 +424,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "0 · Morning Brief",
         items: [
+          { view: "campaign-journey", icon: "→", label: "Campaign journey — brief to approval" },
           { view: "marketing-brief", icon: "🗯️", label: "Today's Marketing Brief — AI Director" },
         ],
       },
