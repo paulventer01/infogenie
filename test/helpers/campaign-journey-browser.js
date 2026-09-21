@@ -59,9 +59,10 @@ module.exports = async function campaignJourney(page, account, origin) {
     const reviewPage=await page.browser().newPage();
     try {
       await reviewPage.goto(reviewLink,{waitUntil:'networkidle2'});
-      await reviewPage.waitForSelector('#campaign-workspace-details');
+      await reviewPage.waitForFunction(()=>document.querySelector('#campaign-workspace-details')?.textContent.includes('DEMO inline workspace'));
       assert.ok(await reviewPage.$eval('#campaign-workspace-details',el=>el.innerText.includes('DEMO inline workspace')));
       assert.equal(await page.$eval('[name="campaign_workflow"]',el=>el.value),createdId);
+      await page.bringToFront();
       await click('Refresh creative briefs');
       await page.waitForFunction(()=>document.body.innerText.includes('No approved creative brief yet.'));
       assert.equal(await page.$eval('[name="marketing_brief"]',el=>el.value),String(brief.id));
