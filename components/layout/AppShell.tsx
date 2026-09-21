@@ -372,7 +372,7 @@ export default function AppShell({ children, preview = false }: { children: Reac
             type="button"
             className={styles.brandBtn}
             id="navLogo"
-            onClick={navReady ? goBrief : goAnalyse}
+            onClick={(event) => onNavClick(event, {view:"workspace-home",label:"Workspace",icon:BRIEF_SVG})}
             title="InfoGenie"
           >
             <span
@@ -426,6 +426,10 @@ export default function AppShell({ children, preview = false }: { children: Reac
 
         <nav className={styles.railNav} id="navGroups" aria-label="Workspace navigation">
           <p className={styles.navCaption}>YOUR WORKSPACE</p>
+          <button type="button" className={styles.reportingLink} aria-current={activeView === "workspace-home" ? "page" : undefined}
+            onClick={(event) => onNavClick(event, {view:"workspace-home",label:"Workspace",icon:BRIEF_SVG})}>
+            <span aria-hidden="true">⌂</span><span className={styles.gLabel}>Workspace</span>
+          </button>
           <button type="button" className={styles.reportingLink} aria-current={activeView === "client-reporting" ? "page" : undefined}
             onClick={(event) => onNavClick(event, {view:"client-reporting",label:"Client reporting",icon:BRIEF_SVG})}>
             <span aria-hidden="true">▤</span><span className={styles.gLabel}>Client reporting</span>

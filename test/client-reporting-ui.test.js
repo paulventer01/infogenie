@@ -33,8 +33,8 @@ function loader() {
   return load;
 }
 // Exercise the actual panel and same-origin API wrapper, with deterministic transport fixtures.
-async function harness(t, handler = () => undefined) {
-  const dom = new JSDOM("<div id='root'></div>", { url: "http://localhost/manage/client-reporting-profiles", pretendToBeVisual: true });
+async function harness(t, handler = () => undefined, queryString = "") {
+  const dom = new JSDOM("<div id='root'></div>", { url: "http://localhost/manage/client-reporting-profiles" + queryString, pretendToBeVisual: true });
   const calls = [], state = { user: 999, tenant: 7, permissions: [...grants], admin: false,
     clients: [client(), client(22, "Beta")], profiles: new Map() };
   const me = () => ({ ok: true, user: { id: state.user }, activeTenantId: state.tenant, memberships: [{ tenantId: state.tenant }] });
@@ -88,7 +88,9 @@ async function harness(t, handler = () => undefined) {
   return { state, calls, query, set, submit, button, click, fill, unmount, load, me,
     visible: (selector) => !!query(selector) && !query(selector).closest("[hidden]"),
     select: () => set("client_id", "11"), text: () => dom.window.document.body.textContent,
-    event: async (name = "focus") => act(async () => (["visibilitychange", "ig:navperms-ready"].includes(name) ? dom.window.document : dom.window).dispatchEvent(new dom.window.Event(name))),
+    event: async (name = "visibilitychange") => act(async () => {
+      (["visibilitychange", "ig:navperms-ready"].includes(name) ? dom.window.document : dom.window).dispatchEvent(new dom.window.Event(name));
+    }),
     resolve: async (pending, value) => act(async () => pending.resolve(value)),
     lists: () => calls.filter((c) => c.url.startsWith(API + "?")),
     reads: () => calls.filter((c) => c.url.startsWith(API) && c.method === "GET"), writes: () => calls.filter((c) => c.method !== "GET") };
@@ -107,6 +109,31 @@ test("mapping source selection leaves the unsaved reporting profile intact", asy
   assert.equal(h.query('[name="report_source"]').value, "search-intel"); assert.equal(h.query('[name="report_title"]').value, "Unsaved title");
   assert.equal(h.writes().length, 0);
 });
+test("background access rechecks keep portal actions visible for a verified client", async (t) => {
+  const pending = deferred();
+  let blockActive = false;
+  const h = await harness(t, (c) => {
+    if (blockActive && c.url.endsWith("/active")) return pending.promise;
+    if (/\/clients\/\d+\/recipient$/.test(c.url)) return { ok: true, client_id: 11, configured: false, recipient: null };
+    if (/\/clients\/\d+\/schedule$/.test(c.url)) return { ok: true, client_id: 11, configured: false, schedule: null };
+    if (/\/clients\/\d+\/delivery-history\?limit=10$/.test(c.url)) return { ok: true, client_id: 11, deliveries: [] };
+    if (/\/clients\/\d+\/portal$/.test(c.url)) {
+      return { ok: true, client_id: 11, portal: { enabled: false, pending_invitations: 0, active_sessions: 0 } };
+    }
+    if (/\/clients\/\d+\/portal\/feedback\/threads$/.test(c.url)) return { ok: true, client_id: 11, threads: [] };
+  });
+  h.state.profiles.set(11, profile());
+  await h.select();
+  assert.equal(h.visible('[name="client_id"]'), true);
+  assert.equal(h.visible('[aria-label="Client reporting portal access"] button'), true);
+  blockActive = true;
+  await h.event("pageshow");
+  assert.equal(h.visible('[name="client_id"]'), true);
+  assert.equal(h.visible('[aria-label="Client reporting portal access"] button'), true);
+  await h.resolve(pending, { ok: true, tenant: { id: 7, status: "active" }, permissions: grants, isPlatformAdmin: false });
+  assert.equal(h.visible('[name="client_id"]'), true);
+  assert.equal(h.visible('[aria-label="Client reporting portal access"] button'), true);
+});
 test("checks identity and membership before listing real clients; never auto-selects or auto-saves", async (t) => {
   const pending = deferred();
   const h = await harness(t, (c) => c.url.endsWith("/active") ? pending.promise : undefined);
@@ -118,6 +145,37 @@ test("checks identity and membership before listing real clients; never auto-sel
   assert.ok(h.calls.every((c) => c.credentials === "same-origin"));
   await h.select(); assert.equal(h.query('[name="report_title"]').value, "");
   assert.match(h.text(), /Not configured.*unsaved/); assert.equal(h.writes().length, 0);
+});
+test("retry restores a deep-linked client after transient access verification failure", async (t) => {
+  let fail = true;
+  const h = await harness(t, (c) => fail && c.url.endsWith("/me")
+    ? { ok: false, error: "verification_unavailable", httpStatus: 503 } : undefined, "?client=11");
+  assert.ok(h.query('[role="alert"]')); assert.equal(h.query('[name="report_title"]'), null);
+  fail = false; await h.click("Retry access");
+  assert.equal(h.query('[name="client_id"]').value, "11");
+  assert.equal(h.query('[name="report_title"]').value, "");
+  assert.equal(h.reads().filter((c) => c.url === API + "/11/profile").length, 1);
+});
+test("retry replays a deep link after post-profile access verification recovers", async (t) => {
+  let profileRead = false, failPostRead = false;
+  const h = await harness(t, (c) => {
+    if (c.url === API + "/11/profile" && c.method === "GET") {
+      profileRead = true;
+      return { ok: true, client: client(), configured: true, profile: profile() };
+    }
+    if (profileRead && failPostRead && c.url.endsWith("/active")) {
+      failPostRead = false;
+      return { ok: false, error: "verification_unavailable", httpStatus: 503 };
+    }
+  });
+  window.history.replaceState(null, "", "/manage/client-reporting-profiles?client=11");
+  failPostRead = true;
+  await h.select();
+  assert.ok(h.query('[role="alert"]')); assert.equal(h.query('[name="report_title"]'), null);
+  await h.click("Retry access");
+  assert.equal(h.query('[name="client_id"]').value, "11");
+  assert.equal(h.query('[name="report_title"]').value, "Monthly review");
+  assert.equal(h.reads().filter((c) => c.url === API + "/11/profile").length, 2);
 });
 test("saves an explicit full profile, blocks duplicate submit, and uses persisted versions on updates", async (t) => {
   const h = await harness(t); await h.select(); await h.fill(); await h.submit(true);
@@ -204,7 +262,28 @@ test("missing or archived client and malformed profile never expose a writable f
   const h = await harness(t, (c) => c.url.endsWith("/profile") ? response : undefined); await h.select();
   assert.equal(h.query('[name="report_title"]'), null); assert.ok(h.query('[role="alert"]'));
   response = { ok: true, client: client(), configured: true, profile: profile({ client_id: 22 }) };
-  await h.click("Reload profile"); assert.equal(h.query('[name="report_title"]'), null); assert.equal(h.writes().length, 0);
+  await h.select(); assert.equal(h.query('[name="report_title"]'), null); assert.equal(h.writes().length, 0);
+});
+test("failed revalidation clears a formerly verified client and every client-scoped panel", async (t) => {
+  let missing = false;
+  const h = await harness(t, (c) => {
+    if (missing && c.url === API + "/11/profile") return { ok: false, error: "client_not_found", httpStatus: 404 };
+    if (/\/clients\/11\/recipient$/.test(c.url)) return { ok: true, client: client(), configured: true,
+      recipient: { client_id: 11, email: "private@example.test", enabled: true, updated_at: "2026-09-10T10:00:00.000Z" } };
+    if (/\/clients\/11\/schedule$/.test(c.url)) return { ok: true, client_id: 11, configured: false, schedule: null };
+    if (/\/clients\/11\/delivery-history\?limit=10$/.test(c.url)) return { ok: true, client_id: 11, deliveries: [] };
+    if (/\/clients\/11\/portal$/.test(c.url)) return { ok: true, client_id: 11,
+      portal: { enabled: false, pending_invitations: 0, active_sessions: 0 } };
+    if (/\/clients\/11\/portal\/feedback\/threads$/.test(c.url)) return { ok: true, client_id: 11, threads: [] };
+  });
+  h.state.profiles.set(11, profile()); await h.select();
+  assert.equal(h.query('[name="recipient_email"]').value, "private@example.test");
+  missing = true; await h.click("Reload profile");
+  assert.equal(h.query('[name="client_id"]').value, "");
+  assert.equal(h.query('form[aria-label="Reporting profile"]'), null);
+  assert.equal(h.query('[aria-label="Client report delivery recipient"]'), null);
+  assert.equal(h.query('[name="recipient_email"]'), null);
+  assert.match(h.text(), /no longer available/);
 });
 test("failed access verification after a write withholds success and requires explicit reload", async (t) => {
   let fail = false;
@@ -242,15 +321,15 @@ for (const change of ["user", "tenant"]) test("identity change immediately befor
   const h = await harness(t); await h.select(); await h.fill(); h.state[change]++; await h.submit();
   assert.equal(h.writes().length, 0); assert.equal(h.query('[name="report_title"]'), null); assert.doesNotMatch(h.text(), /Acme|Beta/);
 });
-for (const event of ["focus", "visibilitychange", "storage", "pageshow", "ig:navperms-ready"]) test("permission revocation clears the client and draft on " + event, async (t) => {
+for (const event of ["visibilitychange", "storage", "pageshow", "ig:navperms-ready"]) test("permission revocation clears the client and draft on " + event, async (t) => {
   const h = await harness(t); await h.select(); await h.fill(); h.state.permissions = []; await h.event(event);
   assert.equal(h.query('[name="report_title"]'), null); assert.equal(h.visible('[name="client_id"]'), false); assert.equal(h.writes().length, 0);
 });
-test("protected content is withheld while event verification is pending, then restored only for the same account", async (t) => {
+test("protected content stays visible while event verification is pending and preserves the verified draft", async (t) => {
   const pending = deferred(); let wait = false;
   const h = await harness(t, (c) => wait && c.url.endsWith("/me") ? pending.promise : undefined);
   await h.select(); await h.fill(); wait = true; await h.event();
-  assert.equal(h.visible('[name="report_title"]'), false); assert.equal(h.visible('[name="client_id"]'), false);
+  assert.equal(h.visible('[name="report_title"]'), true); assert.equal(h.visible('[name="client_id"]'), true);
   await h.resolve(pending, h.me()); assert.equal(h.query('[name="report_title"]').value, " Acme monthly "); assert.equal(h.writes().length, 0);
 });
 test("account switch while a read is pending is detected before rendering its result", async (t) => {
@@ -301,4 +380,58 @@ for (const change of ["user", "tenant"]) test("pending report preview cannot sur
   await h.resolve(pending, { ok: true, client: client(), profile_version: 1, format: "pdf", can_generate: true, brand: {},
     report: { title: "Private report", generated_at: "2026-01-01", sections: [{ kind: "table", title: "Private", headers: ["Name"], rows: [["Private data"]] }] } });
   assert.doesNotMatch(h.text(), /Private report|Private data/); assert.equal(h.button("Preview report"), undefined);
+});
+
+test("workspace link preselects only a server-verified client", async t => {
+  const h = await harness(t, () => undefined, "?client=22");
+  assert.equal(h.query('[name="client_id"]').value, "22");
+  assert.match(h.text(), /Beta/);
+  assert.ok(h.query('form[aria-label="Reporting profile"]'));
+  assert.equal(h.writes().length, 0);
+});
+test("workspace link cannot load an inaccessible client", async t => {
+  const h = await harness(t, c => c.url.includes("/clients/99/profile") ? {ok:false,error:"client_not_found"} : undefined, "?client=99");
+  assert.equal(h.query('form[aria-label="Reporting profile"]'), null);
+  assert.match(h.text(), /no longer available/);
+  assert.equal(h.writes().length, 0);
+});
+test("unverified deep-linked client never mounts client-scoped panels", async t => {
+  const pending = deferred();
+  const h = await harness(t, c => c.url.includes("/clients/99/profile") ? pending.promise : undefined, "?client=99");
+  assert.equal(h.query('[name="client_id"]').value, "");
+  assert.equal(h.query('form[aria-label="Reporting profile"]'), null);
+  assert.equal(h.reads().filter(c => c.url.includes("/clients/99")).length, 1);
+  await h.resolve(pending, {ok:false,error:"client_not_found"});
+  assert.match(h.text(), /no longer available/);
+  assert.equal(h.query('[name="client_id"]').value, "");
+  assert.equal(h.reads().filter(c => c.url.includes("/clients/99")).length, 1);
+});
+
+test("access retry preserves a dirty selected client instead of replaying the original link", async (t) => {
+  let fail = false;
+  const h = await harness(t, (c) => fail && c.url.endsWith("/me")
+    ? { ok: false, error: "verification_unavailable", httpStatus: 503 } : undefined, "?client=11");
+  await h.set("client_id", "22"); await h.set("report_title", "Unsaved Beta draft");
+  fail = true; await h.event("pageshow");
+  assert.ok(h.button("Retry access"));
+  fail = false; await h.click("Retry access");
+  assert.equal(h.query('[name="client_id"]').value, "22");
+  assert.equal(h.query('[name="report_title"]').value, "Unsaved Beta draft");
+  assert.equal(h.reads().filter((c) => c.url === API + "/11/profile").length, 1);
+  assert.equal(h.writes().length, 0);
+});
+test("invalid client panels unmount before a stalled post-read access check", async (t) => {
+  const pending = deferred(); let missing = false, received = false;
+  const h = await harness(t, (c) => {
+    if (missing && c.url === API + "/11/profile") {
+      received = true; return { ok: false, error: "client_not_found", httpStatus: 404 };
+    }
+    if (received && c.url.endsWith("/me")) return pending.promise;
+  });
+  await h.select(); assert.ok(h.query('[name="mapping_source"]'));
+  missing = true; await h.click("Reload profile");
+  assert.equal(h.query('[name="mapping_source"]'), null);
+  assert.equal(h.query('[aria-label="Client report delivery recipient"]'), null);
+  await h.resolve(pending, h.me());
+  assert.match(h.text(), /no longer available/);
 });

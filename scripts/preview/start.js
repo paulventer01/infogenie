@@ -11,10 +11,20 @@ function atomicJson(file,value) {
   fs.renameSync(file+'.tmp',file);
 }
 const DATABASE = 'postgresql://preview:preview-container-only@127.0.0.1:5432/infogenie_preview';
+function previewOrigin(source) {
+  if (source.CODESPACES !== 'true') return 'http://localhost:5000';
+  // Trust only platform-provided Codespaces identity, never request headers or ambient app URLs.
+  const name = source.CODESPACE_NAME;
+  if (typeof name !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,54}[a-z0-9])?$/.test(name)
+      || source.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN !== 'app.github.dev') {
+    throw new Error('Codespaces preview identity is missing or invalid. Reopen this Codespace.');
+  }
+  return `https://${name}-5000.app.github.dev`;
+}
 function previewEnv(source, keys) {
   const env = {};
   for (const key of ['PATH','HOME','TMPDIR','TMP','TEMP']) if (source[key]) env[key] = source[key];
-  return {...env, NODE_ENV:'development', DATABASE_URL:DATABASE,
+  return {...env, PUBLIC_BASE_URL:previewOrigin(source), NODE_ENV:'development', DATABASE_URL:DATABASE,
     SESSION_SECRET:keys.session, CREDENTIAL_ENCRYPTION_KEY:keys.vault,
     INFOGENIE_API_KEY:keys.api, INFOGENIE_JOBS:'0', INFOGENIE_PREVIEW_WORKSPACE:'1',
     PERMISSION_ENFORCEMENT:'on', MULTITENANT_ENFORCEMENT:'on', SECURITY_CSRF:'on',
@@ -103,7 +113,7 @@ async function main() {
   server = await new Promise((resolve,reject)=>{const s=app.listen(8000,'127.0.0.1',()=>resolve(s));s.once('error',reject);});
   const child=spawn(process.execPath,[require.resolve('next/dist/bin/next'),'dev','-H','0.0.0.0','-p','5000'],{cwd:ROOT,env,stdio:'inherit'});
   children.push(child); child.on('error',()=>process.exit(1)); child.on('exit',code=>process.exit(code || 0));
-  console.log('Preview: open private port 5000, then /manage/client-reporting. Login details: npm run preview:access');
+  console.log('Preview: open private port 5000, then / for your workspace. Login details: npm run preview:access');
 }
 if (require.main===module) main().catch(error=>{console.error(error.message);process.exit(1);});
-module.exports={previewEnv};
+module.exports={previewEnv,previewOrigin};

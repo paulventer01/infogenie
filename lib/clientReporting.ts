@@ -14,7 +14,9 @@ export type ClientsResponse = ApiResult & { clients?: Client[]; has_more?: boole
 export type ProfileResponse = ApiResult & { client?: Client; configured?: boolean; profile?: Profile | null };
 type MeResponse = ApiResult & { user?: { id?: number }; activeTenantId?: number; memberships?: { tenantId: number }[] };
 type ActiveResponse = ApiResult & { tenant?: { id: number; status: string }; permissions?: string[]; isPlatformAdmin?: boolean };
-type Access = { context?: Context; error?: string; lost?: boolean };
+export type WorkspaceAccess = { context?: Context; error?: string; lost?: boolean; permissions?: string[];
+  isPlatformAdmin?: boolean; canManageReporting?: boolean };
+type Access = Pick<WorkspaceAccess, "context" | "error" | "lost">;
 export const API = "/api/client-reporting/clients";
 export const BRAND_FIELDS = [
   ["agencyName", "Agency name", 80], ["footerText", "Footer text", 200],
@@ -31,7 +33,7 @@ function contextOf(me: MeResponse): Context | null {
     && me.memberships.some((member) => member?.tenantId === me.activeTenantId)
     ? { userId: me.user.id, tenantId: me.activeTenantId } : null;
 }
-export async function verifyAccess(expected?: Context): Promise<Access> {
+export async function verifyWorkspace(expected?: Context): Promise<WorkspaceAccess> {
   const me = await apiGet<MeResponse>("/api/tenants/me");
   const error = responseError(me);
   if (error) return { error, lost: accessLost(error) };
@@ -48,10 +50,16 @@ export async function verifyAccess(expected?: Context): Promise<Access> {
   if (afterError) return { error: afterError, lost: accessLost(afterError) };
   const afterContext = contextOf(after);
   if (!afterContext || !sameContext(context, afterContext)) return { error: contextMessage, lost: true };
-  if (!active.isPlatformAdmin && !active.permissions.includes("tenant.settings.manage")) {
+  return { context, permissions: active.permissions, isPlatformAdmin: active.isPlatformAdmin,
+    canManageReporting: active.isPlatformAdmin || active.permissions.includes("tenant.settings.manage") };
+}
+export async function verifyAccess(expected?: Context): Promise<Access> {
+  const access = await verifyWorkspace(expected);
+  if (access.error || !access.context) return { error: access.error, lost: access.lost };
+  if (!access.canManageReporting) {
     return { error: "Access denied. Ask your workspace administrator for workspace settings access.", lost: true };
   }
-  return { context };
+  return { context: access.context };
 }
 export const newDraft = (): Draft => ({
   report_source: "search-intel", default_format: "pdf", report_title: "", branding_mode: "workspace", branding_overrides: {},

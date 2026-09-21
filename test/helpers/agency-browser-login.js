@@ -19,6 +19,10 @@ async function agencyBrowserLogin(page, baseUrl, actors, opts = {}) {
     timeout,
   });
   await waitForLoginForm(page, timeout);
+  // SSR fields exist before React handlers are attached. The localhost preview
+  // notice is rendered by the mount effect, so wait before filling/submitting.
+  await page.waitForFunction(() => [...document.querySelectorAll('strong')]
+    .some(el => el.textContent === 'Preview login'), { timeout });
   await page.locator('#email').fill(actors.owner.email);
   await page.locator('#pass').fill(actors.owner.password);
   const [login] = await Promise.all([

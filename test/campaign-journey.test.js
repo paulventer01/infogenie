@@ -74,6 +74,13 @@ test('saved brief to campaign approval and renewed approval stay bound to saved 
  assert.notEqual(approvals[0].body.idempotency_key,approvals[1].body.idempotency_key);
  assert.ok(h.calls.every(c=>!c.url.includes('publishing-requests')));
 });
+test('starting a new campaign does not replay the prior create request',async t=>{
+ const h=await harness(t);await prepare(h);await h.click('Save campaign draft');
+ await h.set('saved_campaign','');await h.set('creative','creative-row');await h.set('start','2030-01-01T10:00');
+ await h.click('Save campaign draft');
+ const creates=h.calls.filter(c=>c.method==='POST'&&c.url.endsWith('/campaign-drafts'));
+ assert.equal(creates.length,2);assert.notEqual(creates[0].body.idempotency_key,creates[1].body.idempotency_key);
+});
 test('permission loss during a failed request clears previous source data',async t=>{
  const h=await harness(t,(r,state)=>{if(r.method==='POST'){state.permissions=[];return {ok:false,error:'permission_denied'};}});
  await prepare(h);await h.click('Save campaign draft');assert.doesNotMatch(h.text(),/Spring campaign|Review this source/);assert.match(h.text(),/viewing access/);

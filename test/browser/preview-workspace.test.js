@@ -20,7 +20,7 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
     await browser?.close();await stop();
   });
   async function start(){
-    child=spawn(process.execPath,['scripts/preview/start.js'],{cwd:ROOT,env:process.env,stdio:['ignore','pipe','pipe']});
+    child=spawn(process.execPath,['scripts/preview/start.js'],{cwd:ROOT,env:{...process.env,CODESPACES:'true',CODESPACE_NAME:'preview-ci-workspace',GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:'app.github.dev'},stdio:['ignore','pipe','pipe']});
     for(const stream of [child.stdout,child.stderr]) stream.on('data',chunk=>{log=(log+chunk).slice(-18000);});
     const deadline=Date.now()+150000;
     while(Date.now()<deadline){
@@ -57,6 +57,22 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
     await page.waitForSelector('select[name="client_id"]:enabled');
   }
   await page.setViewport({width:1440,height:1000});await login();
+  stage='workspace home';
+  await page.goto(ORIGIN+'/',{waitUntil:'networkidle2'});
+  await page.waitForSelector('select[name="workspace_client"]');
+  assert.ok(await page.evaluate(()=>document.body.innerText.includes('A clear place to start.')));
+  await page.select('select[name="workspace_client"]',String(account.clientId));
+  await page.waitForFunction(()=>document.body.innerText.includes('Setup needed'));
+  await page.screenshot({path:'/tmp/workspace-home-desktop.png',fullPage:true});
+  await page.setViewport({width:390,height:844});
+  await page.waitForFunction(()=>document.documentElement.scrollWidth<=innerWidth+1);
+  fs.mkdirSync('/tmp/preview-artifacts',{recursive:true});
+  await page.screenshot({path:'/tmp/preview-artifacts/workspace-home-mobile.png',fullPage:true});
+  fs.renameSync('/tmp/workspace-home-desktop.png','/tmp/preview-artifacts/workspace-home-desktop.png');
+  await page.setViewport({width:1440,height:1000});
+  await page.goto(ORIGIN+'/manage/client-reporting?client='+account.clientId,{waitUntil:'networkidle2'});
+  await page.waitForSelector('form[aria-label="Reporting profile"]');
+  assert.equal(await page.$eval('select[name="client_id"]',el=>el.value),String(account.clientId));
   stage='select client';
   await page.select('select[name="client_id"]',String(account.clientId));
   await page.waitForSelector('form[aria-label="Reporting profile"]');
@@ -68,6 +84,21 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
   stage='save report';
   await Promise.all([page.waitForResponse(r=>r.request().method()==='PUT' && new URL(r.url()).pathname.endsWith('/profile')),
     page.locator('form[aria-label="Reporting profile"] button[type="submit"]').click()]);
+  stage='Codespaces authenticated mutation';
+  // Match the public Origin / internal rewrite Host combination seen in Codespaces.
+  const cookies=(await page.cookies()).map(c=>`${c.name}=${c.value}`).join('; ');
+  const endpoint=ORIGIN+`/api/client-reporting/clients/${account.clientId}/profile`;
+  const read=await fetch(endpoint,{headers:{Cookie:cookies}});const saved=await read.json();
+  assert.equal(saved.ok,true);
+  const {version,created_at,updated_at,client_id,...fields}=saved.profile;
+  for(const [origin,allowed] of [['https://preview-ci-workspace-5000.app.github.dev',true],['https://other-workspace-5000.app.github.dev',false]]) {
+    const response=await fetch(endpoint,{method:'PUT',headers:{Cookie:cookies,Origin:origin,'Content-Type':'application/json'},
+      body:JSON.stringify({...fields,expected_version:version})});
+    const result=await response.json();
+    if(allowed){assert.equal(response.status,200);assert.equal(result.ok,true);}
+    else{assert.equal(response.status,403);assert.equal(result.error,'csrf_rejected');}
+  }
+  await page.reload({waitUntil:'networkidle2'});
   stage='load saved report';
   await page.waitForSelector('#report-review [aria-label="Client report preview"]');
   fs.mkdirSync('/tmp/preview-artifacts',{recursive:true});

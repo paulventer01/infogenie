@@ -59,3 +59,28 @@ test('preview access opens private credentials in the editor without logging the
   assert.equal(run().status,1,'symlink credentials rejected');
   assert.equal(fs.existsSync(path.join(dir,'editor-args')),false);
 });
+test('preview trusts only its exact Codespaces origin and keeps CSRF enforced',()=>{
+  const source={CODESPACES:'true',CODESPACE_NAME:'review-workspace-123',GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:'app.github.dev',
+    PUBLIC_BASE_URL:'https://production.example',APP_URL:'https://production.example',PUBLIC_URL:'https://production.example'};
+  const env=previewEnv(source,{session:'test',vault:'test',api:'test'});
+  assert.equal(env.PUBLIC_BASE_URL,'https://review-workspace-123-5000.app.github.dev');
+  assert.equal(env.APP_URL,undefined);assert.equal(env.PUBLIC_URL,undefined);
+  const saved={...process.env};
+  try {
+    Object.assign(process.env,env);
+    const {csrfGuard}=require('../services/security/csrf');
+    for(const [origin,allowed] of [[env.PUBLIC_BASE_URL,true],['https://another-workspace-5000.app.github.dev',false],
+      ['https://review-workspace-123-5000.app.github.dev.attacker.test',false],['https://attacker.test',false]]) {
+      let passed=false,status;
+      csrfGuard({method:'PUT',path:'/api/client-reporting/clients/1/profile',user:{id:1},
+        get:()=> '127.0.0.1:8000',headers:{origin,'x-forwarded-host':new URL(origin).host}},
+        {status(code){status=code;return this;},json(){return this;}},()=>{passed=true;});
+      assert.equal(passed,allowed);assert.equal(status,allowed?undefined:403);
+    }
+  } finally {for(const key of Object.keys(process.env))delete process.env[key];Object.assign(process.env,saved);}
+  for(const bad of [{CODESPACE_NAME:'host/../../evil'}, {CODESPACE_NAME:'a'.repeat(60)},
+    {GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:'app.github.dev.attacker.test'}, {CODESPACE_NAME:undefined}]) {
+    assert.throws(()=>previewEnv({...source,...bad},{}),/identity/);
+  }
+  assert.equal(previewEnv({PUBLIC_BASE_URL:'https://production.example'},{}).PUBLIC_BASE_URL,'http://localhost:5000');
+});

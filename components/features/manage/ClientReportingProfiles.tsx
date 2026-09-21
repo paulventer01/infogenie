@@ -10,7 +10,7 @@ import ClientReportingPortal from "@/components/features/manage/ClientReportingP
 import ClientReportingPortalFeedback from "@/components/features/manage/ClientReportingPortalFeedback";
 import ClientReportingMappings from "@/components/features/manage/ClientReportingMappings";
 import { API, BRAND_FIELDS, PERIOD_HELP, accessLost, draftError, newDraft, profileDraft, profilePayload, responseError,
-  saveMatches, validClient, validPage, validProfile, verifyAccess,
+  saveMatches, positiveId, validClient, validPage, validProfile, verifyAccess,
   type Client, type ClientsResponse, type Context, type Draft, type ProfileResponse } from "@/lib/clientReporting";
 import { REPORTING_PERIODS, defaultMetrics, orderedMetricEditor } from "@/lib/clientReportingMetrics";
 
@@ -33,6 +33,7 @@ export default function ClientReportingProfiles() {
   const [cursor, setCursor] = useState<number | null>(null);
   const [listBusy, setListBusy] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
+  const [linkedClient, setLinkedClient] = useState<Client | null>(null);
   const [clientId, setClientId] = useState<number | null>(null);
   const [pendingClient, setPendingClient] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -45,20 +46,21 @@ export default function ClientReportingProfiles() {
   const [reloadRequired, setReloadRequired] = useState(false);
   const [saved, setSaved] = useState(false);
   const live = useRef(false), denied = useRef(false), submitting = useRef(false);
+  const verifiedClientId = useRef<number | null>(null);
   const context = useRef<Context | null>(null);
   const generation = useRef(0), listSequence = useRef(0), profileSequence = useRef(0), checks = useRef(0);
 
   const stop = useCallback(() => { live.current = false; ++generation.current; checks.current = 0; }, []);
   const clearContext = useCallback((message: string) => {
     ++generation.current; ++listSequence.current; ++profileSequence.current;
-    denied.current = true; context.current = null; checks.current = 0; submitting.current = false;
-    setChecking(false); setAccessError(message); setClients([]); setCursor(null); setClientId(null); setPendingClient(null);
+    denied.current = true; context.current = null; checks.current = 0; submitting.current = false; verifiedClientId.current = null;
+    setLinkedClient(null); setChecking(false); setAccessError(message); setClients([]); setCursor(null); setClientId(null); setPendingClient(null);
     setDraft(null); setDirty(false); setSaving(false); setSaved(false); setSaveError(null); setProfileError(null); setReloadRequired(false);
   }, []);
-  const checkAccess = useCallback(async () => {
+  const checkAccess = useCallback(async (blocking = false) => {
     if (!live.current || denied.current) return false;
     const epoch = generation.current;
-    ++checks.current; setChecking(true);
+    if (blocking) { ++checks.current; setChecking(true); }
     try {
       const verified = await verifyAccess(context.current || undefined);
       if (!live.current || epoch !== generation.current) return false;
@@ -73,7 +75,7 @@ export default function ClientReportingProfiles() {
       }
       context.current = verified.context!; setAccessError(null); return true;
     } finally {
-      if (live.current && epoch === generation.current) { --checks.current; setChecking(checks.current > 0); }
+      if (blocking && live.current && epoch === generation.current) { --checks.current; setChecking(checks.current > 0); }
     }
   }, [clearContext]);
   const loadClients = useCallback(async (after: number | null = null) => {
@@ -81,12 +83,12 @@ export default function ClientReportingProfiles() {
     const current = () => live.current && epoch === generation.current && sequence === listSequence.current;
     setListBusy(true); setListError(null);
     try {
-      if (!await checkAccess() || !current()) return;
+      if (!await checkAccess(true) || !current()) return;
       const result = await apiGet<ClientsResponse>(API + "?limit=50" + (after ? `&cursor=${after}` : ""));
       if (!current()) return;
       const error = responseError(result) || (!validPage(result, after) ? "Client list could not be verified. Try again." : null);
       if (error && accessLost(error)) return clearContext(error);
-      if (!await checkAccess() || !current()) return;
+      if (!await checkAccess(true) || !current()) return;
       if (error) { setListError(error); return; }
       setClients((rows) => after ? [...rows, ...result.clients!] : result.clients!); setCursor(result.next_cursor!);
     } finally { if (current()) setListBusy(false); }
@@ -94,28 +96,51 @@ export default function ClientReportingProfiles() {
   const loadProfile = useCallback(async (id: number) => {
     const sequence = ++profileSequence.current, epoch = generation.current;
     const current = () => live.current && epoch === generation.current && sequence === profileSequence.current;
-    setClientId(id); setPendingClient(null); setDraft(null); setDirty(false); setProfileBusy(true);
+    const clearVerifiedClient = () => {
+      verifiedClientId.current = null; setClientId(null); setLinkedClient(null); setVersion(0); setDraft(null);
+    };
+    // Do not promote a requested/deep-linked ID into shared child panels until
+    // the server has verified that the client belongs to this workspace. A
+    // reload of the already verified client may retain that trusted ID while
+    // its profile is refreshed; clearing it here removes the button while the
+    // browser is still dispatching the reload click.
+    if (verifiedClientId.current !== id) {
+      verifiedClientId.current = null; setClientId(null); setLinkedClient(null);
+    }
+    setVersion(0); setPendingClient(null); setDraft(null); setDirty(false); setProfileBusy(true);
     setProfileError(null); setSaveError(null); setSaved(false); setReloadRequired(false);
     try {
-      if (!await checkAccess() || !current()) return;
+      if (!await checkAccess(true) || !current()) { if (current()) clearVerifiedClient(); return; }
       const result = await apiGet<ProfileResponse>(`${API}/${id}/profile`);
       if (!current()) return;
       const error = responseError(result) || (!validClient(result.client) || result.client.id !== id
         || !(result.configured === false && result.profile === null || result.configured === true && validProfile(result.profile, id))
         ? "Reporting profile could not be verified. Reload to try again." : null);
       if (error && accessLost(error)) return clearContext(error);
-      if (!await checkAccess() || !current()) return;
-      if (error) { setProfileError(error === "client_not_found" ? "This client is no longer available in this workspace." : error); return; }
-      setVersion(result.profile?.version || 0); setDraft(result.profile ? profileDraft(result.profile) : newDraft());
+      if (error) clearVerifiedClient();
+      if (!await checkAccess(true) || !current()) { if (current()) clearVerifiedClient(); return; }
+      if (error) {
+        clearVerifiedClient();
+        setProfileError(error === "client_not_found" ? "This client is no longer available in this workspace." : error);
+        return;
+      }
+      verifiedClientId.current = id; setLinkedClient(result.client!); setClientId(id); setVersion(result.profile?.version || 0);
+      setDraft(result.profile ? profileDraft(result.profile) : newDraft());
     } finally { if (current()) setProfileBusy(false); }
   }, [checkAccess, clearContext]);
 
   useEffect(() => {
-    live.current = true; denied.current = false; context.current = null; ++generation.current;
+    live.current = true; denied.current = false; context.current = null; verifiedClientId.current = null; ++generation.current;
     setClients([]); setClientId(null); setDraft(null); setAccessError(null); setCursor(null);
     void loadClients();
-    const recheck = () => { if (document.visibilityState === "visible") void checkAccess(); };
-    const windowEvents = ["focus", "pageshow", "storage"];
+    const recheck = () => { if (document.visibilityState === "visible") void checkAccess(true); };
+    // visibilitychange covers returning to a tab, while pageshow, storage and
+    // nav permission updates cover restoration and account changes. A window
+    // focus listener is intentionally omitted: browsers dispatch it before the
+    // click that activates a background tab, which can otherwise remove the
+    // protected form between pointerdown and submit. Every read and write still
+    // performs its own access verification.
+    const windowEvents = ["pageshow", "storage"];
     const documentEvents = ["visibilitychange", "ig:navperms-ready"];
     windowEvents.forEach((event) => window.addEventListener(event, recheck));
     documentEvents.forEach((event) => document.addEventListener(event, recheck));
@@ -125,6 +150,11 @@ export default function ClientReportingProfiles() {
       documentEvents.forEach((event) => document.removeEventListener(event, recheck));
     };
   }, [attempt, checkAccess, loadClients, stop]);
+
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("client"));
+    if (positiveId(id)) void loadProfile(id);
+  }, [attempt, loadProfile]);
 
   function change(key: keyof Draft, value: string) {
     setDraft((previous) => {
@@ -191,8 +221,8 @@ export default function ClientReportingProfiles() {
       setDraft(profileDraft(result.profile!)); setVersion(result.profile!.version); setDirty(false); setSaved(true); setReloadRequired(false); setSaveError(null);
     } finally { if (current()) { submitting.current = false; setSaving(false); } }
   }
-  const protectedVisible = !checking && !accessError && !!context.current;
-  const selected = clients.find((client) => client.id === clientId);
+  const protectedVisible = !!context.current && !accessError;
+  const selected = clients.find((client) => client.id === clientId) || (linkedClient?.id === clientId ? linkedClient : null);
   const ready = !!clientId && !!draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError;
   function goStep(id: string) {
     const target = document.getElementById(id);
@@ -216,7 +246,12 @@ export default function ClientReportingProfiles() {
       </nav>
       {checking && <p role="status">Verifying account, workspace and access…</p>}
       {accessError && <><Failure>{accessError}</Failure><button style={button} onClick={() => {
-        if (context.current && !denied.current) void checkAccess().then((valid) => { if (valid && !clients.length) void loadClients(); });
+        if (context.current && !denied.current) void checkAccess().then((valid) => {
+          if (!valid) return;
+          const linkedId = Number(new URLSearchParams(window.location.search).get("client"));
+          if (!clients.length) void loadClients();
+          if (positiveId(linkedId) && !verifiedClientId.current) void loadProfile(linkedId);
+        });
         else setAttempt((n) => n + 1);
       }}>Retry access</button></>}
       <div hidden={!protectedVisible}>
@@ -227,12 +262,15 @@ export default function ClientReportingProfiles() {
             if (!clients.some((client) => client.id === id) || id === clientId) return;
             if (dirty || reloadRequired) setPendingClient(id); else void loadProfile(id);
           }}><option value="" disabled>Choose an active client</option>
+            {linkedClient && !clients.some(client => client.id === linkedClient.id) && <option value={linkedClient.id}>{linkedClient.name} (#{linkedClient.id})</option>}
             {clients.map((client) => <option key={client.id} value={client.id}>{client.name} (#{client.id})</option>)}
           </select></Field>
           {pendingClient && <div role="alert"><p>Switching clients discards your unsaved changes.</p>
             <button style={button} onClick={() => void loadProfile(pendingClient)}>Discard changes and switch</button>
             <button style={button} onClick={() => setPendingClient(null)}>Keep editing</button></div>}
           {listBusy && <p role="status">Loading clients…</p>}
+          {profileBusy && !clientId && <p role="status">Verifying the selected client…</p>}
+          {!clientId && profileError && <Failure>{profileError}</Failure>}
           {listError && <><Failure>{listError}</Failure><button style={button} disabled={listBusy || saving} onClick={() => void loadClients(cursor)}>Retry clients</button></>}
           {!listBusy && !listError && !clients.length && <p>No active clients are available. Ask your workspace administrator to add a client.</p>}
           {cursor && !listError && <button style={button} disabled={listBusy || saving} onClick={() => void loadClients(cursor)}>Load more clients</button>}

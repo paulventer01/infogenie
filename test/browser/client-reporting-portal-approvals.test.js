@@ -36,6 +36,10 @@ async function responseFor(page, method, path, action, status = 200) {
   if (body && typeof body.ok === 'boolean' && status < 400) assert.equal(body.ok, true);
   return { response, body };
 }
+async function activate(page) {
+  await page.bringToFront();
+  await page.waitForFunction(() => document.visibilityState === 'visible');
+}
 async function selectClient(page, id) {
   await page.waitForSelector(`${PANEL} select[name="client_id"]:enabled`, { visible: true });
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
@@ -84,6 +88,8 @@ test('PR10H.3 portal approval browser journey', {
   t.after(async () => { await browser.close(); });
 
   const owner = await browser.newPage();
+  let stage = 'owner login';
+  const step = (name) => { stage = name; t.diagnostic(`Portal approval stage: ${stage}`); };
   owner.setDefaultTimeout(120_000);
   owner.setDefaultNavigationTimeout(120_000);
   await owner.goto(`${baseUrl}/login?next=${encodeURIComponent(ROUTE)}`, { waitUntil: 'networkidle2' });
@@ -122,8 +128,12 @@ test('PR10H.3 portal approval browser journey', {
   await portal.goto(inviteUrl, { waitUntil: 'networkidle2' });
   await portal.waitForFunction(() => location.pathname === '/client-report/view');
 
+  step('agency submits first approval request');
+  await activate(owner);
   const submitted = await submitApproval(owner, clientId);
   const requestId = submitted.id;
+  step('client requests changes');
+  await activate(portal);
   await portal.reload({ waitUntil: 'networkidle2' });
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true });
   await text(portal, 'Pending client approval', '[aria-label="Report approval"]');
@@ -136,11 +146,15 @@ test('PR10H.3 portal approval browser journey', {
   assert.equal(changeBody.request.status, 'changes_requested');
   await text(portal, 'Change request submitted', 'main');
 
+  step('agency resubmits updated report');
+  await activate(owner);
   await owner.reload({ waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
   await previewReport(owner, clientId);
   const resubmitted = await submitApproval(owner, clientId);
   const requestId2 = resubmitted.id;
+  step('client approves updated report');
+  await activate(portal);
   await portal.reload({ waitUntil: 'networkidle2' });
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true });
   const { body: approveBody } = await responseFor(portal, 'POST',
@@ -151,6 +165,8 @@ test('PR10H.3 portal approval browser journey', {
   assert.equal(approveBody.request.status, 'approved');
   await text(portal, 'Report approved', 'main');
 
+  step('agency verifies approval');
+  await activate(owner);
   await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
   await owner.waitForSelector(APPROVALS, { visible: true });
