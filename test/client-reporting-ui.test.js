@@ -406,3 +406,32 @@ test("unverified deep-linked client never mounts client-scoped panels", async t 
   assert.equal(h.query('[name="client_id"]').value, "");
   assert.equal(h.reads().filter(c => c.url.includes("/clients/99")).length, 1);
 });
+
+test("access retry preserves a dirty selected client instead of replaying the original link", async (t) => {
+  let fail = false;
+  const h = await harness(t, (c) => fail && c.url.endsWith("/me")
+    ? { ok: false, error: "verification_unavailable", httpStatus: 503 } : undefined, "?client=11");
+  await h.set("client_id", "22"); await h.set("report_title", "Unsaved Beta draft");
+  fail = true; await h.event("pageshow");
+  assert.ok(h.button("Retry access"));
+  fail = false; await h.click("Retry access");
+  assert.equal(h.query('[name="client_id"]').value, "22");
+  assert.equal(h.query('[name="report_title"]').value, "Unsaved Beta draft");
+  assert.equal(h.reads().filter((c) => c.url === API + "/11/profile").length, 1);
+  assert.equal(h.writes().length, 0);
+});
+test("invalid client panels unmount before a stalled post-read access check", async (t) => {
+  const pending = deferred(); let missing = false, received = false;
+  const h = await harness(t, (c) => {
+    if (missing && c.url === API + "/11/profile") {
+      received = true; return { ok: false, error: "client_not_found", httpStatus: 404 };
+    }
+    if (received && c.url.endsWith("/me")) return pending.promise;
+  });
+  await h.select(); assert.ok(h.query('[name="mapping_source"]'));
+  missing = true; await h.click("Reload profile");
+  assert.equal(h.query('[name="mapping_source"]'), null);
+  assert.equal(h.query('[aria-label="Client report delivery recipient"]'), null);
+  await h.resolve(pending, h.me());
+  assert.match(h.text(), /no longer available/);
+});

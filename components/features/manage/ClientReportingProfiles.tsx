@@ -117,6 +117,7 @@ export default function ClientReportingProfiles() {
         || !(result.configured === false && result.profile === null || result.configured === true && validProfile(result.profile, id))
         ? "Reporting profile could not be verified. Reload to try again." : null);
       if (error && accessLost(error)) return clearContext(error);
+      if (error) clearVerifiedClient();
       if (!await checkAccess(true) || !current()) { if (current()) clearVerifiedClient(); return; }
       if (error) {
         clearVerifiedClient();
@@ -248,8 +249,8 @@ export default function ClientReportingProfiles() {
         if (context.current && !denied.current) void checkAccess().then((valid) => {
           if (!valid) return;
           const linkedId = Number(new URLSearchParams(window.location.search).get("client"));
-          if (positiveId(linkedId) && verifiedClientId.current !== linkedId) void loadProfile(linkedId);
-          else if (!clients.length) void loadClients();
+          if (!clients.length) void loadClients();
+          if (positiveId(linkedId) && !verifiedClientId.current) void loadProfile(linkedId);
         });
         else setAttempt((n) => n + 1);
       }}>Retry access</button></>}
