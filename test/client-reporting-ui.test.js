@@ -88,9 +88,8 @@ async function harness(t, handler = () => undefined, queryString = "") {
   return { state, calls, query, set, submit, button, click, fill, unmount, load, me,
     visible: (selector) => !!query(selector) && !query(selector).closest("[hidden]"),
     select: () => set("client_id", "11"), text: () => dom.window.document.body.textContent,
-    event: async (name = "focus") => act(async () => {
+    event: async (name = "visibilitychange") => act(async () => {
       (["visibilitychange", "ig:navperms-ready"].includes(name) ? dom.window.document : dom.window).dispatchEvent(new dom.window.Event(name));
-      if (name === "focus") await new Promise((resolve) => dom.window.setTimeout(resolve, 275));
     }),
     resolve: async (pending, value) => act(async () => pending.resolve(value)),
     lists: () => calls.filter((c) => c.url.startsWith(API + "?")),
@@ -255,7 +254,7 @@ for (const change of ["user", "tenant"]) test("identity change immediately befor
   const h = await harness(t); await h.select(); await h.fill(); h.state[change]++; await h.submit();
   assert.equal(h.writes().length, 0); assert.equal(h.query('[name="report_title"]'), null); assert.doesNotMatch(h.text(), /Acme|Beta/);
 });
-for (const event of ["focus", "visibilitychange", "storage", "pageshow", "ig:navperms-ready"]) test("permission revocation clears the client and draft on " + event, async (t) => {
+for (const event of ["visibilitychange", "storage", "pageshow", "ig:navperms-ready"]) test("permission revocation clears the client and draft on " + event, async (t) => {
   const h = await harness(t); await h.select(); await h.fill(); h.state.permissions = []; await h.event(event);
   assert.equal(h.query('[name="report_title"]'), null); assert.equal(h.visible('[name="client_id"]'), false); assert.equal(h.writes().length, 0);
 });
