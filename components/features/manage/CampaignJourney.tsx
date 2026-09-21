@@ -75,6 +75,7 @@ export default function CampaignJourney() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   function chooseWorkflow(id: string) {
+    keys.current.clear();
     setWorkflowId(id); setSaved(null); setDrafts([]); setCreatives([]); setConfirm(false); setDirty(false);
     const wf = workflows.find(w => w.id === id);
     setForm({ ...emptyForm(), label: brief?.headline.slice(0,200) || "", objective: wf?.objective || "", landing: wf?.landing_page_url || "",
