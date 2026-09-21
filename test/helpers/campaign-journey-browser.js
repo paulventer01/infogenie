@@ -54,6 +54,18 @@ module.exports = async function campaignJourney(page, account, origin) {
     assert.equal(await page.$eval('[name="marketing_brief"]',el=>el.value),String(brief.id));
     const created=(await pool.query('SELECT tenant_id,credit_ceiling_micros,current_state FROM orchestrator_workflows WHERE id=$1',[createdId])).rows[0];
     assert.equal(created.tenant_id,tid);assert.equal(Number(created.credit_ceiling_micros),0);assert.equal(created.current_state,'draft');
+    const reviewLink = await page.$eval('a[target="_blank"][href*="workflow_id="]',el=>el.href);
+    assert.equal(new URL(reviewLink).searchParams.get('workflow_id'),createdId);
+    const reviewPage=await page.browser().newPage();
+    try {
+      await reviewPage.goto(reviewLink,{waitUntil:'networkidle2'});
+      await reviewPage.waitForSelector('#campaign-workspace-details');
+      assert.ok(await reviewPage.$eval('#campaign-workspace-details',el=>el.innerText.includes('DEMO inline workspace')));
+      assert.equal(await page.$eval('[name="campaign_workflow"]',el=>el.value),createdId);
+      await click('Refresh creative briefs');
+      await page.waitForFunction(()=>document.body.innerText.includes('No approved creative brief yet.'));
+      assert.equal(await page.$eval('[name="marketing_brief"]',el=>el.value),String(brief.id));
+    } finally { await reviewPage.close(); }
     await page.setViewport({width:1440,height:1000});
     await page.select('[name="campaign_workflow"]',wf);
     await page.waitForFunction(()=>document.querySelector('[name="creative"] option')?.parentElement?.options.length>1);

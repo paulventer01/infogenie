@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
@@ -466,6 +466,8 @@ export default function AgentOrchestrator() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [wfStatus, setWfStatus] = useState<LoadStatus>("loading");
   const [wfLoadError, setWfLoadError] = useState("");
+  const handoffRead = useRef(false);
+  const [handoff, setHandoff] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Workflow | null>(null);
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -622,6 +624,19 @@ export default function AgentOrchestrator() {
       return;
     }
     setWorkflows(r.workflows || []);
+    if (!handoffRead.current) {
+      handoffRead.current = true;
+      const requested = new URLSearchParams(window.location.search).get("workflow_id");
+      if (requested) {
+        const match = (r.workflows || []).find(w => w.id === requested);
+        if (match) {
+          setSelectedId(match.id);
+          setHandoff(`Creative review for ${match.name}. Complete the required research and creative approvals in the workspace details below, then return to your original Campaign Journey tab and refresh creative briefs.`);
+        } else {
+          setHandoff("The requested campaign workspace is not available in this workspace list. Check your active workspace or select an accessible campaign below.");
+        }
+      }
+    }
     setWfLoadError("");
     setWfStatus("ready");
   }, []);
@@ -1743,6 +1758,7 @@ export default function AgentOrchestrator() {
       </div>
 
       <div style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
+        {handoff && <p role="status">{handoff} {selectedId && <a href="#campaign-workspace-details">Open workspace details</a>}</p>}
         <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
           <button
             type="button"
@@ -2393,7 +2409,7 @@ export default function AgentOrchestrator() {
           )}
 
           {selectedId && (
-            <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 16 }}>
+            <div id="campaign-workspace-details" style={{ borderTop: "1px solid #E5E7EB", paddingTop: 16 }}>
               {detailLoading && (
                 <p style={{ fontSize: "0.85rem", color: "#6B7280" }}>Loading workflow details…</p>
               )}
