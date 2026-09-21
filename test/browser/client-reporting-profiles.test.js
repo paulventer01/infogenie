@@ -37,6 +37,14 @@ async function responseFor(page, method, path, action, status = 200) {
   assert.equal(body.ok, status < 400);
   return body;
 }
+async function activate(page) {
+  await page.bringToFront();
+  await page.waitForFunction((panel) => {
+    const root = document.querySelector(panel);
+    return document.visibilityState === 'visible'
+      && root && !root.innerText.includes('Verifying account, workspace and access');
+  }, {}, PANEL);
+}
 async function selectClient(page, id) {
   await page.waitForSelector(`${PANEL} select[name="client_id"]:enabled`, { visible: true });
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
@@ -169,6 +177,7 @@ test('PR10F.2 client reporting setup browser acceptance (real PostgreSQL/TLS)', 
     await selectClient(editor, first.id); await fill(editor, { report_title: 'Saved by second editor' });
     const winner = await responseFor(editor, 'PUT', profilePath(first.id), () => button(editor, 'Save profile'));
     assert.equal(winner.profile.version, 2); await text(editor, 'Profile saved.');
+    await activate(owner);
     expected.set(owner, { path: profilePath(first.id), method: 'PUT', status: 409 });
     try {
       const stale = await responseFor(owner, 'PUT', profilePath(first.id), () => button(owner, 'Save profile'), 409);

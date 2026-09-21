@@ -57,10 +57,10 @@ export default function ClientReportingProfiles() {
     setLinkedClient(null); setChecking(false); setAccessError(message); setClients([]); setCursor(null); setClientId(null); setPendingClient(null);
     setDraft(null); setDirty(false); setSaving(false); setSaved(false); setSaveError(null); setProfileError(null); setReloadRequired(false);
   }, []);
-  const checkAccess = useCallback(async () => {
+  const checkAccess = useCallback(async (blocking = false) => {
     if (!live.current || denied.current) return false;
     const epoch = generation.current;
-    ++checks.current; setChecking(true);
+    if (blocking) { ++checks.current; setChecking(true); }
     try {
       const verified = await verifyAccess(context.current || undefined);
       if (!live.current || epoch !== generation.current) return false;
@@ -75,7 +75,7 @@ export default function ClientReportingProfiles() {
       }
       context.current = verified.context!; setAccessError(null); return true;
     } finally {
-      if (live.current && epoch === generation.current) { --checks.current; setChecking(checks.current > 0); }
+      if (blocking && live.current && epoch === generation.current) { --checks.current; setChecking(checks.current > 0); }
     }
   }, [clearContext]);
   const loadClients = useCallback(async (after: number | null = null) => {
@@ -83,12 +83,12 @@ export default function ClientReportingProfiles() {
     const current = () => live.current && epoch === generation.current && sequence === listSequence.current;
     setListBusy(true); setListError(null);
     try {
-      if (!await checkAccess() || !current()) return;
+      if (!await checkAccess(true) || !current()) return;
       const result = await apiGet<ClientsResponse>(API + "?limit=50" + (after ? `&cursor=${after}` : ""));
       if (!current()) return;
       const error = responseError(result) || (!validPage(result, after) ? "Client list could not be verified. Try again." : null);
       if (error && accessLost(error)) return clearContext(error);
-      if (!await checkAccess() || !current()) return;
+      if (!await checkAccess(true) || !current()) return;
       if (error) { setListError(error); return; }
       setClients((rows) => after ? [...rows, ...result.clients!] : result.clients!); setCursor(result.next_cursor!);
     } finally { if (current()) setListBusy(false); }
@@ -107,14 +107,14 @@ export default function ClientReportingProfiles() {
     setVersion(0); setPendingClient(null); setDraft(null); setDirty(false); setProfileBusy(true);
     setProfileError(null); setSaveError(null); setSaved(false); setReloadRequired(false);
     try {
-      if (!await checkAccess() || !current()) return;
+      if (!await checkAccess(true) || !current()) return;
       const result = await apiGet<ProfileResponse>(`${API}/${id}/profile`);
       if (!current()) return;
       const error = responseError(result) || (!validClient(result.client) || result.client.id !== id
         || !(result.configured === false && result.profile === null || result.configured === true && validProfile(result.profile, id))
         ? "Reporting profile could not be verified. Reload to try again." : null);
       if (error && accessLost(error)) return clearContext(error);
-      if (!await checkAccess() || !current()) return;
+      if (!await checkAccess(true) || !current()) return;
       if (error) { setProfileError(error === "client_not_found" ? "This client is no longer available in this workspace." : error); return; }
       verifiedClientId.current = id; setLinkedClient(result.client!); setClientId(id); setVersion(result.profile?.version || 0);
       setDraft(result.profile ? profileDraft(result.profile) : newDraft());
@@ -125,7 +125,7 @@ export default function ClientReportingProfiles() {
     live.current = true; denied.current = false; context.current = null; verifiedClientId.current = null; ++generation.current;
     setClients([]); setClientId(null); setDraft(null); setAccessError(null); setCursor(null);
     void loadClients();
-    const recheck = () => { if (document.visibilityState === "visible") void checkAccess(); };
+    const recheck = () => { if (document.visibilityState === "visible") void checkAccess(true); };
     // visibilitychange covers returning to a tab, while pageshow, storage and
     // nav permission updates cover restoration and account changes. A window
     // focus listener is intentionally omitted: browsers dispatch it before the
