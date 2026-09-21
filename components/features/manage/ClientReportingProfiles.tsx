@@ -132,16 +132,33 @@ export default function ClientReportingProfiles() {
     let focusTimer: number | null = null;
     const recheckAfterFocus = () => {
       if (focusTimer !== null) return;
+      // Give the focus-producing pointer action time to dispatch its click.
+      // Without this short fallback, an enabled Save control can disappear
+      // between pointerdown and submit when a background tab is activated.
+      focusTimer = window.setTimeout(() => { focusTimer = null; recheck(); }, 250);
+    };
+    const holdFocusCheckForPointer = () => {
+      if (focusTimer === null) return;
+      window.clearTimeout(focusTimer);
+      focusTimer = window.setTimeout(() => { focusTimer = null; recheck(); }, 500);
+    };
+    const recheckAfterClick = () => {
+      if (focusTimer === null) return;
+      window.clearTimeout(focusTimer);
       focusTimer = window.setTimeout(() => { focusTimer = null; recheck(); }, 0);
     };
     const windowEvents = ["pageshow", "storage"];
     window.addEventListener("focus", recheckAfterFocus);
+    document.addEventListener("pointerdown", holdFocusCheckForPointer, true);
+    document.addEventListener("click", recheckAfterClick);
     const documentEvents = ["visibilitychange", "ig:navperms-ready"];
     windowEvents.forEach((event) => window.addEventListener(event, recheck));
     documentEvents.forEach((event) => document.addEventListener(event, recheck));
     return () => {
       stop();
       window.removeEventListener("focus", recheckAfterFocus);
+      document.removeEventListener("pointerdown", holdFocusCheckForPointer, true);
+      document.removeEventListener("click", recheckAfterClick);
       if (focusTimer !== null) window.clearTimeout(focusTimer);
       windowEvents.forEach((event) => window.removeEventListener(event, recheck));
       documentEvents.forEach((event) => document.removeEventListener(event, recheck));

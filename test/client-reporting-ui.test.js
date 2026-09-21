@@ -90,7 +90,7 @@ async function harness(t, handler = () => undefined, queryString = "") {
     select: () => set("client_id", "11"), text: () => dom.window.document.body.textContent,
     event: async (name = "focus") => act(async () => {
       (["visibilitychange", "ig:navperms-ready"].includes(name) ? dom.window.document : dom.window).dispatchEvent(new dom.window.Event(name));
-      if (name === "focus") await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+      if (name === "focus") await new Promise((resolve) => dom.window.setTimeout(resolve, 275));
     }),
     resolve: async (pending, value) => act(async () => pending.resolve(value)),
     lists: () => calls.filter((c) => c.url.startsWith(API + "?")),
