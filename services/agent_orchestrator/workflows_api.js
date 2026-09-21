@@ -226,7 +226,7 @@ function mutation(action, permissionFn, handler) {
       // The guided setup binds creation to the session context it displayed.
       // Check before idempotency replay as well as before a new write.
       if (action === 'create' && (
-        (req.body?.tenant_id != null && req.body.tenant_id !== tid) ||
+        (req.body?.expected_tenant_id != null && req.body.expected_tenant_id !== tid) ||
         (req.body?.expected_actor_user_id != null && req.body.expected_actor_user_id !== actorId(req))
       )) return sendError(res, 409, 'context_changed');
       const key = extractIdempotencyKey(req);

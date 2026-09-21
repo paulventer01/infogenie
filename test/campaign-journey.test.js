@@ -130,7 +130,7 @@ test('empty workspace setup creates once, selects it, and preserves the source b
  assert.equal(document.querySelector('[name="marketing_brief"]').value,'11');
  assert.match(h.text(),/2. Prepare the campaign draft/);
  const calls=h.calls.filter(r=>r.method==='POST');assert.equal(calls.length,1);
- assert.equal(calls[0].body.tenant_id,7);assert.equal(calls[0].body.expected_actor_user_id,1);
+ assert.equal(calls[0].body.expected_tenant_id,7);assert.equal(calls[0].body.expected_actor_user_id,1);
  assert.equal(calls[0].body.credit_ceiling_micros,0);assert.equal(calls[0].body.advertising_budget,0);
  assert.ok(calls[0].headers['Idempotency-Key']);
 });

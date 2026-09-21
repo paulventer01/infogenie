@@ -103,7 +103,7 @@ export default function CampaignJourney() {
       try { landing = new URL(workspace.landing.trim()); } catch { throw new Error("Enter a valid HTTPS landing page."); }
       if (landing.protocol !== "https:" || landing.username || landing.password) throw new Error("Enter a valid HTTPS landing page.");
       if (!workspace.name.trim()) throw new Error("Enter a campaign workspace name.");
-      const body = { tenant_id: ctx.tenantId, expected_actor_user_id: ctx.userId, name: workspace.name.trim(),
+      const body = { expected_tenant_id: ctx.tenantId, expected_actor_user_id: ctx.userId, name: workspace.name.trim(),
         objective: workspace.objective, landing_page_url: landing.href, selected_platforms: [workspace.platform],
         currency: workspace.currency, advertising_budget: 0, credit_ceiling_micros: 0 };
       const fingerprint = JSON.stringify(body);

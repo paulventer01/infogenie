@@ -293,13 +293,13 @@ if (!HAS_DB) {
   });
 
   test('guided creation rejects changed tenant or actor before writes and replay', async () => {
-    const body = createBody({ tenant_id: tenantA.id, expected_actor_user_id: ownerA.id });
+    const body = createBody({ expected_tenant_id: tenantA.id, expected_actor_user_id: ownerA.id });
     const key = ik('guided');
     const created = await orch('POST', '', { cookie: cookieA, body, key });
     assert.strictEqual(created.status, 201);
     const replay = await orch('POST', '', { cookie: cookieA, body, key });
     assert.strictEqual(replay.json.workflow.id, created.json.workflow.id);
-    for (const changes of [{ tenant_id: tenantB.id }, { expected_actor_user_id: ownerB.id }]) {
+    for (const changes of [{ expected_tenant_id: tenantB.id }, { expected_actor_user_id: ownerB.id }]) {
       for (const requestKey of [key, ik('changed')]) {
         const rejected = await orch('POST', '', { cookie: cookieA, body: { ...body, ...changes }, key: requestKey });
         assert.strictEqual(rejected.status, 409);
