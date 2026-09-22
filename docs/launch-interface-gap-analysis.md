@@ -14,6 +14,13 @@ reproduced this: checked-in August capture dates generate a September expiry bef
 the insertion date, violating the existing evidence retention constraint. The fix
 dates a new simulated fixture capture at binding time; it does not re-date live
 evidence, extend explicit expiry, change retention constraints or authorize spend.
+PR #210 was human-merged and deployed. Operator diagnostics then show PostgreSQL
+23505 at research_ingest.js:596 (research-run insertion). An earlier interrupted
+run occupying the existing one-active-run-per-workflow index is the working
+diagnosis; the screenshot does not include the violated constraint name.
+The follow-up handles that specific constraint only, returning the existing
+tenant-scoped run and an explicit permission-controlled cancel/retry path.
+It neither cancels work automatically nor removes the concurrency guard.
 Final-head PostgreSQL certification, Security/QA review and deployed human
 acceptance remain required. Campaign save/reload/approval remains unverified.
 

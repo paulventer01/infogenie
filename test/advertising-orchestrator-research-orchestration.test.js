@@ -274,6 +274,41 @@ if (!HAS_DB) {
     assert.equal(other.status, 404);
   });
 
+  test('interrupted run conflict is recoverable without deleting evidence or bypassing approval', async () => {
+    const wf = await approveWorkflow(cookieA, await createWorkflow(cookieA, {
+      selected_platforms: ['meta'], advertising_budget: 0, credit_ceiling_micros: 0,
+    }));
+    const pool = db.getPool();
+    const old = await startResearchRun(pool, {
+      tenantId: tenantA.id, userId: ownerA.id, workflowId: wf.id,
+      requestedPlatforms: ['meta'], idempotencyKey: ik('interrupted'), execute: false,
+    });
+    const body = { workflow_id: wf.id, idempotency_key: ik('retry-interrupted'),
+      requested_platforms: ['meta'], mode: 'fixture',
+      search_parameters: { query: 'example.com', countries: ['US'], max_pages: 2 } };
+    const blocked = await research('POST', '/runs', { cookie: cookieA, body });
+    assert.equal(blocked.status, 409, blocked.text);
+    assert.equal(blocked.json.error, 'execution_in_progress');
+    assert.equal(blocked.json.run.id, old.run.id);
+    assert.equal(blocked.json.run.workflow_id, wf.id);
+    const foreign = await research('POST', '/runs', { cookie: cookieB, body });
+    assert.equal(foreign.status, 404, foreign.text);
+    assert.equal(foreign.json.run, undefined);
+    const unchanged = await research('GET', `/runs/${old.run.id}`, { cookie: cookieA });
+    assert.equal(unchanged.json.run.state, 'running');
+    const cancelled = await research('POST', `/runs/${old.run.id}/cancel`, { cookie: cookieA });
+    assert.equal(cancelled.status, 200, cancelled.text);
+    assert.equal(cancelled.json.run.state, 'cancelled');
+    const retry = await research('POST', '/runs', { cookie: cookieA, body });
+    assert.equal(retry.status, 201, retry.text);
+    assert.equal(retry.json.run.state, 'completed');
+    assert.ok(await evidenceCount(tenantA.id, retry.json.run.id) > 0);
+    const replay = await research('POST', '/runs', { cookie: cookieA, body });
+    assert.equal(replay.status, 200, replay.text);
+    assert.equal(replay.json.run.id, retry.json.run.id);
+    assert.equal(replay.json.replay, true);
+  });
+
   test('preview and put plan do not call connectors or insert evidence', async () => {
     const wf = await createWorkflow(cookieA);
     const before = (await db.getPool().query(

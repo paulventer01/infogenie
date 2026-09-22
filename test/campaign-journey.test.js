@@ -219,6 +219,31 @@ test('refresh retains unchanged selection and blocks approval when its version c
  assert.match(h.text(),/save a new revision before approval/);
  assert.equal(h.calls.filter(r=>r.url.endsWith('/approve')).length,0);
 });
+for(const canCancel of [true,false]){
+ test('research conflict exposes explicit recovery with cancellation permission '+canCancel,async t=>{
+  let conflict=true;
+  const run={id:'interrupted',workflow_id:'workflow',state:'running',requested_platforms:['meta']};
+  const h=await harness(t,r=>{
+   if(r.url==='/api/tenants/active')return {ok:true,permissions:['orchestrator.workflows.view','orchestrator.workflows.approve.research_execution',...(canCancel?['orchestrator.workflows.cancel']:[])],isPlatformAdmin:false};
+   if(r.url.endsWith('/workflows'))return {ok:true,workflows:[workflow]};
+   if(r.url.endsWith('/workflows/workflow'))return {ok:true,workflow:{...workflow,current_state:'research_approved',current_phase:'research',version:1}};
+   if(r.url.endsWith('/research/runs')&&r.method==='POST')return conflict?{ok:false,error:'execution_in_progress',run}:{ok:true,run:{...run,id:'fresh',state:'completed'}};
+   if(r.url.endsWith('/interrupted/cancel')){conflict=false;return {ok:true,run:{...run,state:'cancelled'}};}
+   return {ok:true};
+  },{component:'components/features/manage/AgentOrchestrator.tsx',url:'http://localhost/manage/agent-orchestrator?workflow_id=workflow'});
+  await h.click('Start Meta research');
+  assert.match(h.text(),/An earlier research run is still pending or running/);
+  assert.match(h.text(),/Run: interrupted/);
+  assert.equal(h.calls.filter(r=>r.url.endsWith('/cancel')).length,0);
+  if(canCancel){
+   await h.click('Cancel run');
+   assert.match(h.text(),/Research run cancelled/);
+   await h.click('Start Meta research');
+   assert.match(h.text(),/Run: fresh/);
+   assert.match(h.text(),/State: completed/);
+  }else assert.ok(![...document.querySelectorAll('button')].some(b=>b.textContent==='Cancel run'));
+ });
+}
 for(const requested of ['workflow','foreign-workflow']){
  test('creative review handoff only selects accessible workflow: '+requested,async t=>{
   const h=await harness(t,r=>{
