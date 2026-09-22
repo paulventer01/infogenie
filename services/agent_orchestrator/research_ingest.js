@@ -593,7 +593,9 @@ async function startResearchRun(pool, {
     continuation_state: { plan_hash: resolved.planHashValue, platform_progress: {}, outcome: null },
   }, { tenantId });
 
-  const inserted = await pool.query(
+  let inserted;
+  try {
+    inserted = await pool.query(
     `INSERT INTO orchestrator_research_runs
        (id, tenant_id, workflow_id, approval_id, approval_object_version,
         requested_platforms, research_brief, search_parameters, idempotency_key, state,
@@ -607,6 +609,18 @@ async function startResearchRun(pool, {
       draft.idempotency_key, JSON.stringify(draft.continuation_state),
     ]
   );
+  } catch (err) {
+    // A prior interrupted attempt can still own the workflow's active slot.
+    // Keep the uniqueness guard and require explicit recovery by the operator.
+    if (err.code !== '23505' || err.constraint !== 'orchestrator_research_runs_tenant_unique_live_wf') throw err;
+    const active = (await pool.query(
+      `SELECT * FROM orchestrator_research_runs
+       WHERE tenant_id=$1 AND workflow_id=$2 AND contract_version=$3
+         AND state IN ('pending','running')`,
+      [tenantId, workflowId, draft.contract_version]
+    )).rows[0];
+    fail('execution_in_progress', active ? { run: publicRun(active) } : undefined);
+  }
   let run = inserted.rows[0];
   if (!run) {
     run = (await pool.query(

@@ -156,6 +156,7 @@ interface PlatformProgress {
 
 interface ResearchRun {
   id: string;
+  workflow_id: string;
   state: string;
   error_code: string | null;
   plan_hash?: string | null;
@@ -469,6 +470,8 @@ export default function AgentOrchestrator() {
   const handoffRead = useRef(false);
   const [handoff, setHandoff] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const researchSelection = useRef<string | null>(null);
+  researchSelection.current = selectedId;
   const [selected, setSelected] = useState<Workflow | null>(null);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -1189,7 +1192,13 @@ export default function AgentOrchestrator() {
     setMetaResearchBusy("");
     if (r.ok === false) {
       setMetaResearchMsgIsError(true);
-      setMetaResearchMsg(r.error || "Research start failed");
+      if (selected.id !== researchSelection.current) return;
+      if (r.error === "execution_in_progress" && r.run && r.run.workflow_id === researchSelection.current) {
+        setMetaResearchRun(r.run);
+        setMetaResearchMsg("An earlier research run is still pending or running for this workspace. Wait for it to finish, or use Cancel run below if it is an interrupted attempt, then start again. Cancelling requires workflow cancellation permission.");
+      } else {
+        setMetaResearchMsg(r.error || "Research start failed");
+      }
       return;
     }
     if (r.run) setMetaResearchRun(r.run);
@@ -1250,7 +1259,13 @@ export default function AgentOrchestrator() {
     setGoogleResearchBusy("");
     if (r.ok === false) {
       setGoogleResearchMsgIsError(true);
-      setGoogleResearchMsg(r.error || "Research start failed");
+      if (selected.id !== researchSelection.current) return;
+      if (r.error === "execution_in_progress" && r.run && r.run.workflow_id === researchSelection.current) {
+        setGoogleResearchRun(r.run);
+        setGoogleResearchMsg("An earlier research run is still pending or running for this workspace. Wait for it to finish, or use Cancel run below if it is an interrupted attempt, then start again. Cancelling requires workflow cancellation permission.");
+      } else {
+        setGoogleResearchMsg(r.error || "Research start failed");
+      }
       return;
     }
     if (r.run) setGoogleResearchRun(r.run);
@@ -1311,7 +1326,13 @@ export default function AgentOrchestrator() {
     setTiktokResearchBusy("");
     if (r.ok === false) {
       setTiktokResearchMsgIsError(true);
-      setTiktokResearchMsg(r.error || "Research start failed");
+      if (selected.id !== researchSelection.current) return;
+      if (r.error === "execution_in_progress" && r.run && r.run.workflow_id === researchSelection.current) {
+        setTiktokResearchRun(r.run);
+        setTiktokResearchMsg("An earlier research run is still pending or running for this workspace. Wait for it to finish, or use Cancel run below if it is an interrupted attempt, then start again. Cancelling requires workflow cancellation permission.");
+      } else {
+        setTiktokResearchMsg(r.error || "Research start failed");
+      }
       return;
     }
     if (r.run) setTiktokResearchRun(r.run);
@@ -1410,7 +1431,13 @@ export default function AgentOrchestrator() {
     setOrchBusy("");
     if (r.ok === false) {
       setOrchMsgIsError(true);
-      setOrchMsg(r.error || "Orchestrated research start failed");
+      if (selected.id !== researchSelection.current) return;
+      if (r.error === "execution_in_progress" && r.run && r.run.workflow_id === researchSelection.current) {
+        setOrchRun(r.run);
+        setOrchMsg("An earlier research run is still pending or running for this workspace. Wait for it to finish, or use Cancel run below if it is an interrupted attempt, then start again. Cancelling requires workflow cancellation permission.");
+      } else {
+        setOrchMsg(r.error || "Orchestrated research start failed");
+      }
       return;
     }
     if (r.run) setOrchRun(r.run);
