@@ -214,6 +214,9 @@ test('refresh retains unchanged selection and blocks approval when its version c
  changed=true;await h.click('Refresh creative briefs');
  assert.equal(document.querySelector('[name="creative"]').value,'');
  assert.match(h.text(),/Unsaved changes/);assert.doesNotMatch(h.text(),/Approve saved campaign/);
+ await h.click('Discard edits');
+ assert.doesNotMatch(h.text(),/Approve saved campaign/);
+ assert.match(h.text(),/save a new revision before approval/);
  assert.equal(h.calls.filter(r=>r.url.endsWith('/approve')).length,0);
 });
 for(const requested of ['workflow','foreign-workflow']){

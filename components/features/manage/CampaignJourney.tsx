@@ -182,7 +182,8 @@ export default function CampaignJourney() {
   const select = (name: keyof Form, label: string, values: string[]) => <label>{label}<select name={name} value={form[name]} required onChange={e => { setForm(v => ({ ...v, [name]: e.target.value })); setDirty(true); setConfirm(false); }}>
     <option value="">Choose {label.toLowerCase()}</option>{values.map(v => <option key={v} value={v}>{v}</option>)}</select></label>;
   const expired = saved?.status === "approved_for_publish" && (!saved.approval_expires_at || Date.parse(saved.approval_expires_at) <= Date.now());
-  const approvalReady = saved?.status === "ready_for_approval" && saved.validation_status === "passed" && !dirty && !error;
+  const savedCreativesAvailable = saved?.contract.creatives.every(asset => creatives.some(c => c.artifact_id === asset.asset_id && c.version === asset.version && c.content_hash === asset.content_hash));
+  const approvalReady = saved?.status === "ready_for_approval" && saved.validation_status === "passed" && savedCreativesAvailable && !dirty && !error;
   return <section className={styles.journey} data-ig-no-enhance="true" aria-label="Campaign journey">
     <header className={styles.hero}><p className={styles.eyebrow}>CAMPAIGN WORKSPACE</p><h1>Turn a brief into a reviewed campaign.</h1><p>Choose your source, prepare the details, then approve the saved version.</p>
       <ol className={styles.progress}><li>01 · Marketing brief</li><li>02 · Campaign draft</li><li>03 · Approval</li></ol></header>
@@ -245,6 +246,7 @@ export default function CampaignJourney() {
             <dt>Creative versions</dt><dd>{saved.contract.creatives.map(c => `${c.asset_id} · v${c.version}`).join(", ")}</dd>
           </dl>
           {saved.validation.errors.length > 0 && <div role="alert"><h3>Resolve before approval</h3><ul>{saved.validation.errors.map((e,i) => <li key={i}>{e.code.replaceAll("_", " ")}{e.field ? ` — ${e.field}` : ""}</li>)}</ul></div>}
+          {!savedCreativesAvailable && <p role="alert">A saved creative version is no longer in the approved choices. Choose an approved creative brief and save a new revision before approval.</p>}
           <button disabled={busy || dirty} onClick={() => transition("refresh")}>Refresh saved status</button>
           {allowed(context, EDIT) && ["draft", "validation_failed", "ready_for_approval", "approval_expired"].includes(saved.status) && <button disabled={busy || dirty} onClick={() => transition("validate")}>Validate saved campaign</button>}
           {approvalReady && <><p>Validation passed. Approval applies to this saved campaign’s details and creative versions.</p>
