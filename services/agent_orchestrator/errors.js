@@ -58,13 +58,16 @@ function sendError(res, httpStatus, code, extra) {
   return res.status(httpStatus).json(body);
 }
 
-function sendOrchError(res, err) {
+function sendOrchError(res, err, diagnosticContext) {
   if (err instanceof OrchError) {
     return sendError(res, err.httpStatus, err.code, err.extra);
   }
   const code = err && err.code;
   if (code && HTTP_FOR_CODE[code]) {
     return sendError(res, HTTP_FOR_CODE[code], code, err.extra);
+  }
+  if (diagnosticContext) {
+    require('./research_diagnostics').reportUnexpectedResearchError(err, diagnosticContext);
   }
   return sendError(res, 500, 'internal_error');
 }

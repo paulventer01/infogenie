@@ -6,6 +6,17 @@ is not evidence of production acceptance. Do not start deferred features.
 
 ## Essential before launch
 
+### Active acceptance blocker — research fixture persistence (#210)
+
+Operator evidence on 2026-09-22 shows #209 active and research approval succeeding,
+but starting Meta fixture research returns HTTP 500. PR #210's PostgreSQL regression
+reproduced this: checked-in August capture dates generate a September expiry before
+the insertion date, violating the existing evidence retention constraint. The fix
+dates a new simulated fixture capture at binding time; it does not re-date live
+evidence, extend explicit expiry, change retention constraints or authorize spend.
+Final-head PostgreSQL certification, Security/QA review and deployed human
+acceptance remain required. Campaign save/reload/approval remains unverified.
+
 | Gap | Evidence / current status | Acceptance requirement |
 | --- | --- | --- |
 | Railway acceptance | Operator screenshots show #207 active on Railway and the CMTrading test campaign workspace created and selected. The next prerequisite is an approved creative brief. Campaign save/reload/approval and deployed database checks remain unverified. | Sign in, load the intended workspace, save a draft, reload it, validate and approve the same saved revision. Verify migrations and tenant context in the deployed database. |

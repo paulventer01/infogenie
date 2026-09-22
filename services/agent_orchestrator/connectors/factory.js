@@ -16,15 +16,20 @@ const UNSUPPORTED_ALWAYS = Object.freeze([
 
 function bindPage(page, req, ctx) {
   const mode = (ctx && ctx.mode) || 'fixture';
+  // Fixtures represent a new simulated capture on each run. Their checked-in
+  // capture dates must not expire before the database inserts today's evidence.
+  // Never re-date live evidence or extend an explicit retention deadline.
+  const captureTime = mode === 'fixture' ? new Date().toISOString() : null;
+  const capture = (row) => captureTime ? { ...row, captured_at: captureTime } : row;
   const remap = (id) => `${req.research_run_id}:${id}`.slice(0, C.LIMITS.id.max);
   const idMap = {};
   const competitors = (page.competitors || []).map((row) => {
     const id = remap(row.id);
     idMap[row.id] = id;
-    return { ...row, id, tenant_id: req.tenant_id, research_run_id: req.research_run_id };
+    return { ...capture(row), id, tenant_id: req.tenant_id, research_run_id: req.research_run_id };
   });
   const evidence = (page.evidence || []).map((row) => ({
-    ...row,
+    ...capture(row),
     id: remap(row.id),
     tenant_id: req.tenant_id,
     research_run_id: req.research_run_id,
@@ -34,7 +39,7 @@ function bindPage(page, req, ctx) {
     contract_version: 'v1',
   }));
   const assets = (page.assets || []).map((row) => ({
-    ...row,
+    ...capture(row),
     id: remap(row.id),
     tenant_id: req.tenant_id,
     evidence_id: remap(row.evidence_id),
