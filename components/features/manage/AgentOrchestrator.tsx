@@ -156,6 +156,7 @@ interface PlatformProgress {
 
 interface ResearchRun {
   id: string;
+  workflow_id: string;
   state: string;
   error_code: string | null;
   plan_hash?: string | null;
