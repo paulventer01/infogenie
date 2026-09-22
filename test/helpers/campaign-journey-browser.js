@@ -71,6 +71,19 @@ module.exports = async function campaignJourney(page, account, origin) {
     await page.select('[name="campaign_workflow"]',wf);
     await page.waitForFunction(()=>document.querySelector('[name="creative"] option')?.parentElement?.options.length>1);
     await page.select('[name="creative"]',art);
+    await click('Refresh creative briefs');
+    await page.waitForFunction(()=>document.body.innerText.includes('Creative briefs refreshed.'));
+    assert.equal(await page.$eval('[name="creative"]',el=>el.value),art);
+    const draftName=await page.$eval('[name="label"]',el=>el.value);
+    await pool.query("UPDATE orchestrator_creative_artifacts SET status='draft' WHERE tenant_id=$1 AND id=$2",[tid,art]);
+    await click('Refresh creative briefs');
+    await page.waitForFunction(()=>document.body.innerText.includes('The selected creative brief is no longer available'));
+    assert.equal(await page.$eval('[name="creative"]',el=>el.value),'');
+    assert.equal(await page.$eval('[name="label"]',el=>el.value),draftName);
+    await pool.query("UPDATE orchestrator_creative_artifacts SET status='approved' WHERE tenant_id=$1 AND id=$2",[tid,art]);
+    await click('Refresh creative briefs');
+    await page.waitForFunction(()=>document.querySelector('[name="creative"]')?.options.length>1);
+    await page.select('[name="creative"]',art);
     await page.$eval('[name="start"]',(el,value)=>{
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,value);
       el.dispatchEvent(new Event('input',{bubbles:true}));

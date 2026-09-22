@@ -1,6 +1,6 @@
 # Launch and interface gap analysis
 
-Updated 2026-09-21. This replaces the old marketing-taxonomy roadmap as the
+Updated 2026-09-22. This replaces the old marketing-taxonomy roadmap as the
 priority order for the current interface work. A shipped route or green build
 is not evidence of production acceptance. Do not start deferred features.
 
@@ -19,7 +19,7 @@ is not evidence of production acceptance. Do not start deferred features.
 | Gap | Evidence / current status | Next action |
 | --- | --- | --- |
 | Workspace home and navigation | PR #204 and #206 are merged; Railway screenshots subsequently show #207 active. Campaign Journey is accessible; the navigation button still needs explicit operator confirmation. | Verify the deployed navigation button and retain both browser journeys. |
-| Marketing journey prerequisites | Guided workspace creation (#207) is deployed and operator screenshots confirm creation/selection. Creative-review handoff now opens the selected accessible workspace in another tab; refreshing creative briefs preserves unsaved campaign fields. This handoff change still needs merge and deployment. | Verify the handoff, complete creative review and save/reload/validate/approve a campaign; verify tenant ownership against the deployed database. Creative generation and approval still use the existing workspace tools. |
+| Marketing journey prerequisites | Guided workspace creation (#207) is deployed and operator screenshots confirm creation/selection. Creative-review handoff (#208) is merged; deployment remains unverified. Follow-up restores review/refresh when approved briefs already exist and requires explicit reselection if the chosen approved version disappears or changes, preserving other campaign edits. | Verify the handoff and refreshed creative choices, complete creative review and save/reload/validate/approve a campaign; verify tenant ownership against the deployed database. Creative generation and approval still use the existing workspace tools. |
 | Hosted review workspace | Railway production is running; disposable Codespaces preview exists. A separate Railway staging environment has not been verified. | Prepare an isolated staging database and synthetic account plan; verify provider/job isolation before any hosting changes. |
 | Visual acceptance | CI covers responsive behavior; operator review of the combined home and campaign screens remains outstanding. | Review desktop/mobile navigation, missing prerequisites, loading/error states, saved data and approval states. |
 
