@@ -24,13 +24,16 @@ module.exports = async function campaignJourney(page, account, origin) {
       VALUES ($1,$2,'research_execution',$3,'approved',1,'workflow',$2,'["meta"]') RETURNING id`, [tid,wf,hash])).rows[0];
     await pool.query(`INSERT INTO orchestrator_research_runs (id,tenant_id,workflow_id,approval_id,approval_object_version,requested_platforms,idempotency_key,state)
       VALUES ($1,$2,$3,$4,1,$5::text[],$1,'completed')`, [run,tid,wf,approval.id,['meta']]);
+    async function seedApprovedCreative(artifact) {
     await pool.query(`INSERT INTO orchestrator_creative_artifacts (id,tenant_id,artifact_id,kind,workflow_id,research_run_id,version,status,content_hash,evidence_hash,payload,created_by)
-      VALUES ($1,$2,$1,'creative_brief',$3,$4,1,'draft',$5,$5,'{"format":"image","objective":"DEMO fixture"}',$6)`, [art,tid,wf,run,hash,user.id]);
+      VALUES ($1,$2,$1,'creative_brief',$3,$4,1,'draft',$5,$5,'{"format":"image","objective":"DEMO fixture"}',$6)`, [artifact,tid,wf,run,hash,user.id]);
     const creativeApproval = (await pool.query(`INSERT INTO orchestrator_approvals
       (tenant_id,workflow_id,gate,content_hash,decision,object_version,object_type,object_id,actor_user_id,approved_platforms)
       VALUES ($1,$2,'creative_generation',$3,'approved',1,'creative_artifact',$4,$5,'[]') RETURNING id`,
-      [tid,wf,require('../../services/agent_orchestrator/creative_validate').approvalContentHash(hash,hash),art,user.id])).rows[0];
-    await pool.query(`UPDATE orchestrator_creative_artifacts SET status='approved',approval_id=$3,approval_object_version=1,approved_by=$4,approved_at=now() WHERE tenant_id=$1 AND id=$2`, [tid,art,creativeApproval.id,user.id]);
+      [tid,wf,require('../../services/agent_orchestrator/creative_validate').approvalContentHash(hash,hash),artifact,user.id])).rows[0];
+    await pool.query(`UPDATE orchestrator_creative_artifacts SET status='approved',approval_id=$3,approval_object_version=1,approved_by=$4,approved_at=now() WHERE tenant_id=$1 AND id=$2`, [tid,artifact,creativeApproval.id,user.id]);
+    }
+    await seedApprovedCreative(art);
     const zero = Buffer.from([0]);
     await pool.query(`INSERT INTO user_integrations (user_id,platform,ciphertext,iv,tag,status) VALUES ($1,'meta_ads',$2,$2,$2,'connected')`, [user.id,zero]);
     await page.setViewport({width:1440,height:1000});
@@ -71,6 +74,20 @@ module.exports = async function campaignJourney(page, account, origin) {
     await page.select('[name="campaign_workflow"]',wf);
     await page.waitForFunction(()=>document.querySelector('[name="creative"] option')?.parentElement?.options.length>1);
     await page.select('[name="creative"]',art);
+    await click('Refresh creative briefs');
+    await page.waitForFunction(()=>document.body.innerText.includes('Creative briefs refreshed.'));
+    assert.equal(await page.$eval('[name="creative"]',el=>el.value),art);
+    const draftName=await page.$eval('[name="label"]',el=>el.value);
+    await pool.query("UPDATE orchestrator_creative_artifacts SET status='superseded' WHERE tenant_id=$1 AND id=$2",[tid,art]);
+    await click('Refresh creative briefs');
+    await page.waitForFunction(()=>document.body.innerText.includes('The selected creative brief is no longer available'));
+    assert.equal(await page.$eval('[name="creative"]',el=>el.value),'');
+    assert.equal(await page.$eval('[name="label"]',el=>el.value),draftName);
+    const replacement=art+'-replacement';
+    await seedApprovedCreative(replacement);
+    await click('Refresh creative briefs');
+    await page.waitForFunction(()=>document.querySelector('[name="creative"]')?.options.length>1);
+    await page.select('[name="creative"]',replacement);
     await page.$eval('[name="start"]',(el,value)=>{
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,value);
       el.dispatchEvent(new Event('input',{bubbles:true}));

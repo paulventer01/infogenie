@@ -13,6 +13,7 @@ The page never publishes, activates, spends credits, generates creatives, or sta
 
 - A database-backed workspace, marketing brief viewing permission, and campaign viewing permission are required. Editing and approval require their existing separate permissions.
 - Prepare missing briefs and creative approvals in their existing workspaces. This release guides campaign assembly and approval; it does not replace research or creative generation.
+- Creative review and refresh remain available when approved briefs already exist. Refresh preserves campaign fields; if the selected approved version disappears or changes, choose an approved brief explicitly and save again before validation or approval.
 - Campaigns retain the source brief ID and content hash. Missing or changed source content blocks validation and approval until an editor saves the current source into a new revision.
 - Draft changes use the expected revision and hash. Concurrent edits must be reloaded, not silently overwritten.
 - The form handles one platform, market and creative brief. More complex existing drafts retain the full campaign editor.

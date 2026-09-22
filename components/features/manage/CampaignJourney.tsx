@@ -102,6 +102,11 @@ export default function CampaignJourney() {
       const options = await verified(apiGet<Options>(API + "/journey-options?workflow_id=" + encodeURIComponent(workflowId)), ctx, current);
       if (!Array.isArray(options.creatives)) throw new Error("The creative briefs could not be verified.");
       setCreatives(options.creatives); setConfirm(false);
+      if (form.creative && !options.creatives.some(c => c.id === form.creative && c.version === creative?.version && c.content_hash === creative?.content_hash)) {
+        setForm(v => ({ ...v, creative: "" })); setDirty(true);
+        setNotice("The selected creative brief is no longer available with the same approval. Choose an approved creative brief. Your other campaign edits are preserved.");
+        return;
+      }
       setNotice(options.creatives.length ? "Creative briefs refreshed. Your campaign edits are preserved." : "No approved creative brief yet. Complete creative review in the other tab, then refresh here.");
     });
   }
@@ -177,7 +182,8 @@ export default function CampaignJourney() {
   const select = (name: keyof Form, label: string, values: string[]) => <label>{label}<select name={name} value={form[name]} required onChange={e => { setForm(v => ({ ...v, [name]: e.target.value })); setDirty(true); setConfirm(false); }}>
     <option value="">Choose {label.toLowerCase()}</option>{values.map(v => <option key={v} value={v}>{v}</option>)}</select></label>;
   const expired = saved?.status === "approved_for_publish" && (!saved.approval_expires_at || Date.parse(saved.approval_expires_at) <= Date.now());
-  const approvalReady = saved?.status === "ready_for_approval" && saved.validation_status === "passed" && !dirty && !error;
+  const savedCreativesAvailable = saved?.contract.creatives.every(asset => creatives.some(c => c.artifact_id === asset.asset_id && c.version === asset.version && c.content_hash === asset.content_hash));
+  const approvalReady = saved?.status === "ready_for_approval" && saved.validation_status === "passed" && savedCreativesAvailable && !dirty && !error;
   return <section className={styles.journey} data-ig-no-enhance="true" aria-label="Campaign journey">
     <header className={styles.hero}><p className={styles.eyebrow}>CAMPAIGN WORKSPACE</p><h1>Turn a brief into a reviewed campaign.</h1><p>Choose your source, prepare the details, then approve the saved version.</p>
       <ol className={styles.progress}><li>01 · Marketing brief</li><li>02 · Campaign draft</li><li>03 · Approval</li></ol></header>
@@ -215,7 +221,7 @@ export default function CampaignJourney() {
       {workflowId && <section className={styles.card}><h2>2. Prepare the campaign draft</h2>
         <label>Continue a saved campaign<select name="saved_campaign" disabled={busy || dirty || creating} value={saved?.id || ""} onChange={e => { const d = drafts.find(d => d.id === e.target.value); if (d) showDraft(d); else chooseWorkflow(workflowId); }}>
           <option value="">New campaign draft</option>{drafts.map(d => <option key={d.id} value={d.id}>{d.label} · revision {d.current_revision}</option>)}</select></label>
-        {!creatives.length && <p className={styles.notice}>An approved creative brief is needed before saving. Open <Link href={"/manage/agent-orchestrator?workflow_id=" + encodeURIComponent(workflowId)} target="_blank" rel="noopener noreferrer">creative approvals (opens in a new tab)</Link> for this workspace and complete creative review. Your draft stays open here. Then <button disabled={busy || creating} onClick={refreshCreatives}>Refresh creative briefs</button>.</p>}
+        <p className={styles.notice}>{!creatives.length ? "An approved creative brief is needed before saving. " : "Need a different or updated creative brief? "}Open <Link href={"/manage/agent-orchestrator?workflow_id=" + encodeURIComponent(workflowId)} target="_blank" rel="noopener noreferrer">creative approvals (opens in a new tab)</Link> for this workspace and complete creative review. Your draft stays open here. Then <button disabled={busy || creating} onClick={refreshCreatives}>Refresh creative briefs</button>.</p>
         {!editable && <p>This draft needs the <Link href="/manage/agent-orchestrator">full campaign editor</Link> to preserve its multiple assets, markets or delivery state.</p>}
         <form onSubmit={e => { e.preventDefault(); void save(); }}><fieldset disabled={busy || creating || !editable || !allowed(context, EDIT)} className={styles.fields}>
           {field("label", "Campaign name")}{select("objective", "Objective", ["awareness", "traffic", "leads", "sales", "app"])}
@@ -240,6 +246,7 @@ export default function CampaignJourney() {
             <dt>Creative versions</dt><dd>{saved.contract.creatives.map(c => `${c.asset_id} · v${c.version}`).join(", ")}</dd>
           </dl>
           {saved.validation.errors.length > 0 && <div role="alert"><h3>Resolve before approval</h3><ul>{saved.validation.errors.map((e,i) => <li key={i}>{e.code.replaceAll("_", " ")}{e.field ? ` — ${e.field}` : ""}</li>)}</ul></div>}
+          {!savedCreativesAvailable && <p role="alert">A saved creative version is no longer in the approved choices. Choose an approved creative brief and save a new revision before approval.</p>}
           <button disabled={busy || dirty} onClick={() => transition("refresh")}>Refresh saved status</button>
           {allowed(context, EDIT) && ["draft", "validation_failed", "ready_for_approval", "approval_expired"].includes(saved.status) && <button disabled={busy || dirty} onClick={() => transition("validate")}>Validate saved campaign</button>}
           {approvalReady && <><p>Validation passed. Approval applies to this saved campaign’s details and creative versions.</p>

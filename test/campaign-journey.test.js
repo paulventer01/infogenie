@@ -185,6 +185,40 @@ test('creative refresh rejects changed tenant and clears stale edits',async t=>{
  h.state.tenant=8;await h.click('Refresh creative briefs');
  assert.match(h.text(),/workspace changed/);assert.equal(document.querySelector('[name="label"]'),null);
 });
+test('existing creative approvals can refresh after replacement without losing campaign edits',async t=>{
+ let replaced=false;
+ const replacement={...creative,id:'replacement-row',artifact_id:'replacement-asset',version:2};
+ const h=await harness(t,r=>r.url.includes('journey-options')?{ok:true,briefs:[brief],creatives:replaced?[replacement]:[creative]}:undefined);
+ await prepare(h);await h.set('label','Keep my draft');await h.set('amount','25');
+ replaced=true;await h.click('Refresh creative briefs');
+ assert.equal(document.querySelector('[name="label"]').value,'Keep my draft');
+ assert.equal(document.querySelector('[name="amount"]').value,'25');
+ assert.equal(document.querySelector('[name="creative"]').value,'');
+ assert.equal([...document.querySelectorAll('button')].find(b=>b.textContent==='Save campaign draft').disabled,true);
+ assert.match(h.text(),/Choose an approved creative brief/);
+ await h.set('creative','replacement-row');await h.click('Save campaign draft');
+ const created=h.calls.find(r=>r.method==='POST');
+ assert.equal(created.body.contract.creatives[0].asset_id,'replacement-asset');
+ assert.equal(created.body.contract.creatives[0].version,2);
+ assert.equal(created.body.label,'Keep my draft');
+ assert.equal(created.body.contract.budget.amount_micros,25000000);
+});
+test('refresh retains unchanged selection and blocks approval when its version changes',async t=>{
+ let changed=false;
+ const h=await harness(t,r=>r.url.includes('journey-options')?{ok:true,briefs:[brief],creatives:[changed?{...creative,version:2,content_hash:'e'.repeat(64)}:creative]}:undefined);
+ await prepare(h);await h.click('Save campaign draft');await h.click('Validate saved campaign');await h.confirm();
+ await h.click('Refresh creative briefs');
+ assert.equal(document.querySelector('[name="creative"]').value,'creative-row');
+ assert.equal(document.querySelector('input[type="checkbox"]').checked,false);
+ assert.doesNotMatch(h.text(),/Unsaved changes/);
+ changed=true;await h.click('Refresh creative briefs');
+ assert.equal(document.querySelector('[name="creative"]').value,'');
+ assert.match(h.text(),/Unsaved changes/);assert.doesNotMatch(h.text(),/Approve saved campaign/);
+ await h.click('Discard edits');
+ assert.doesNotMatch(h.text(),/Approve saved campaign/);
+ assert.match(h.text(),/save a new revision before approval/);
+ assert.equal(h.calls.filter(r=>r.url.endsWith('/approve')).length,0);
+});
 for(const requested of ['workflow','foreign-workflow']){
  test('creative review handoff only selects accessible workflow: '+requested,async t=>{
   const h=await harness(t,r=>{
