@@ -285,6 +285,7 @@ if (!HAS_DB) {
     });
     const body = { workflow_id: wf.id, idempotency_key: ik('retry-interrupted'),
       requested_platforms: ['meta'], mode: 'fixture',
+      credential_refs: { meta_research: 'user_integrations' },
       search_parameters: { query: 'example.com', countries: ['US'], max_pages: 2 } };
     const blocked = await research('POST', '/runs', { cookie: cookieA, body });
     assert.equal(blocked.status, 409, blocked.text);
@@ -301,7 +302,7 @@ if (!HAS_DB) {
     assert.equal(cancelled.json.run.state, 'cancelled');
     const retry = await research('POST', '/runs', { cookie: cookieA, body });
     assert.equal(retry.status, 201, retry.text);
-    assert.equal(retry.json.run.state, 'completed');
+    assert.equal(retry.json.run.state, 'completed', retry.text);
     assert.ok(await evidenceCount(tenantA.id, retry.json.run.id) > 0);
     const replay = await research('POST', '/runs', { cookie: cookieA, body });
     assert.equal(replay.status, 200, replay.text);
