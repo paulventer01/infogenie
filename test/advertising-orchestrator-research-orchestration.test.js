@@ -110,12 +110,6 @@ test('approval snapshot includes research_plan_hash and plan edits are material'
   assert.notStrictEqual(contentHash({ ...wf, research_plan: plan }, 'research_execution'), contentHash(wf, 'research_execution'));
 });
 
-test('live research orchestration smoke', {
-  skip: process.env.INFOGENIE_LIVE_RESEARCH_ORCHESTRATION === '1'
-    ? false
-    : 'INFOGENIE_LIVE_RESEARCH_ORCHESTRATION unset',
-}, () => {});
-
 if (!HAS_DB) {
   test('advertising-orchestrator research orchestration skipped — no DATABASE_URL', { skip: 'no DATABASE_URL' }, () => {});
 } else {
@@ -255,7 +249,7 @@ if (!HAS_DB) {
     await fx.cleanup();
   });
 
-  test('Campaign Journey zero-budget Meta fixture request persists and replays without live transport', async () => {
+  test('Campaign Journey zero-budget Meta fixture request persists and replays', async () => {
     const wf = await approveWorkflow(cookieA, await createWorkflow(cookieA, {
       selected_platforms: ['meta'], advertising_budget: 0, credit_ceiling_micros: 0,
     }));
