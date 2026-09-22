@@ -255,6 +255,31 @@ if (!HAS_DB) {
     await fx.cleanup();
   });
 
+  test('Campaign Journey zero-budget Meta fixture request persists and replays without live transport', async () => {
+    const wf = await approveWorkflow(cookieA, await createWorkflow(cookieA, {
+      selected_platforms: ['meta'], advertising_budget: 0, credit_ceiling_micros: 0,
+    }));
+    const body = {
+      workflow_id: wf.id, idempotency_key: ik('journey-fixture'),
+      requested_platforms: ['meta'], mode: 'fixture',
+      credential_refs: { meta_research: 'user_integrations' },
+      search_parameters: { query: 'example.com', countries: ['US'], lookback_days: 30,
+        max_pages: 2, max_results_per_page: 25 }, research_brief: 'Fixture acceptance',
+    };
+    const started = await research('POST', '/runs', { cookie: cookieA, body });
+    assert.equal(started.status, 201, started.text);
+    assert.equal(started.json.ok, true);
+    assert.equal(started.json.run.state, 'completed', started.text);
+    assert.equal(started.json.run.continuation_state.honesty_class, 'fixture');
+    assert.ok(await evidenceCount(tenantA.id, started.json.run.id) > 0);
+    const replay = await research('POST', '/runs', { cookie: cookieA, body });
+    assert.equal(replay.status, 200, replay.text);
+    assert.equal(replay.json.replay, true);
+    assert.equal(replay.json.run.id, started.json.run.id);
+    const other = await research('GET', `/runs/${started.json.run.id}`, { cookie: cookieB });
+    assert.equal(other.status, 404);
+  });
+
   test('preview and put plan do not call connectors or insert evidence', async () => {
     const wf = await createWorkflow(cookieA);
     const before = (await db.getPool().query(

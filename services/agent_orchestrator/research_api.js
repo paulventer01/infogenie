@@ -45,7 +45,7 @@ function wrap(permission, handler) {
       const result = await handler(req, tid, userId, _db.getPool());
       return res.status(result.status || 200).json(result.body);
     } catch (err) {
-      return sendOrchError(res, err);
+      return sendOrchError(res, err, { requestId: req.requestId });
     }
   };
 }

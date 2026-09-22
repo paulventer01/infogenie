@@ -3,6 +3,8 @@
 const { spawnSync } = require('node:child_process');
 
 const files = [
+  'test/research-error-diagnostics.test.js',
+  'test/advertising-orchestrator-research-orchestration.test.js',
   'test/advertising-orchestrator-workflows.test.js',
   'test/advertising-orchestrator-campaign-drafts.test.js',
   'test/google-ads-provider-draft-authority-schema.test.js',
