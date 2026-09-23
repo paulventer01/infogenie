@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>InfoGenie — Product Overview, Architecture & Market Strategy</title>
+<style>
+  :root { --ink:#0f172a; --muted:#475569; --line:#e2e8f0; --accent:#0f766e; --bg:#f8fafc; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; padding: 32px 24px 64px; line-height: 1.55; font-size: 15px; }
+  main { max-width: 920px; margin: 0 auto; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 40px 48px; box-shadow: 0 10px 32px rgba(15,23,42,.07); }
+  h1 { font-size: 1.85rem; margin: 0 0 12px; letter-spacing: -0.02em; color: var(--ink); border-bottom: 3px solid var(--accent); padding-bottom: 12px; }
+  h2 { font-size: 1.25rem; margin: 36px 0 14px; color: var(--accent); border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  h3 { font-size: 1.05rem; margin: 22px 0 10px; color: var(--ink); }
+  p, li { color: var(--ink); }
+  blockquote { margin: 14px 0; padding: 12px 16px; background: #f0fdfa; border-left: 4px solid var(--accent); color: var(--muted); font-style: italic; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: 0.88rem; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0fdfa; font-weight: 700; color: var(--accent); }
+  tr:nth-child(even) td { background: #fafafa; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 0.85em; background: #f1f5f9; padding: 1px 5px; border-radius: 4px; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 10px; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; }
+  ul, ol { margin: 8px 0; padding-left: 24px; }
+  li { margin: 4px 0; }
+  a { color: var(--accent); }
+  .meta { color: var(--muted); font-size: 0.9rem; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line); }
+  @media print { body { background:#fff; padding:0; } main { border:none; box-shadow:none; padding:24px; } h2 { page-break-after: avoid; } }
+</style>
+</head>
+<body>
+<main>
+<h1>InfoGenie — Product Overview, Architecture &amp; Market Strategy</h1>
+<p><strong>Document type:</strong> Product &amp; strategy reference  </p>
+<p><strong>Version:</strong> August 2026  </p>
+<p><strong>Audience:</strong> Founders, investors, product leaders, agency operators, enterprise marketing teams  </p>
+<p><strong>Classification:</strong> External-facing product narrative grounded in the implemented platform (T1–T119+)</p>
+<p>---</p>
+<h2 id="table-of-contents">Table of contents</h2>
+<ol>
+<li><a href="#1-executive-summary">Executive summary</a></li>
+<li><a href="#2-what-infogenie-is--and-is-not">What InfoGenie is — and is not</a></li>
+<li><a href="#3-architecture-how-it-is-built-and-why">Architecture: how it is built and why</a></li>
+<li><a href="#4-how-infogenie-works-logic-flows-and-operating-model">How InfoGenie works: logic, flows, and operating model</a></li>
+<li><a href="#5-feature-catalog-by-workflow">Feature catalog by workflow</a></li>
+<li><a href="#6-pain-points-infogenie-resolves">Pain points InfoGenie resolves</a></li>
+<li><a href="#7-unique-selling-proposition-usp">Unique selling proposition (USP)</a></li>
+<li><a href="#8-competitive-landscape">Competitive landscape</a></li>
+<li><a href="#9-critical-safeguards-for-ai-marketing-intelligence">Critical safeguards for AI marketing intelligence</a></li>
+<li><a href="#10-future-evolution">Future evolution</a></li>
+<li><a href="#11-market-size-and-opportunity">Market size and opportunity</a></li>
+<li><a href="#12-appendix-integrations--technical-reference">Appendix: integrations &amp; technical reference</a></li>
+</ol>
+<p>---</p>
+<h2 id="1-executive-summary">1. Executive summary</h2>
+<p><strong>InfoGenie</strong> is an <strong>AI-powered marketing intelligence and automation platform</strong> that consolidates competitive analysis, content creation, audience building, paid and organic channel execution, measurement, and executive decision support into a <strong>single same-origin application</strong>.</p>
+<p>Unlike point tools that solve one slice of marketing (SEO-only, ads-only, or content-only), InfoGenie is designed as a <strong>closed-loop marketing operating system</strong>:</p>
+<blockquote><strong>Insight → Action → Measurement → Learning → Better insight</strong></blockquote>
+<p>The platform ships <strong>290+ routable tools</strong> across six navigation domains — <strong>Analyse, Create, Reach, Grow, Manage, and AI Team</strong> — backed by <strong>250+ Express API services</strong>, PostgreSQL tenancy, multi-model AI routing, and strict data-honesty enforcement.</p>
+<p><strong>Tagline (product):</strong> *AI Autonomous Marketing Intelligence Platform*</p>
+<p><strong>Core promise:</strong> Help marketing teams and agencies <strong>see the market clearly, decide faster, execute across channels, and prove ROI</strong> — without stitching together ten disconnected SaaS products.</p>
+<p>---</p>
+<h2 id="2-what-infogenie-is--and-is-not">2. What InfoGenie is — and is not</h2>
+<h3>What it is</h3>
+<table>
+<tr><th>Dimension</th><th>Description</th></tr>
+<tr><td><strong>Intelligence layer</strong></td><td>Competitor, SERP, AI-search (GEO/AEO), brand, and market signal analysis</td></tr>
+<tr><td><strong>Creation layer</strong></td><td>AI-assisted content, creative, landing pages, email, video scripts, personas</td></tr>
+<tr><td><strong>Reach layer</strong></td><td>Audiences, journeys, paid ads, social publishing, lead gen, local SEO</td></tr>
+<tr><td><strong>Growth layer</strong></td><td>Goals, attribution, True ROAS, optimizers, conversion labs</td></tr>
+<tr><td><strong>Operations layer</strong></td><td>Calendars, briefs, reports, governance, team capacity, workspaces</td></tr>
+<tr><td><strong>AI executive team</strong></td><td>Finance Officer, Ops Officer, Technical Manager — role-based AI advisors</td></tr>
+</table>
+<h3>What it is not</h3>
+<ul>
+<li><strong>Not a full CRM</strong> — syncs to HubSpot and similar; does not replace sales pipeline management</li>
+<li><strong>Not a payment processor</strong> — Stripe handles billing where needed</li>
+<li><strong>Not a social network</strong> — publishes *to* platforms via integrations (e.g. Zernio), does not host social feeds</li>
+<li><strong>Not a session recorder</strong> — integrates with Clarity-style tools for heatmaps where configured</li>
+<li><strong>Not a “black box” AI</strong> — strict data mode withholds synthetic metrics; demo mode badges them explicitly</li>
+</ul>
+<p>---</p>
+<h2 id="3-architecture-how-it-is-built-and-why">3. Architecture: how it is built and why</h2>
+<h3>3.1 Design philosophy</h3>
+<p>InfoGenie’s architecture follows five deliberate principles:</p>
+<ol>
+<li><strong>Insight → Action → Measurement</strong> — Every intelligence module connects to an action module and a measurement partner. Intelligence that cannot drive execution is considered incomplete.</li>
+<li><strong>Same-origin simplicity</strong> — Browser, Next.js shell, Express APIs, and session cookies share one domain. No CORS fragmentation, no split auth across subdomains.</li>
+<li><strong>Honest data by default</strong> — Platform default data mode is <strong><code>strict</code></strong>. Fabricated, template, or placeholder payloads are withheld or explicitly labeled — never presented as live account truth.</li>
+<li><strong>Autonomous where safe, gated where destructive</strong> — Optimizers, content schedulers, and suggest engines run continuously; budget launches, irreversible sends, and high-risk mutations go through <strong>Safe Agent</strong> (propose → simulate → approve → execute).</li>
+<li><strong>Incremental migration, zero big-bang rewrite</strong> — Legacy vanilla JS SPA coexists with Next.js React panels until each view is ported. Navigation and API contracts remain stable throughout.</li>
+</ol>
+<h3>3.2 Technology stack</h3>
+<table>
+<tr><th>Layer</th><th>Technology</th><th>Role</th></tr>
+<tr><td><strong>Public front door</strong></td><td>Next.js 15 (App Router), React 18, TypeScript</td><td>Auth pages, dashboard shell, 290+ lazy-loaded feature panels</td></tr>
+<tr><td><strong>API &amp; jobs</strong></td><td>Node.js 20+, Express 4</td><td>250+ <code>/api/*</code> routers, background crons, legacy SPA fallback</td></tr>
+<tr><td><strong>Database</strong></td><td>PostgreSQL</td><td>Tenant-scoped tables, <code>kv_store</code>, sessions, encrypted credentials</td></tr>
+<tr><td><strong>Cache / queues</strong></td><td>Redis (<code>ioredis</code>)</td><td>Job scheduling, rate limiting where configured</td></tr>
+<tr><td><strong>AI</strong></td><td>OpenAI, Anthropic, Gemini, Perplexity, Cloudflare Workers AI, BYO LLM</td><td>Multi-model with compatibility layer (<code>ai_compat.js</code>)</td></tr>
+<tr><td><strong>Exports</strong></td><td>pptxgenjs, pdfkit, exceljs</td><td>Board decks, weekly reports, investor mode</td></tr>
+<tr><td><strong>Observability</strong></td><td>Sentry, OpenTelemetry (optional)</td><td>Error tracking, ops tooling for Technical Manager</td></tr>
+</table>
+<h3>3.3 Process architecture (dev &amp; production)</h3>
+<pre>
+Browser
+   │
+   ▼
+Next.js :5000  ── public front door
+   │  • /login, /reset-password, React dashboard routes
+   │  • Rewrites /api/* → Express :8000
+   │
+   ▼
+Express :8000  ── API + legacy SPA + static assets
+   │  • Auth gate → permission matrix → route handlers
+   │  • Data-mode enforcement on every res.json()
+   │  • Background jobs: optimizer, journeys, digest, autopilot, etc.
+   │
+   ▼
+PostgreSQL + Redis
+</pre>
+<p><strong>Why two processes?</strong> Express owns the mature API surface (~119 tier modules, years of domain logic). Next.js owns modern auth UX and React migration without blocking API evolution. The proxy keeps <strong>one cookie, one origin</strong> for users.</p>
+<h3>3.4 Multi-tenancy &amp; security</h3>
+<ul>
+<li>Every feature table includes <strong><code>tenant_id</code></strong>; routes resolve tenant via <code>services/tenants/context.js</code>.</li>
+<li><strong>RBAC:</strong> <code>permission_matrix.js</code> maps each API prefix to view/write permissions; production default enforcement is <strong><code>on</code></strong>.</li>
+<li><strong>Credential vault:</strong> Per-user OAuth tokens (Google Ads, Meta Ads, Workspace) encrypted AES-256-GCM.</li>
+<li><strong>Platform keys:</strong> Admin-managed API keys hydrated at boot; audited, never exposed to non-admins.</li>
+<li><strong>CSRF, CSP, rate limits:</strong> Documented in <code>docs/security-guardrails.md</code>.</li>
+</ul>
+<h3>3.5 AI architecture</h3>
+<p>Standard pattern for AI-powered features:</p>
+<pre>
+1. Inject brand context (Brand Foundation, analysis data, memory)
+2. Call primary model (often GPT-4o-mini for speed/cost)
+3. Parse strict JSON; reject dummy keys
+4. Fallback: template (demo mode) OR error (strict mode)
+5. Persist tenant-scoped result
+6. Return to UI with provenance metadata
+</pre>
+<p><strong>BYO LLM:</strong> Tenants can configure OpenAI-compatible endpoints by category (<code>writing</code>, <code>analysis</code>, <code>vision</code>, <code>audio</code>) with cascade pools.</p>
+<p><strong>AI Governance (default: shadow):</strong> Every AI call can be logged through Policy → Data quality → Context retrieval → Model → Output scan → Audit — <strong>without blocking</strong> the core Brief → Spine → calendar loop unless a tenant opts into enforce mode.</p>
+<h3>3.6 Navigation as product architecture</h3>
+<p>Navigation is the <strong>single source of truth</strong> (<code>lib/viewRoutes.ts</code>):</p>
+<table>
+<tr><th>Group</th><th>Purpose</th></tr>
+<tr><td><strong>Analyse</strong></td><td>Market intelligence, competitors, SEO/SERP, backlinks, brand monitoring</td></tr>
+<tr><td><strong>Create</strong></td><td>Brand assets, content studio, lifecycle email, creative, pages/bots, campaign planning</td></tr>
+<tr><td><strong>Reach</strong></td><td>Audiences, lead gen, paid search/social, social command center, SEO execution, identity spine</td></tr>
+<tr><td><strong>Grow</strong></td><td>Goals, ad performance, full-funnel ROI, conversion/SEO improvement</td></tr>
+<tr><td><strong>Manage</strong></td><td>Morning brief, calendars, monitoring, AI config, team frameworks, reports, admin</td></tr>
+<tr><td><strong>AI Team</strong></td><td>Executive officers + team ops (capacity, governance, providers)</td></tr>
+</table>
+<p><strong>Hub consolidations</strong> (Search &amp; AI Visibility, Content Studio, Goals Hub, etc.) reduce sidebar clutter while preserving deep links to specialist tools.</p>
+<p>---</p>
+<h2 id="4-how-infogenie-works-logic-flows-and-operating-model">4. How InfoGenie works: logic, flows, and operating model</h2>
+<h3>4.1 Canonical user journey</h3>
+<p>Documented workflow (<code>docs/AUDIT_INFOGENIE_WORKFLOW.md</code>):</p>
+<pre>
+Brief → Analyse → Create → Reach → Grow → Manage → AI Team → (loop)
+</pre>
+<h3>4.2 Day-zero: analysis &amp; workspace</h3>
+<ol>
+<li><strong>Enter URL or industry</strong> on the home/analysis view.</li>
+<li><strong><code>runAnalysis()</code></strong> detects competitors, enriches with DataForSEO/market signals, builds dashboard context.</li>
+<li><strong>Landing:</strong> Today&#x27;s <strong>Marketing Brief</strong> (<code>marketing-brief</code>) — AI Director diagnosis of priorities, risks, and opportunities.</li>
+<li><strong>Workspace:</strong> <strong>New Marketing Project</strong> + <strong>Workspaces &amp; Team</strong> scope data to client/brand/tenant.</li>
+</ol>
+<p><strong>Why this order?</strong> Analysis without a brief is raw data. The brief translates intelligence into <strong>today’s decisions</strong> before the user dives into 290 tools.</p>
+<h3>4.3 Plan → create → reach</h3>
+<table>
+<tr><th>Stage</th><th>Primary tools</th><th>Logic</th></tr>
+<tr><td><strong>Plan</strong></td><td>Campaign Strategy, Content Modes, Persona Studio, Master Calendar</td><td>Define who, what, where, when before production</td></tr>
+<tr><td><strong>Create</strong></td><td>Content Studio, Creative Hub, Landing Builder, Email tools</td><td>Generate assets grounded in brand foundation + analysis</td></tr>
+<tr><td><strong>Reach</strong></td><td>Audience Builder, Journey Builder, Campaign Composer, Social Publisher</td><td>Deploy to humans across paid, owned, earned channels</td></tr>
+</table>
+<h3>4.4 Measure → optimize → learn</h3>
+<table>
+<tr><th>Stage</th><th>Primary tools</th><th>Logic</th></tr>
+<tr><td><strong>Measure</strong></td><td>Analytics Hub, True ROAS, Attribution, Canonical Metrics</td><td>Connect spend to outcomes with honest provenance labels</td></tr>
+<tr><td><strong>Optimize</strong></td><td>AI Optimizer, SEO Autopilot, Conversion Lab, Ecosystem Spine</td><td>Close gaps automatically or via suggest → apply</td></tr>
+<tr><td><strong>Learn</strong></td><td>Marketing Memory, Decision Engine, Strategic Intelligence</td><td>Act/dismiss outcomes feed the next recommendation cycle</td></tr>
+</table>
+<h3>4.5 The marketing spine (operating system layer)</h3>
+<p><strong>Ecosystem Spine</strong> (<code>/grow/ecosystem-spine</code>) aggregates:</p>
+<ul>
+<li>Audiences, pixels/CAPI, attribution runs, leads, brief, optimizer state</li>
+<li>Emits a <strong>health score + gap list</strong></li>
+<li><strong>Suggest → Resolve → Apply</strong> creates calendar items, SEO tasks, content drafts, or deep-links to execution tools</li>
+</ul>
+<p><strong>Agent Orchestrator</strong> generalizes this pattern across modules (calendar, decision engine, remarketing, etc.).</p>
+<h3>4.6 AI Team model</h3>
+<p>InfoGenie treats AI as a <strong>virtual executive team</strong>, not a chatbox:</p>
+<table>
+<tr><th>Role</th><th>Function</th></tr>
+<tr><td><strong>Marketing Brief (AI Director)</strong></td><td>Daily diagnosis, foresight, prioritized actions</td></tr>
+<tr><td><strong>Finance Officer</strong></td><td>Budget, ROAS, margin-aware recommendations</td></tr>
+<tr><td><strong>Ops Officer</strong></td><td>Execution health, integrations, operational gaps</td></tr>
+<tr><td><strong>Technical Manager</strong></td><td>Platform scan — pages, APIs, LLMs, auth, security posture</td></tr>
+<tr><td><strong>Safe Agent</strong></td><td>Human approval gate for destructive/high-risk automations</td></tr>
+</table>
+<p>---</p>
+<h2 id="5-feature-catalog-by-workflow">5. Feature catalog by workflow</h2>
+<p>InfoGenie exposes <strong>217 sidebar items</strong> and <strong>293 routable view IDs</strong>. Below is the capability map by navigation group, with <strong>what it means</strong> and <strong>why it matters</strong>.</p>
+<h3>5.1 Analyse — intelligence on the market</h3>
+<table>
+<tr><th>Feature area</th><th>Key capabilities</th><th>User meaning</th></tr>
+<tr><td><strong>Project overview</strong></td><td>Dashboard, 90-day roadmap</td><td>“Where am I vs. the market?”</td></tr>
+<tr><td><strong>Rankings &amp; search</strong></td><td>SERP tracker, keyword explorer, content gaps, live SERP</td><td>Track visibility and opportunity keywords</td></tr>
+<tr><td><strong>Analytics &amp; traffic</strong></td><td>Analytics hub, share of voice, visitor intel</td><td>Understand traffic quality and brand presence</td></tr>
+<tr><td><strong>Competitors</strong></td><td>Competitor profiles, battle cards, battle plan, war room, ad library spy, benchmarks</td><td>Structured competitive positioning for sales and strategy</td></tr>
+<tr><td><strong>AI search &amp; mentions</strong></td><td>GEO/AEO/zero-click/voice SEO hub, mentions, crisis radar, media intel</td><td>Visibility in Google *and* AI answers (ChatGPT, Perplexity)</td></tr>
+<tr><td><strong>Backlinks &amp; site health</strong></td><td>Backlinks, monitors, Semrush/Ahrefs integrations, change monitor</td><td>Off-page SEO and technical authority</td></tr>
+<tr><td><strong>Customers &amp; brand</strong></td><td>ICP studio, VOC mining, review aggregator, reputation score, tech stack, pricing watcher</td><td>Voice-of-customer and competitor operational signals</td></tr>
+</table>
+<p><strong>Hidden intelligence archive:</strong> 40+ specialist tools (spyfu, majestic, youtube monitor, anomaly detector, etc.) available via Intelligence Hub deep links.</p>
+<h3>5.2 Create — production &amp; campaign design</h3>
+<table>
+<tr><th>Feature area</th><th>Key capabilities</th><th>User meaning</th></tr>
+<tr><td><strong>Brand foundations</strong></td><td>Brand assets, templates, creator studio</td><td>Single source of brand truth for all AI generation</td></tr>
+<tr><td><strong>Content studio</strong></td><td>Content AI, autopilot, bulk rewriter, headline tester, press release, cold email</td><td>High-volume content production with brand voice</td></tr>
+<tr><td><strong>Lifecycle email</strong></td><td>Newsletter studio, broadcasts, WhatsApp, voice caller, reply assistant, localization</td><td>Owned-channel lifecycle programs</td></tr>
+<tr><td><strong>Design the visuals</strong></td><td>Carousel, Canva bridge, UGC avatars, video script, short-form video, podcast, infographics</td><td>Creative assets without a full agency</td></tr>
+<tr><td><strong>Build pages &amp; bots</strong></td><td>Landing builder, chatbot builder, schema generator, link-in-bio</td><td>Conversion surfaces and conversational capture</td></tr>
+<tr><td><strong>Plan the campaign</strong></td><td>Campaign strategy, content modes, persona studio, A/B designer, pitch deck, wireframe</td><td>Strategic planning before spend</td></tr>
+</table>
+<h3>5.3 Reach — audiences, leads, and distribution</h3>
+<table>
+<tr><th>Feature area</th><th>Key capabilities</th><th>User meaning</th></tr>
+<tr><td><strong>Build the audience</strong></td><td>Segments, lookalikes, journeys, surveys, geofencing, omnichannel, smart send</td><td>Who you talk to and how messages flow</td></tr>
+<tr><td><strong>Find &amp; qualify leads</strong></td><td>Lead gen hub, bookings, qualifier, Hunter, HubSpot/CRM sync</td><td>Pipeline feeding without manual export/import</td></tr>
+<tr><td><strong>Paid search &amp; social</strong></td><td>Google/Meta/TikTok campaign tools, import, conversion boosters</td><td>Launch and manage paid from one workspace</td></tr>
+<tr><td><strong>Social command center</strong></td><td>Publisher, calendar, influencers, hashtag intel, social commerce</td><td>Organic + influencer operations</td></tr>
+<tr><td><strong>Get found in search &amp; AI</strong></td><td>GSC data, local SEO/listings, content brief studio, web vitals, SEO tasks</td><td>Operational SEO tied to content production</td></tr>
+<tr><td><strong>First-party data spine</strong></td><td>Identity spine (CDP-lite), MCP server</td><td>Unified profiles, LTV scoring, next-best-action</td></tr>
+<tr><td><strong>Handle replies &amp; alerts</strong></td><td>Unified inbox, alert routing, inbox monitor</td><td>Brand conversation workflow</td></tr>
+<tr><td><strong>Next-gen messaging</strong></td><td>Push, RCS, LinkedIn outreach, email warmup</td><td>Emerging high-intent channels</td></tr>
+</table>
+<h3>5.4 Grow — targets, performance, ROI</h3>
+<table>
+<tr><th>Feature area</th><th>Key capabilities</th><th>User meaning</th></tr>
+<tr><td><strong>Set the targets</strong></td><td>Goals hub, growth hub, ecosystem spine, action center</td><td>OKRs/KPIs aligned to channel reality</td></tr>
+<tr><td><strong>See ad performance</strong></td><td>Meta/Google/TikTok insights, AI optimizer, lead intelligence, remarketing, safe agent</td><td>Always-on optimization with guardrails</td></tr>
+<tr><td><strong>Track full-funnel ROI</strong></td><td>Attribution, True ROAS, iROAS, MMM, digital twin, churn scorer, revenue forecast</td><td>Finance-grade marketing accountability</td></tr>
+<tr><td><strong>Improve SEO &amp; conversion</strong></td><td>Conversion lab, CRO lab, AI audit suite, link suggester, visibility leaderboard</td><td>Experimentation → measurable lift</td></tr>
+<tr><td><strong>Next-gen ad channels</strong></td><td>CTV/streaming scaffold</td><td>Future channel expansion</td></tr>
+</table>
+<h3>5.5 Manage — operations, reports, governance</h3>
+<table>
+<tr><th>Feature area</th><th>Key capabilities</th><th>User meaning</th></tr>
+<tr><td><strong>Morning brief</strong></td><td>Today&#x27;s Marketing Brief</td><td>Daily executive summary</td></tr>
+<tr><td><strong>Calendars &amp; projects</strong></td><td>Master calendar, agent orchestrator, new project</td><td>Work coordination across teams</td></tr>
+<tr><td><strong>Monitor performance</strong></td><td>Web analytics, heatmaps, action queue, budget board, UTM/pixel manager, execution hub, customer 360</td><td>Operational visibility</td></tr>
+<tr><td><strong>AI tools &amp; config</strong></td><td>Ask InfoGenie, strategic intelligence, marketing memory, predictive intel, AutoClaw, model compare</td><td>Platform brain and configuration</td></tr>
+<tr><td><strong>Team &amp; frameworks</strong></td><td>7-day playbook, growth methodology, performance flywheel</td><td>Repeatable operating playbooks</td></tr>
+<tr><td><strong>Customer ops</strong></td><td>Re-engage, automations, brand deals, product library, signal triggers</td><td>Retention and expansion motions</td></tr>
+<tr><td><strong>Reports</strong></td><td>Weekly report, C-suite deck, investor mode, white-label, digest</td><td>Stakeholder-ready outputs</td></tr>
+<tr><td><strong>Account &amp; admin</strong></td><td>Workspaces, settings/integrations, brand safety, data provenance, technical suite</td><td>Tenant administration</td></tr>
+</table>
+<h3>5.6 AI Team — executive layer</h3>
+<table>
+<tr><th>Role / tool</th><th>Purpose</th></tr>
+<tr><td><strong>Team roster</strong></td><td>Persona of each AI officer</td></tr>
+<tr><td><strong>Finance Officer</strong></td><td>Budget and margin-aware guidance</td></tr>
+<tr><td><strong>Ops Officer</strong></td><td>Integration and execution health</td></tr>
+<tr><td><strong>Technical Manager</strong></td><td>Live platform + ops stack audit</td></tr>
+<tr><td><strong>Capacity</strong></td><td>Team workload and AI agent allocation</td></tr>
+<tr><td><strong>AI Governance</strong></td><td>Policy, audit, brand safety control plane</td></tr>
+<tr><td><strong>AI Providers</strong></td><td>BYO LLM configuration</td></tr>
+</table>
+<p>---</p>
+<h2 id="6-pain-points-infogenie-resolves">6. Pain points InfoGenie resolves</h2>
+<table>
+<tr><th>Pain point</th><th>How InfoGenie addresses it</th><th>Primary features</th></tr>
+<tr><td><strong>“I use 12 tools and nothing talks to each other”</strong></td><td>Same-origin spine, shared brand context, orchestrated suggest→apply</td><td>Ecosystem Spine, Agent Orchestrator, Brand Foundation</td></tr>
+<tr><td><strong>“I don’t know what competitors are doing until it’s too late”</strong></td><td>Scheduled monitors, war room, battle cards, pricing/change trackers</td><td>Compete suite, Crisis Radar, Change Monitor</td></tr>
+<tr><td><strong>“SEO and AI search are different problems now”</strong></td><td>Unified Search &amp; AI Visibility hub (GEO, AEO, zero-click, voice)</td><td>AEO Optimizer, GEO Audit, AI Answer SOV</td></tr>
+<tr><td><strong>“My agency can’t prove ROI”</strong></td><td>True ROAS, attribution, canonical metrics, investor/C-suite reports</td><td>Grow measurement stack</td></tr>
+<tr><td><strong>“AI content is generic and off-brand”</strong></td><td>Brand Foundation injection, persona studio, field enhancer, memory loop</td><td>Create stack, Marketing Memory</td></tr>
+<tr><td><strong>“Recommendations don’t learn from what we did”</strong></td><td>Act/dismiss → Marketing Memory → next Decision Engine run</td><td>Brief, Action Queue, Strategic Intelligence</td></tr>
+<tr><td><strong>“I can’t trust the numbers in the dashboard”</strong></td><td>Strict data mode, provenance labels, withheld synthetic data</td><td>Data mode enforcement, Data Provenance panel</td></tr>
+<tr><td><strong>“Automation is scary — one wrong click wastes budget”</strong></td><td>Safe Agent approval, AI governance shadow mode, suggest tiers</td><td>Safe Agent, Governance Hub</td></tr>
+<tr><td><strong>“Briefings are backward-looking slides, not actions”</strong></td><td>Marketing Brief → deep links → calendar/SEO/content tasks</td><td>Brief, Ecosystem Spine</td></tr>
+<tr><td><strong>“First-party data is scattered”</strong></td><td>Identity Spine CDP-lite, pixel manager, audience sync</td><td>Reach spine tools</td></tr>
+</table>
+<p>---</p>
+<h2 id="7-unique-selling-proposition-usp">7. Unique selling proposition (USP)</h2>
+<h3>Primary USP</h3>
+<p><strong>InfoGenie is the only platform that closes the full loop from competitive + AI-search intelligence → cross-channel creation → autonomous optimization → honest ROI measurement — with an AI executive team and strict data integrity built in.</strong></p>
+<h3>USP pillars (defensible differentiation)</h3>
+<table>
+<tr><th>Pillar</th><th>What competitors typically do</th><th>What InfoGenie does</th></tr>
+<tr><td><strong>Closed-loop OS</strong></td><td>Point tools or suites with weak action wiring</td><td>Ecosystem Spine + Orchestrator + Brief chain insight to calendar/SEO/tasks</td></tr>
+<tr><td><strong>AI search era</strong></td><td>Traditional SEO rank tracking only</td><td>GEO/AEO/zero-click/voice + AI Answer SOV in one hub</td></tr>
+<tr><td><strong>Data honesty</strong></td><td>Demo data or unlabeled estimates in UI</td><td><strong>Strict mode default</strong> — synthetic data withheld or badged</td></tr>
+<tr><td><strong>Learning system</strong></td><td>Static recommendations</td><td>Marketing Memory fed by act/dismiss outcomes</td></tr>
+<tr><td><strong>Executive AI team</strong></td><td>Single chat assistant</td><td>Role-based officers + Technical Manager ops scan</td></tr>
+<tr><td><strong>Safe autonomy</strong></td><td>Full auto or manual only</td><td>Optimizer/autopilot + Safe Agent approval for risky actions</td></tr>
+<tr><td><strong>Agency-native</strong></td><td>Single-brand assumptions</td><td>Multi-tenant workspaces, white-label reports, client switching</td></tr>
+<tr><td><strong>BYO LLM</strong></td><td>Vendor lock-in to one model</td><td>Category-based provider cascade per tenant</td></tr>
+</table>
+<h3>Elevator pitch (30 seconds)</h3>
+<blockquote>InfoGenie replaces the fragmented marketing stack with one AI-native operating system: it analyses your market and competitors, tells you what to do today in plain language, helps you create and launch across every channel, optimizes spend safely, and proves ROI — while refusing to show fake metrics.</blockquote>
+<p>---</p>
+<h2 id="8-competitive-landscape">8. Competitive landscape</h2>
+<h3>8.1 Competitive map by category</h3>
+<table>
+<tr><th>Category</th><th>Direct / adjacent competitors</th><th>InfoGenie overlap</th><th>InfoGenie gap vs. incumbent</th></tr>
+<tr><td><strong>SEO suites</strong></td><td>Semrush, Ahrefs, Moz, Surfer</td><td>Strong SERP, audit, content brief, backlinks</td><td>Incumbents deeper in historical link indexes; InfoGenie stronger on AI-search + action loop</td></tr>
+<tr><td><strong>Marketing hubs</strong></td><td>HubSpot, Salesforce Marketing Cloud, Adobe Marketo</td><td>CRM sync, email, journeys, reports</td><td>HubSpot wins native CRM; InfoGenie wins intelligence + autonomous optimization breadth</td></tr>
+<tr><td><strong>AI content</strong></td><td>Jasper, Copy.ai, Writer</td><td>Content studio, email, creative</td><td>Jasper wins pure writing UX; InfoGenie wins market context + distribution + measurement</td></tr>
+<tr><td><strong>Ad optimization</strong></td><td>Smartly.io, Albert.ai, Adzooma, Optmyzr</td><td>AI Optimizer, bandit, creative refresh</td><td>Incumbents deeper per-platform; InfoGenie wins cross-channel intelligence integration</td></tr>
+<tr><td><strong>Social suites</strong></td><td>Hootsuite, Sprout Social, Buffer</td><td>Social publisher, calendar, inbox</td><td>Incumbents win native network APIs; InfoGenie wins competitive + ROI context</td></tr>
+<tr><td><strong>Analytics</strong></td><td>GA4, Amplitude, Mixpanel</td><td>Web analytics, attribution, digital twin</td><td>Incumbents win product analytics depth; InfoGenie wins marketing-specific closed loop</td></tr>
+<tr><td><strong>Competitive intel</strong></td><td>Crayon, Klue, Similarweb</td><td>Battle cards, war room, monitors</td><td>Klue wins sales enablement workflow; InfoGenie wins execution + optimization linkage</td></tr>
+<tr><td><strong>GEO / AI visibility</strong></td><td>Profound, Otterly, Peec (emerging)</td><td>AEO, GEO, AI Answer SOV</td><td>Category nascent — InfoGenie advantage is bundling with full stack</td></tr>
+</table>
+<h3>8.2 Positioning statement vs. competitors</h3>
+<ul>
+<li><strong>vs. Semrush/Ahrefs:</strong> “They tell you what ranks; InfoGenie tells you what to *do* about it — and helps you ship the fix.”</li>
+<li><strong>vs. HubSpot:</strong> “HubSpot runs your CRM; InfoGenie runs your *market intelligence and autonomous marketing brain* — and syncs to HubSpot.”</li>
+<li><strong>vs. Jasper:</strong> “Jasper writes; InfoGenie *decides, writes, publishes, measures, and learns*.”</li>
+<li><strong>vs. Smartly/Albert:</strong> “They optimize ads; InfoGenie optimizes the whole funnel including SEO, content, competitors, and executive decisions.”</li>
+</ul>
+<h3>8.3 Moat vectors (long-term)</h3>
+<ol>
+<li><strong>Cross-tenant benchmark data</strong> (anonymized) — network effects as user base grows  </li>
+<li><strong>Marketing Memory + Strategic Intelligence</strong> — institutional knowledge compounds per tenant  </li>
+<li><strong>Strict trust posture</strong> — enterprise/agency buyers increasingly reject “demo data as real”  </li>
+<li><strong>Workflow embedding</strong> — 290 tools create high switching cost once spine + calendars + reports are live  </li>
+</ol>
+<p>---</p>
+<h2 id="9-critical-safeguards-for-ai-marketing-intelligence">9. Critical safeguards for AI marketing intelligence</h2>
+<p>For InfoGenie to remain a <strong>trustworthy AI marketing intelligence automation system</strong>, these factors must be in place:</p>
+<h3>9.1 Data integrity layer</h3>
+<table>
+<tr><th>Safeguard</th><th>Implementation</th><th>Why critical</th></tr>
+<tr><td><strong>Strict data mode (default)</strong></td><td><code>services/admin/data_mode.js</code> + global enforcement middleware</td><td>Prevents AI/template metrics from poisoning budget and ROI decisions</td></tr>
+<tr><td><strong>Provenance labeling</strong></td><td>LIVE vs DERIVED vs PREVIEW on KPI surfaces</td><td>Users must know if a number came from ad accounts or market inference</td></tr>
+<tr><td><strong>Integration truth</strong></td><td>Settings → Integrations; execution hub status</td><td>No fake “connected” states (fixed in intelligence audit)</td></tr>
+<tr><td><strong>Fabrication lint</strong></td><td><code>npm run lint:fabrication</code> in CI</td><td>Prevents new code paths from leaking synthetic data unmarked</td></tr>
+</table>
+<h3>9.2 AI governance layer</h3>
+<table>
+<tr><th>Safeguard</th><th>Default posture</th><th>Why critical</th></tr>
+<tr><td><strong>Shadow-first governance</strong></td><td>Log and warn; do not block core loop</td><td>Observability without killing daily marketing velocity</td></tr>
+<tr><td><strong>Tiered action controls</strong></td><td><code>generate_*</code> = auto; <code>launch_campaign</code> / <code>scale_budget</code> = suggest</td><td>Matches risk to automation level</td></tr>
+<tr><td><strong>Fail open on governance errors</strong></td><td>Allow + <code>governance_degraded</code> log</td><td>Platform stays up; issues are visible not silent</td></tr>
+<tr><td><strong>Brand safety scans</strong></td><td>Caution = warning, not block (default)</td><td>Prevents over-censorship of creative iteration</td></tr>
+<tr><td><strong>Audit trail</strong></td><td>AI traces, governance events, admin issues</td><td>Enterprise compliance and post-incident review</td></tr>
+</table>
+<h3>9.3 Execution safety layer</h3>
+<table>
+<tr><th>Safeguard</th><th>Mechanism</th><th>Why critical</th></tr>
+<tr><td><strong>Safe Agent</strong></td><td>Propose → simulate → approve → execute + rollback plans</td><td>Stops irreversible budget/campaign mistakes</td></tr>
+<tr><td><strong>RBAC / permission matrix</strong></td><td>Route-level view/write keys</td><td>Agencies need client-scoped access control</td></tr>
+<tr><td><strong>CSRF + session security</strong></td><td>HttpOnly cookies, CSRF shadow/on modes</td><td>Same-origin does not imply same trust boundary</td></tr>
+<tr><td><strong>Credential vault encryption</strong></td><td>AES-256-GCM per user/platform</td><td>OAuth tokens are high-value attack targets</td></tr>
+<tr><td><strong>SSRF-safe fetchers</strong></td><td>URL validation on crawlers/auditors</td><td>Prevents server-side request abuse</td></tr>
+</table>
+<h3>9.4 Operational reliability layer</h3>
+<table>
+<tr><th>Safeguard</th><th>Mechanism</th><th>Why critical</th></tr>
+<tr><td><strong>Technical Manager</strong></td><td>Live scan of APIs, LLMs, pages, auth</td><td>Early detection of broken integrations before users hit them</td></tr>
+<tr><td><strong>Background job isolation</strong></td><td>Optimizer, journey runner, digest crons</td><td>Autonomous systems must fail gracefully per tenant</td></tr>
+<tr><td><strong>Multi-tenant isolation</strong></td><td><code>tenant_id</code> on all tables; enforcement on</td><td>Agency platform requirement — no cross-client data leaks</td></tr>
+<tr><td><strong>Ops tooling stack</strong></td><td>Checkly, OTEL, Promptfoo, LLM FinOps (documented)</td><td>Production AI systems need cost, quality, and uptime monitoring</td></tr>
+</table>
+<h3>9.5 Human-in-the-loop principles (non-negotiable)</h3>
+<ol>
+<li><strong>Brief → action → calendar never blocked by default governance</strong>  </li>
+<li><strong>Strict mode never silently substitutes template data for real metrics</strong>  </li>
+<li><strong>Every autonomous action must be traceable to a recommendation ID</strong>  </li>
+<li><strong>Destructive actions require explicit approval unless tenant opts out of Safe Agent</strong>  </li>
+<li><strong>Learning loop must update from real act/dismiss outcomes, not synthetic clicks</strong></li>
+</ol>
+<p>---</p>
+<h2 id="10-future-evolution">10. Future evolution</h2>
+<p>Roadmap synthesized from <code>docs/gap-priority-roadmap.md</code>, <code>docs/ecosystem-spine.md</code>, <code>docs/INFOGENIE_INTELLIGENCE_AUDIT.md</code>, and <code>docs/ai-governance-build-spec.md</code>.</p>
+<h3>10.1 Near-term (P0 — highest leverage)</h3>
+<table>
+<tr><th>Initiative</th><th>Rationale</th></tr>
+<tr><td><strong>Zero-click &amp; AI SERP hub</strong></td><td>Extend AEO/GEO with featured snippets, PAA, AI Overview citation tracking</td></tr>
+<tr><td><strong>Remarketing center</strong></td><td>Unify pixel/CAPI health, audience sync, retargeting recommendations</td></tr>
+<tr><td><strong>Referral program manager</strong></td><td>High-ROI owned channel; complements lead intelligence</td></tr>
+<tr><td><strong>Affiliate program hub</strong></td><td>Operational layer on existing brand deals + UTM infrastructure</td></tr>
+<tr><td><strong>Voice search optimization</strong></td><td>Conversational query readiness alongside AEO</td></tr>
+</table>
+<h3>10.2 Mid-term (P1)</h3>
+<table>
+<tr><th>Initiative</th><th>Rationale</th></tr>
+<tr><td><strong>Short-form video workflow</strong></td><td>End-to-end Reels/Shorts/TikTok campaign wizard</td></tr>
+<tr><td><strong>Push notification productization</strong></td><td>OneSignal/Firebase connectors with segment triggers</td></tr>
+<tr><td><strong>Live OAuth for GSC/GA4</strong></td><td>Replace preview analytics with account-truth data</td></tr>
+<tr><td><strong>Write-back execution</strong></td><td>Queue mutations to Meta/Google/HubSpot/Slack from Strategic Intelligence</td></tr>
+<tr><td><strong>Nav consolidation</strong></td><td>Dedupe Analytics Hub, fold Action Center into Battle Plan</td></tr>
+</table>
+<h3>10.3 Long-term (platform vision)</h3>
+<table>
+<tr><th>Direction</th><th>Target state</th></tr>
+<tr><td><strong>Full marketing spine</strong></td><td>Every panel reads/writes through unified audience + attribution graph</td></tr>
+<tr><td><strong>Agentic operations</strong></td><td>AutoClaw + Agent Orchestrator handle multi-step campaigns with Safe Agent gates</td></tr>
+<tr><td><strong>Network benchmark moat</strong></td><td>Cross-tenant anonymized benchmarks drive default strategies</td></tr>
+<tr><td><strong>MCP ecosystem</strong></td><td>External tools (CRM, data warehouse, creative) plug into spine via MCP</td></tr>
+<tr><td><strong>Industry playbooks</strong></td><td>Vertical templates (fintech, ecommerce, SaaS) pre-wire analysis → playbooks</td></tr>
+<tr><td><strong>Enterprise governance</strong></td><td>Tenant-opt-in enforce mode, role-filtered memory, compliance exports</td></tr>
+</table>
+<h3>10.4 Evolution principle</h3>
+<p>InfoGenie should <strong>not</strong> become 50 disconnected point products. New capability ships when it <strong>strengthens the loop</strong>:</p>
+<blockquote><strong>Discover → Create → Reach → Measure → Optimize → Learn</strong></blockquote>
+<p>---</p>
+<h2 id="11-market-size-and-opportunity">11. Market size and opportunity</h2>
+<p>*Note: Market sizing below uses publicly cited industry categories and order-of-magnitude estimates for strategic planning. Figures should be validated against current analyst reports (Gartner, IDC, Statista) before investor materials.*</p>
+<h3>11.1 Category definition</h3>
+<p>InfoGenie sits at the intersection of:</p>
+<ul>
+<li><strong>Marketing automation / CRM hubs</strong> (~$6–8B, growing ~9% CAGR)</li>
+<li><strong>SEO &amp; digital marketing software</strong> (~$4–5B)</li>
+<li><strong>Ad tech optimization &amp; intelligence</strong> (~$15B+ broader ad tech; ~$2–3B addressable for SMB/mid-market optimization)</li>
+<li><strong>AI marketing tools (emerging)</strong> — fastest-growing subsegment; estimated <strong>$40B+ TAM by 2030</strong> across gen-AI in marketing (multiple analyst forecasts)</li>
+</ul>
+<p><strong>Serviceable product category:</strong> *AI-native marketing intelligence &amp; automation platform for agencies and mid-market brands* — roughly <strong>$8–15B SAM</strong> globally when bundling replaceable point-tool spend.</p>
+<h3>11.2 Target segments</h3>
+<table>
+<tr><th>Segment</th><th>Profile</th><th>Why InfoGenie fits</th></tr>
+<tr><td><strong>Digital agencies (10–200 staff)</strong></td><td>Multi-client, tool fatigue, reporting burden</td><td>Multi-tenant workspaces, white-label, full stack</td></tr>
+<tr><td><strong>Mid-market brands ($10M–$500M revenue)</strong></td><td>Small marketing teams, high outsourcing</td><td>AI executive team replaces headcount gaps</td></tr>
+<tr><td><strong>Vertical specialists</strong></td><td>Fintech, ecommerce, B2B SaaS</td><td>Analysis-first onboarding + playbooks</td></tr>
+<tr><td><strong>Enterprise marketing ops (future)</strong></td><td>Governance, strict data mode, RBAC</td><td>Already architected for tenancy and honesty</td></tr>
+</table>
+<h3>11.3 Sizing logic (bottom-up sketch)</h3>
+<table>
+<tr><th>Assumption</th><th>Value</th></tr>
+<tr><td>Target agencies + mid-market accounts globally</td><td>~500K–2M organizations</td></tr>
+<tr><td>Realistic paid conversion at maturity</td><td>1–3%</td></tr>
+<tr><td>ARPA (annual revenue per account)</td><td>$3K–$24K depending on tier/seats</td></tr>
+<tr><td><strong>Implied reachable revenue at scale</strong></td><td><strong>$15M–$150M+ ARR</strong> in core segments; higher with enterprise tier</td></tr>
+</table>
+<h3>11.4 Growth drivers (2026–2030)</h3>
+<ol>
+<li><strong>AI search displacement of traditional SERP CTR</strong> — GEO/AEO becomes mandatory line item  </li>
+<li><strong>Consolidation pressure</strong> — CFOs reducing SaaS sprawl favor unified platforms  </li>
+<li><strong>Autonomous ad optimization</strong> — labor savings + 24/7 execution  </li>
+<li><strong>Data trust regulation</strong> — strict provenance as enterprise buying criterion  </li>
+<li><strong>Agency AI transformation</strong> — agencies productize InfoGenie as their operating system  </li>
+</ol>
+<h3>11.5 Risks to sizing</h3>
+<ul>
+<li>Incumbent bundling (HubSpot/Semrush adding AI features)  </li>
+<li>Platform API restrictions (Meta/Google policy changes)  </li>
+<li>AI cost volatility without FinOps discipline  </li>
+<li>Over-promising automation without Safe Agent adoption  </li>
+</ul>
+<p>---</p>
+<h2 id="12-appendix-integrations--technical-reference">12. Appendix: integrations &amp; technical reference</h2>
+<p>For the complete integrations inventory (APIs, LLMs, OAuth, tokens, status), see:</p>
+<ul>
+<li><strong><code>docs/integrations-reference.md</code></strong> — full technical integration reference  </li>
+<li><strong><code>docs/infogenie-complete-reference.md</code></strong> — T1–T119 architecture &amp; tier index  </li>
+<li><strong><code>docs/InfoGenie_Features_Guide.md</code></strong> — per-feature benefit descriptions  </li>
+<li><strong><code>docs/security-guardrails.md</code></strong> — production security checklist  </li>
+<li><strong><code>docs/ai-governance-build-spec.md</code></strong> — governance hard requirements  </li>
+</ul>
+<h3>Quick integration categories</h3>
+<table>
+<tr><th>Category</th><th>Examples</th></tr>
+<tr><td><strong>LLMs</strong></td><td>OpenAI, Anthropic, Gemini, Perplexity, Cloudflare Workers AI, BYO providers</td></tr>
+<tr><td><strong>SEO data</strong></td><td>DataForSEO, Semrush, Ahrefs, Majestic, SpyFu, PageSpeed, Bing WMT</td></tr>
+<tr><td><strong>Ads</strong></td><td>Google Ads API, Meta Marketing API, TikTok Ads</td></tr>
+<tr><td><strong>CRM / sync</strong></td><td>HubSpot, CRM sync scaffolds</td></tr>
+<tr><td><strong>Social publish</strong></td><td>Zernio (15 platforms)</td></tr>
+<tr><td><strong>Scraping / crawl</strong></td><td>Firecrawl, headless fetch</td></tr>
+<tr><td><strong>Email</strong></td><td>Resend (transactional), Mailchimp (execution hub)</td></tr>
+<tr><td><strong>Analytics</strong></td><td>GA4/GSC (OAuth path), Amplitude agents scaffold</td></tr>
+<tr><td><strong>Payments</strong></td><td>Stripe</td></tr>
+<tr><td><strong>Observability</strong></td><td>Sentry, OTEL</td></tr>
+</table>
+<p>---</p>
+<h2 id="document-history">Document history</h2>
+<table>
+<tr><th>Date</th><th>Change</th></tr>
+<tr><td>August 2026</td><td>Initial comprehensive product overview for download</td></tr>
+</table>
+<p>---</p>
+<p>*InfoGenie — AI Autonomous Marketing Intelligence Platform*  </p>
+<p>*This document describes the product as implemented in the repository at time of writing. Feature availability may depend on configured integrations and data mode settings.*</p>
+<p class="meta">InfoGenie Product Overview · August 2026 · Printable HTML export</p>
+</main>
+</body>
+</html>
