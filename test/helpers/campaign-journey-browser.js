@@ -187,6 +187,21 @@ module.exports = async function campaignJourney(page, account, origin, restartAn
       [ownerEmail,await require('bcryptjs').hash(ownerPassword,10)])).rows[0];
     await pool.query(`INSERT INTO tenant_users (tenant_id,user_id,role_id,status,joined_at)
       SELECT $1,$2,id,'active',now() FROM roles WHERE tenant_id IS NULL AND key='tenant_owner'`,[tid,owner.id]);
+    async function checkpoint(currentPage) {
+      const result=await currentPage.evaluate(async id=>{
+        const base='/api/agent-orchestrator/campaign-drafts/'+encodeURIComponent(id);
+        const read=async suffix=>{
+          const response=await fetch(base+suffix);
+          return {status:response.status,body:await response.json()};
+        };
+        return {snapshot:await read('/snapshot'),history:await read('/history')};
+      },id);
+      for(const response of Object.values(result)) {
+        assert.equal(response.status,200);assert.equal(response.body.ok,true);
+      }
+      return {snapshot:result.snapshot.body,revisions:result.history.body.revisions,approvals:result.history.body.approvals};
+    }
+    let beforeRestart;
     const ownerContext=await page.browser().createBrowserContext();
     try {
       const ownerPage=await ownerContext.newPage();ownerPage.setDefaultTimeout(60000);
@@ -237,25 +252,20 @@ module.exports = async function campaignJourney(page, account, origin, restartAn
       await ownerPage.screenshot({path:'/tmp/preview-artifacts/campaign-snapshot-mobile.png',fullPage:true});
       assert.deepEqual(mutations,[]);
       await ownerPage.screenshot({path:'/tmp/preview-artifacts/creative-review-restored.png',fullPage:true});
+      beforeRestart=await checkpoint(ownerPage);
     } finally {await ownerContext.close();}
 
-    // Capture the exact saved revision and approval before stopping both app processes.
-    // Read it again through a new browser context/session, never from cached React state.
-    async function checkpoint(currentPage) {
-      const result=await currentPage.evaluate(async id=>{
-        const base='/api/agent-orchestrator/campaign-drafts/'+encodeURIComponent(id);
-        const read=async suffix=>{
-          const response=await fetch(base+suffix);
-          return {status:response.status,body:await response.json()};
-        };
-        return {snapshot:await read('/snapshot'),history:await read('/history')};
-      },id);
-      for(const response of Object.values(result)) {
-        assert.equal(response.status,200);assert.equal(response.body.ok,true);
-      }
-      return {snapshot:result.snapshot.body,revisions:result.history.body.revisions,approvals:result.history.body.approvals};
+    // The exact snapshot/history surfaces remain deployment-owner-only. Capture
+    // them through the isolated owner session, while proving the normal preview
+    // reviewer cannot use those routes to bypass that boundary.
+    const deniedCheckpoint=await page.evaluate(async id=>{
+      const base='/api/agent-orchestrator/campaign-drafts/'+encodeURIComponent(id);
+      const read=async suffix=>{const response=await fetch(base+suffix);return {status:response.status,body:await response.json()};};
+      return {snapshot:await read('/snapshot'),history:await read('/history')};
+    },id);
+    for(const response of Object.values(deniedCheckpoint)) {
+      assert.equal(response.status,403);assert.equal(response.body.error,'owner_only');
     }
-    const beforeRestart=await checkpoint(page);
     assert.equal(beforeRestart.snapshot.draft.id,id);
     assert.equal(beforeRestart.snapshot.draft.tenant_id,tid);
     assert.equal(beforeRestart.snapshot.draft.workflow_id,wf);
@@ -273,7 +283,27 @@ module.exports = async function campaignJourney(page, account, origin, restartAn
     };
     page.on('request',observe);
     try {
-      assert.deepEqual(await checkpoint(page),beforeRestart,'exact saved contract, validation, revisions and approvals survive process restart');
+      const deniedAfterRestart=await page.evaluate(async id=>{
+        const base='/api/agent-orchestrator/campaign-drafts/'+encodeURIComponent(id);
+        const read=async suffix=>{const response=await fetch(base+suffix);return {status:response.status,body:await response.json()};};
+        return {snapshot:await read('/snapshot'),history:await read('/history')};
+      },id);
+      for(const response of Object.values(deniedAfterRestart)) {
+        assert.equal(response.status,403);assert.equal(response.body.error,'owner_only');
+      }
+      const restoredOwnerContext=await page.browser().createBrowserContext();
+      try {
+        const restoredOwnerPage=await restoredOwnerContext.newPage();restoredOwnerPage.setDefaultTimeout(60000);
+        await restoredOwnerPage.goto(origin+'/login',{waitUntil:'networkidle2'});
+        await restoredOwnerPage.locator('#email').fill(ownerEmail);await restoredOwnerPage.locator('#pass').fill(ownerPassword);
+        const [restoredLogin]=await Promise.all([
+          restoredOwnerPage.waitForResponse(r=>new URL(r.url()).pathname==='/api/auth/login'&&r.request().method()==='POST'),
+          restoredOwnerPage.waitForNavigation({waitUntil:'networkidle2'}),
+          restoredOwnerPage.locator('form button[type="submit"]').click(),
+        ]);
+        assert.equal(restoredLogin.status(),200);
+        assert.deepEqual(await checkpoint(restoredOwnerPage),beforeRestart,'exact saved contract, validation, revisions and approvals survive process restart');
+      } finally {await restoredOwnerContext.close();}
       await page.setViewport({width:1440,height:1000});
       await page.goto(origin+'/manage/campaign-journey',{waitUntil:'networkidle2'});
       await page.waitForSelector('[name="marketing_brief"]:enabled');
