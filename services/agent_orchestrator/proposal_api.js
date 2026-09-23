@@ -12,7 +12,7 @@ const { extractIdempotencyKey, requestHashFrom, endpointOf, runIdempotent } = re
 const { capPayload } = require('./payload_cap');
 const { createProposalRuntime } = require('./proposal_generate');
 const {
-  startProposalGeneration, getProposalGeneration, cancelProposalGeneration, publicGeneration,
+  startProposalGeneration, getProposalGeneration, cancelProposalGeneration, publicGeneration, getProposalContext,
 } = require('./proposal_store');
 
 function guardPerm(req, res, key) {
@@ -96,6 +96,12 @@ router.post('/', capPayload, wrap(
     return { status: run.status, body: run.body };
   }
 ));
+
+router.get('/', wrap(PERMS.view, async (req, tid, _userId, pool) => {
+  const workflowId = typeof req.query.workflow_id === 'string' ? req.query.workflow_id.trim() : '';
+  if (!workflowId) fail('validation_failed');
+  return { body: { ok: true, ...await getProposalContext(pool, tid, workflowId) } };
+}));
 
 router.get('/:id', wrap(PERMS.view, async (req, tid, _userId, pool) => {
   const { generation, artifacts } = await getProposalGeneration(

@@ -153,6 +153,26 @@ async function loadArtifacts(client, tenantId, artifactRowIds) {
   }));
 }
 
+async function getProposalContext(pool, tenantId, workflowId) {
+  const wf = await loadWorkflow(pool, tenantId, workflowId);
+  if (!wf) fail('not_found');
+  const runs = await pool.query(
+    `SELECT id, workflow_id, state, requested_platforms FROM orchestrator_research_runs
+      WHERE tenant_id=$1 AND workflow_id=$2 AND state='completed'
+      ORDER BY created_at DESC, id DESC LIMIT 50`, [tenantId, workflowId]
+  );
+  const latest = await loadOne(pool,
+    `SELECT * FROM orchestrator_proposal_generations
+      WHERE tenant_id=$1 AND workflow_id=$2
+      ORDER BY created_at DESC, id DESC LIMIT 1`, [tenantId, workflowId]);
+  return {
+    research_runs: runs.rows,
+    generation: latest ? publicGeneration(latest, await loadArtifacts(pool, tenantId, latest.artifact_ids)) : null,
+    can_generate_in_state: P.ALLOWED_WF.includes(String(wf.current_state)),
+    estimated_cost_micros: String(ESTIMATE),
+  };
+}
+
 async function settleCredits(pool, {
   tenantId, reservationId, idempotencyKey, inflightId, commit, client,
 }) {
@@ -397,6 +417,7 @@ async function cancelProposalGeneration(pool, tenantId, id, flag) {
 }
 
 module.exports = {
+  getProposalContext,
   startProposalGeneration,
   getProposalGeneration,
   cancelProposalGeneration,

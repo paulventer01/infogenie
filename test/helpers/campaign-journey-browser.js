@@ -118,6 +118,42 @@ module.exports = async function campaignJourney(page, account, origin) {
     const status=(await pool.query('SELECT status FROM orchestrator_campaign_drafts WHERE tenant_id=$1 AND id=$2',[tid,id])).rows[0];
     assert.equal(status.status,'approved_for_publish');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM orchestrator_campaign_publish_requests WHERE tenant_id=$1 AND draft_id=$2',[tid,id])).rows[0].n,0);
+    // Restore a persisted proposal sourced from a single-platform run, without generating or spending.
+    const proposal='proposal-'+crypto.randomUUID();
+    await pool.query(`INSERT INTO orchestrator_proposal_generations
+      (id,tenant_id,workflow_id,research_run_id,status,prompt_template_version,provider,model,
+       evidence_snapshot_hash,research_approval_id,research_approval_hash,research_approval_object_version,
+       content_hash,idempotency_key,artifact_ids)
+      VALUES ($1,$2,$3,$4,'pending_review','v1','fixture','fixture-proposal-v1',$5,$6,$5,1,$5,$1,$7::jsonb)`,
+      [proposal,tid,wf,run,hash,approval.id,JSON.stringify([replacement])]);
+    const {getProposalContext}=require('../../services/agent_orchestrator/proposal_store');
+    const context=await getProposalContext(pool,tid,wf);
+    assert.deepEqual(context.research_runs.map(r=>r.id),[run]);
+    assert.equal(context.generation.id,proposal);
+    assert.equal(context.generation.artifacts[0].artifact_id,replacement);
+    assert.equal(context.estimated_cost_micros,'10000');
+    assert.equal(context.can_generate_in_state,false);
+    await assert.rejects(getProposalContext(pool,tid+999999,wf),error=>error.code==='not_found');
+    await assert.rejects(getProposalContext(pool,tid,'missing-workflow'),error=>error.code==='not_found');
+    const mutations=[];
+    const track=request=>{if(request.method()!=='GET' && request.url().includes('/api/agent-orchestrator/'))mutations.push(request.url());};
+    page.on('request',track);
+    await page.goto(origin+'/manage/agent-orchestrator?workflow_id='+wf,{waitUntil:'networkidle2'});
+    await page.waitForSelector('[aria-label="Completed research snapshot"]');
+    assert.equal(await page.$eval('[aria-label="Completed research snapshot"]',el=>el.value),run);
+    await page.waitForFunction(p=>document.body.innerText.includes('Proposal '+p),{},proposal);
+    await page.reload({waitUntil:'networkidle2'});
+    await page.waitForFunction(p=>document.body.innerText.includes('Proposal '+p),{},proposal);
+    const read=await page.evaluate(async w=>{
+      const response=await fetch('/api/agent-orchestrator/proposals?workflow_id='+encodeURIComponent(w));
+      return {status:response.status,body:await response.json()};
+    },wf);
+    assert.equal(read.status,200);assert.equal(read.body.generation.id,proposal);
+    assert.equal(await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Generate proposals').disabled),true);
+    assert.deepEqual(mutations,[]);
+    page.off('request',track);
+    await page.screenshot({path:'/tmp/preview-artifacts/creative-review-restored.png',fullPage:true});
+
   } finally {
     if (briefId) await pool.query('DELETE FROM marketing_briefs WHERE tenant_id=$1 AND id=$2',[account.tenantId,briefId]);
     await pool.end();
