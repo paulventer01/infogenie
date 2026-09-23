@@ -1536,7 +1536,9 @@ export default function AgentOrchestrator() {
     if (activeWorkflowId.current !== workflowId || proposalEpoch.current !== epoch || sequence !== proposalLoadSeq.current) return;
     if (!r.ok) {
       setProposalRuns([]); setProposalContext(null); setCreativeProposal(null);
-      setProposalLoadError("Could not load creative review. Retry to restore saved proposals and completed research.");
+      setProposalLoadError(r.error === "owner_only"
+        ? "Creative review currently requires the deployment owner account. No access permissions have been changed."
+        : "Could not load creative review. Retry to restore saved proposals and completed research.");
       return;
     }
     const runs = (r.research_runs || []).filter(run => run.workflow_id === workflowId && run.state === "completed");

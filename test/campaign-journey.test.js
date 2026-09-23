@@ -398,3 +398,10 @@ test('late generation response cannot populate another workflow',async t=>{
  await act(async()=>release({ok:true,generation:h.generation}));
  assert.doesNotMatch(h.text(),/Review this creative|Fixture proposal generated/);
 });
+
+
+test('owner-gated creative review explains the existing account boundary',async t=>{
+ const h=await creativeReviewHarness(t,{handler:r=>r.url.includes('/proposals?')?{ok:false,error:'owner_only'}:undefined});
+ assert.match(h.text(),/requires the deployment owner account/);
+ assert.ok(h.calls.every(r=>r.method==='GET'));
+});

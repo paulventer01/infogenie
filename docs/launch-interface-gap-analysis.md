@@ -25,7 +25,10 @@ The scoped follow-up restores tenant-scoped completed research and the latest
 saved proposal, displays reviewable brief content and explicit source selection,
 and explains existing state/credit prerequisites. Fixture proposal generation
 still reserves 10,000 micros ($0.01); it is unavailable at `creative_approved`.
-No approval, ceiling, production state or provider boundary is changed. An
+No approval, ceiling, production state or provider boundary is changed. Existing
+proposal routes remain deployment-owner gated; ordinary preview tenant owners
+cannot access them. Browser acceptance covers both the denied tenant-owner read
+and a separate synthetic deployment-owner session in the disposable database. An
 operator-approved new test workspace may be needed to exercise missing generation
 steps. Final-head preview/PostgreSQL/browser certification and human deployed
 creative review plus campaign save/reload/validate/approve remain required.
