@@ -49,13 +49,17 @@ to Settings; date guidance explains browser-local time. Contract values, validat
 and approval controls are unchanged. Hosted browser evidence and operator visual
 acceptance must be recorded separately; this does not complete live validation.
 
-The saved campaign snapshot review now exposes the existing saved contract's
+Human-merged PR #216 is deployed according to the operator's Railway screenshot
+on 2026-09-23. Its saved campaign snapshot review exposes the existing contract's
 budget, platforms, objective, destination, schedule, targeting, tracking and exact
 creative versions in the workspace. It uses server-returned saved values rather
 than unsaved form edits. Reads reject mismatched draft/workflow/tenant/revision/hash
 or status, discard late workspace responses and clear old content on failure.
 This is a read-only review surface; missing credential validation, approval and
-publication boundaries remain unchanged. Hosted fixture verification and operator
+publication boundaries remain unchanged. A post-merge review found keyed saved
+placements were rendered as missing; the correction displays each known platform
+and its saved placement type, with canonical persistence/browser regression coverage.
+This correction requires its own deployment and acceptance. Hosted fixture verification and operator
 acceptance remain separate; no production validation success is claimed.
 
 | Gap | Evidence / current status | Acceptance requirement |

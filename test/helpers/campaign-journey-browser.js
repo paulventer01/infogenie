@@ -105,6 +105,22 @@ module.exports = async function campaignJourney(page, account, origin) {
     },new Date(Date.now()+864e5).toISOString().slice(0,16));
     await click('Save campaign draft');
     await page.waitForFunction(()=>document.body.innerText.includes('Campaign draft saved.'));
+    // Persist canonical keyed placements through the real session/tenant API.
+    const placed=await page.evaluate(async()=>{
+      const id=document.querySelector('[name="saved_campaign"]').value;
+      const url='/api/agent-orchestrator/campaign-drafts/'+encodeURIComponent(id);
+      const saved=await (await fetch(url)).json();
+      if(!saved.ok)throw new Error('Could not read synthetic saved draft');
+      const d=saved.draft;
+      const response=await fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        expected_revision:d.current_revision,expected_hash:d.contract_hash,
+        contract:{...d.contract,placements:{meta:{type:'feed'}}},
+      })});
+      return {status:response.status,body:await response.json()};
+    });
+    assert.equal(placed.status,200);assert.equal(placed.body.ok,true);
+    assert.deepEqual(placed.body.draft.contract.placements,{meta:{type:'feed'}});
+    await click('Refresh saved status');
     await click('Validate saved campaign');
     await page.waitForFunction(()=>document.body.innerText.includes('Meta advertising credentials were not found'));
     assert.ok(await page.evaluate(()=>document.querySelector('[role="alert"]').textContent.includes('adding AI credits will not resolve')));
@@ -210,6 +226,8 @@ module.exports = async function campaignJourney(page, account, origin) {
       assert.ok(savedReview.includes('approved_for_publish'));
       const savedLanding=await ownerPage.$eval('[aria-label="Saved campaign snapshot"]',el=>[...el.querySelectorAll('dt')].find(dt=>dt.textContent==='Landing page URL').nextElementSibling.textContent);
       assert.equal(savedLanding,'https://example.com/');
+      const savedPlacements=await ownerPage.$eval('[aria-label="Saved campaign snapshot"]',el=>[...el.querySelectorAll('dt')].find(dt=>dt.textContent==='Placements').nextElementSibling.textContent);
+      assert.equal(savedPlacements,'meta: feed');
       assert.ok(savedReview.includes(replacement));
       assert.ok(savedReview.includes('version 1'));
       await ownerPage.setViewport({width:390,height:844});

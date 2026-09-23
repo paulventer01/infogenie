@@ -243,7 +243,11 @@ function CampaignSnapshotReview({ draft, published }: { draft: CampaignDraft; pu
   const text = (v: unknown) => typeof v === "string" && v.trim() ? v : typeof v === "number" && Number.isFinite(v) ? String(v) : "Not provided";
   const list = (v: unknown) => Array.isArray(v) && v.length ? v.map(text).join(", ") : "Not provided";
   const c = record(draft.contract), budget = record(c.budget), schedule = record(c.schedule);
-  const audience = record(c.audience), tracking = record(c.tracking);
+  const audience = record(c.audience), tracking = record(c.tracking), placements = record(c.placements);
+  const placementLabels = ["meta", "google", "tiktok"].flatMap(platform => {
+    const type = record(placements[platform]).type;
+    return typeof type === "string" && type.trim() ? [`${platform}: ${type}`] : [];
+  });
   const amount = typeof budget.amount_micros === "number" && Number.isSafeInteger(budget.amount_micros) && budget.amount_micros >= 0
     ? (budget.amount_micros / MICROS_PER_USD).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : "Not provided";
   const rows = [
@@ -253,7 +257,7 @@ function CampaignSnapshotReview({ draft, published }: { draft: CampaignDraft; pu
     ["Landing page URL", record(c.destination).landing_page_url],
     ["Start (saved time with timezone)", schedule.start_at], ["End (saved time with timezone)", schedule.end_at],
     ["Markets", list(record(c.geo).countries)], ["Audience", audience.name], ["Audience notes", audience.notes],
-    ["Placements", Array.isArray(c.placements) ? list(c.placements.map(p => record(p).type)) : "Not provided"],
+    ["Placements", placementLabels.length ? placementLabels.join(", ") : "Not provided"],
     ["Tracking source", tracking.utm_source], ["Tracking medium", tracking.utm_medium], ["Tracking campaign", tracking.utm_campaign],
   ];
   return <section aria-label="Saved campaign snapshot" style={{ marginBottom: 12, padding: 12, background: "#fff", borderRadius: 6, border: "1px solid #E5E7EB", overflowWrap: "anywhere" }}>

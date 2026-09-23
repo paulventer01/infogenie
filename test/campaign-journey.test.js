@@ -616,7 +616,7 @@ test('workspace budget guidance distinguishes zero, small amounts and invalid in
 
 function snapshotDraftFixture(overrides={}) {
  return {id:'draft',tenant_id:7,workflow_id:'workflow',status:'ready_for_approval',current_revision:2,contract_hash:'d'.repeat(64),label:'Saved campaign',notes:'Saved notes',contract:{
-  objective:'traffic',platforms:['meta','google'],budget:{amount_micros:0,currency:'USD'},destination:{landing_page_url:'https://example.com/saved'},schedule:{start_at:'2030-01-01T10:00:00Z',end_at:'2030-02-01T10:00:00Z'},geo:{countries:['US','ZA']},audience:{name:'Saved audience',notes:'<img src=x onerror=alert(1)>'},placements:[{type:'feed'}],tracking:{utm_source:'saved-source'},creatives:[{kind:'creative_brief',asset_id:'saved-asset',version:4,content_hash:'c'.repeat(64)}],accounts:[{credential_ref:'do-not-display-vault-reference'}],unknown_secret:'do-not-display-secret',
+  objective:'traffic',platforms:['meta','google'],budget:{amount_micros:0,currency:'USD'},destination:{landing_page_url:'https://example.com/saved'},schedule:{start_at:'2030-01-01T10:00:00Z',end_at:'2030-02-01T10:00:00Z'},geo:{countries:['US','ZA']},audience:{name:'Saved audience',notes:'<img src=x onerror=alert(1)>'},placements:{meta:{type:'feed'},google:{type:'search'}},tracking:{utm_source:'saved-source'},creatives:[{kind:'creative_brief',asset_id:'saved-asset',version:4,content_hash:'c'.repeat(64)}],accounts:[{credential_ref:'do-not-display-vault-reference'}],unknown_secret:'do-not-display-secret',
  },...overrides};
 }
 async function snapshotHarness(t,options={}) {
@@ -632,7 +632,7 @@ test('snapshot review renders saved contract fields, zero and escaped content wi
  await h.set('draft_label','Unsaved label');await h.set('draft_notes','Unsaved notes');
  await h.click('Preview snapshot');
  const review=document.querySelector('[aria-label="Saved campaign snapshot"]');assert.ok(review);
- for(const value of ['Saved campaign','Saved notes','meta, google','0.00 USD','https://example.com/saved','2030-01-01T10:00:00Z','2030-02-01T10:00:00Z','US, ZA','Saved audience','saved-asset','version 4','saved-source','<img src=x onerror=alert(1)>','Published: false'])assert.ok(review.textContent.includes(value),value);
+ for(const value of ['Saved campaign','Saved notes','meta: feed, google: search','meta, google','0.00 USD','https://example.com/saved','2030-01-01T10:00:00Z','2030-02-01T10:00:00Z','US, ZA','Saved audience','saved-asset','version 4','saved-source','<img src=x onerror=alert(1)>','Published: false'])assert.ok(review.textContent.includes(value),value);
  for(const value of ['Unsaved label','Unsaved notes','do-not-display-vault-reference','do-not-display-secret'])assert.ok(!review.textContent.includes(value),value);
  assert.equal(review.querySelector('img'),null);assert.equal(review.querySelector('a'),null);
  assert.equal(h.calls.filter(r=>r.method!=='GET').length,0);
@@ -680,5 +680,21 @@ for(const operation of ['snapshot','patch']){
   await act(async()=>release());
   assert.match(h.text(),/rev 3/);assert.equal(document.querySelector('[aria-label="Saved campaign snapshot"]'),null);
   assert.doesNotMatch(h.text(),/Saved campaign snapshot loaded|Campaign draft label\/notes updated/);
+ });
+}
+
+for(const [placements,expected] of [
+ [undefined,'Not provided'],[{},'Not provided'],[[{type:'feed'}],'Not provided'],
+ [{meta:{},google:null,tiktok:{type:12}},'Not provided'],
+ [{tiktok:{type:'in_feed'},meta:{type:'<img src=x onerror=alert(1)>',unknown:'hidden-field'},unknown:{type:'hidden-platform'}},'meta: <img src=x onerror=alert(1)>, tiktok: in_feed'],
+]){
+ test('snapshot placements render only known platform types: '+expected,async t=>{
+  const h=await snapshotHarness(t,{readOnly:true});h.draft.contract.placements=placements;
+  await h.click('Preview snapshot');
+  const review=document.querySelector('[aria-label="Saved campaign snapshot"]');
+  const row=[...review.querySelectorAll('dt')].find(el=>el.textContent==='Placements').nextElementSibling;
+  assert.equal(row.textContent,expected);assert.equal(row.querySelector('img'),null);
+  assert.doesNotMatch(review.textContent,/hidden-field|hidden-platform/);
+  assert.equal(h.calls.filter(r=>r.method!=='GET').length,0);
  });
 }
