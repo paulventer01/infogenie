@@ -329,7 +329,8 @@ const btnSecondary: CSSProperties = {
   fontSize: "0.75rem",
 };
 
-const draftFld: CSSProperties = { padding: 6, borderRadius: 6, border: "1px solid #E5E7EB", width: "100%" };
+const draftFld: CSSProperties = { padding: 6, borderRadius: 6, border: "1px solid #E5E7EB", width: "100%", boxSizing: "border-box", minWidth: 0 };
+const draftLabel: CSSProperties = { display: "block", margin: "10px 0 4px", fontWeight: 600 };
 
 function deriveAutonomousStatus(state: string): string {
   if (
@@ -3235,8 +3236,10 @@ export default function AgentOrchestrator() {
                       <div style={{ fontSize: "0.78rem", color: "#374151" }}>
                         <div>Campaign draft {campaignDraft.id} · {campaignDraft.status} · rev {campaignDraft.current_revision}{campaignDraft.label ? ` · ${campaignDraft.label}` : ""}</div>
                         {(campaignDraft.validation?.errors || []).map((e, i) => <div role="alert" key={i} style={{ color: "#B91C1C", marginTop: 4 }}>{campaignValidationMessage(e)}</div>)}
-                        <input placeholder="Label" value={draftForm.label} onChange={(e) => setDraftForm((f) => ({ ...f, label: e.target.value }))} style={{ ...draftFld, marginTop: 8 }} />
-                        <textarea placeholder="Notes" value={draftForm.notes} onChange={(e) => setDraftForm((f) => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...draftFld, marginTop: 6 }} />
+                        <label htmlFor="campaign-draft-label" style={draftLabel}>Campaign name</label>
+                        <input id="campaign-draft-label" name="draft_label" placeholder="Label" value={draftForm.label} onChange={(e) => setDraftForm((f) => ({ ...f, label: e.target.value }))} style={draftFld} />
+                        <label htmlFor="campaign-draft-notes" style={draftLabel}>Campaign notes</label>
+                        <textarea id="campaign-draft-notes" name="draft_notes" placeholder="Notes" value={draftForm.notes} onChange={(e) => setDraftForm((f) => ({ ...f, notes: e.target.value }))} rows={2} style={draftFld} />
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "10px 0" }}>
                           {can("orchestrator.workflows.edit") && <button type="button" disabled={!!draftBusy} onClick={patchCampaignDraft} style={{ ...btnSecondary, opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "patch" ? "Saving…" : "Save label/notes"}</button>}
                           {can("orchestrator.workflows.edit") && <button type="button" disabled={!!draftBusy} onClick={validateCampaignDraft} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "validate" ? "Validating…" : "Validate draft"}</button>}
@@ -3248,7 +3251,7 @@ export default function AgentOrchestrator() {
                             <button type="button" disabled={!!draftBusy || !draftApproveConfirm} onClick={approveCampaignDraft} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: draftBusy || !draftApproveConfirm ? 0.6 : 1 }}>{draftBusy === "approve" ? "Approving…" : "Approve snapshot"}</button>
                           )}
                           {can("orchestrator.workflows.approve.campaign_publishing") && campaignDraft.status === "approved_for_publish" && (
-                            <input placeholder="Reason for revoking approval (required)" value={draftRevokeReason} onChange={(e) => setDraftRevokeReason(e.target.value)} maxLength={500} style={{ ...draftFld, width: "100%" }} />
+                            <label style={{ ...draftLabel, width: "100%" }}>Reason for revoking approval (required)<input placeholder="Reason for revoking approval (required)" value={draftRevokeReason} onChange={(e) => setDraftRevokeReason(e.target.value)} maxLength={500} style={draftFld} /></label>
                           )}
                           {can("orchestrator.workflows.approve.campaign_publishing") && campaignDraft.status === "approved_for_publish" && (
                             <button type="button" disabled={!!draftBusy || !draftRevokeReason.trim()} onClick={revokeCampaignDraft} style={{ ...btnSecondary, opacity: draftBusy || !draftRevokeReason.trim() ? 0.6 : 1 }}>{draftBusy === "revoke" ? "Revoking…" : "Revoke approval"}</button>
@@ -3266,20 +3269,36 @@ export default function AgentOrchestrator() {
                       </div>
                     ) : (
                       <div style={{ fontSize: "0.78rem", color: "#374151" }}>
-                        {(["label", "notes"] as const).map((k) => k === "label" ? (
-                          <input key={k} placeholder="Label" value={draftForm.label} onChange={(e) => setDraftForm((f) => ({ ...f, label: e.target.value }))} style={{ ...draftFld, marginBottom: 6 }} />
-                        ) : (
-                          <textarea key={k} placeholder="Notes" value={draftForm.notes} onChange={(e) => setDraftForm((f) => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...draftFld, marginBottom: 6 }} />
-                        ))}
-                        <input placeholder="Landing page URL" value={draftForm.landing_page_url} onChange={(e) => setDraftForm((f) => ({ ...f, landing_page_url: e.target.value }))} style={{ ...draftFld, marginBottom: 6 }} />
-                        <input placeholder="Credential ref" value={draftForm.credential_ref} onChange={(e) => setDraftForm((f) => ({ ...f, credential_ref: e.target.value }))} style={{ ...draftFld, marginBottom: 6 }} />
-                        <input placeholder="Creative asset_id" value={draftForm.asset_id} onChange={(e) => setDraftForm((f) => ({ ...f, asset_id: e.target.value }))} style={{ ...draftFld, marginBottom: 6 }} />
-                        <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                          <input placeholder="Version" value={draftForm.asset_version} onChange={(e) => setDraftForm((f) => ({ ...f, asset_version: e.target.value }))} style={{ ...draftFld, flex: 1 }} />
-                          <input placeholder="content_hash" value={draftForm.content_hash} onChange={(e) => setDraftForm((f) => ({ ...f, content_hash: e.target.value }))} style={{ ...draftFld, flex: 2 }} />
-                        </div>
-                        <input type="number" placeholder="Budget micros" value={draftForm.budget_micros} onChange={(e) => setDraftForm((f) => ({ ...f, budget_micros: e.target.value }))} style={{ ...draftFld, marginBottom: 6 }} />
-                        <input type="datetime-local" value={draftForm.start_at} onChange={(e) => setDraftForm((f) => ({ ...f, start_at: e.target.value }))} style={{ ...draftFld, marginBottom: 10 }} />
+                        <label htmlFor="campaign-draft-label" style={draftLabel}>Campaign name</label>
+                        <input id="campaign-draft-label" name="draft_label" placeholder="Label" value={draftForm.label} onChange={(e) => setDraftForm((f) => ({ ...f, label: e.target.value }))} style={draftFld} />
+                        <label htmlFor="campaign-draft-notes" style={draftLabel}>Campaign notes</label>
+                        <textarea id="campaign-draft-notes" name="draft_notes" placeholder="Notes" value={draftForm.notes} onChange={(e) => setDraftForm((f) => ({ ...f, notes: e.target.value }))} rows={2} style={draftFld} />
+                        <label htmlFor="campaign-draft-landing" style={draftLabel}>Landing page URL</label>
+                        <input id="campaign-draft-landing" name="draft_landing" placeholder="Landing page URL" value={draftForm.landing_page_url} onChange={(e) => setDraftForm((f) => ({ ...f, landing_page_url: e.target.value }))} style={draftFld} />
+                        <label htmlFor="campaign-draft-account" style={draftLabel}>Advertising account reference</label>
+                        <input id="campaign-draft-account" name="draft_account" aria-describedby="campaign-draft-account-help" placeholder="Credential ref" value={draftForm.credential_ref} onChange={(e) => setDraftForm((f) => ({ ...f, credential_ref: e.target.value }))} style={draftFld} />
+                        <p id="campaign-draft-account-help">This references advertising credentials already saved in Settings. Do not enter an API key or token here. Fixture research does not connect an advertising account.</p>
+                        <fieldset style={{ minWidth: 0, margin: "14px 0", padding: 10, border: "1px solid #E5E7EB", borderRadius: 6 }}>
+                          <legend>Saved creative reference</legend>
+                          <p id="campaign-draft-creative-help" style={{ marginTop: 0 }}>Use the asset ID, version and content hash from the same saved, approved creative brief. These values identify the exact content for validation.</p>
+                          <label htmlFor="campaign-draft-asset" style={draftLabel}>Creative asset ID</label>
+                          <input id="campaign-draft-asset" name="draft_asset" aria-describedby="campaign-draft-creative-help" placeholder="Creative asset_id" value={draftForm.asset_id} onChange={(e) => setDraftForm((f) => ({ ...f, asset_id: e.target.value }))} style={draftFld} />
+                          <label htmlFor="campaign-draft-version" style={draftLabel}>Creative version</label>
+                          <input id="campaign-draft-version" name="draft_version" aria-describedby="campaign-draft-creative-help" placeholder="Version" value={draftForm.asset_version} onChange={(e) => setDraftForm((f) => ({ ...f, asset_version: e.target.value }))} style={draftFld} />
+                          <label htmlFor="campaign-draft-hash" style={draftLabel}>Creative content hash</label>
+                          <input id="campaign-draft-hash" name="draft_hash" aria-describedby="campaign-draft-creative-help" placeholder="content_hash" value={draftForm.content_hash} onChange={(e) => setDraftForm((f) => ({ ...f, content_hash: e.target.value }))} style={draftFld} />
+                        </fieldset>
+                        <label htmlFor="campaign-draft-budget" style={draftLabel}>Advertising budget (micros)</label>
+                        <input id="campaign-draft-budget" name="draft_budget" aria-describedby="campaign-draft-budget-help" type="number" placeholder="Budget micros" value={draftForm.budget_micros} onChange={(e) => setDraftForm((f) => ({ ...f, budget_micros: e.target.value }))} style={draftFld} />
+                        <p id="campaign-draft-budget-help">
+                          {draftForm.budget_micros.trim() && Number.isSafeInteger(Number(draftForm.budget_micros)) && Number(draftForm.budget_micros) >= 0
+                            ? `Draft advertising budget: ${(Number(draftForm.budget_micros) / 1000000).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 })} ${CAMPAIGN_CURRENCIES.has(selected.currency) ? selected.currency : "USD"}. `
+                            : "Enter a non-negative whole number of micros. "}
+                          1,000,000 micros = 1 currency unit. This is separate from AI credits. Saving a draft does not spend this budget or publish a campaign.
+                        </p>
+                        <label htmlFor="campaign-draft-start" style={draftLabel}>Campaign start date and time</label>
+                        <input id="campaign-draft-start" name="draft_start" aria-describedby="campaign-draft-start-help" type="datetime-local" value={draftForm.start_at} onChange={(e) => setDraftForm((f) => ({ ...f, start_at: e.target.value }))} style={draftFld} />
+                        <p id="campaign-draft-start-help">Uses your browser’s local time zone. Saving this date does not schedule a live launch.</p>
                         {can("orchestrator.workflows.edit") && <button type="button" disabled={!!draftBusy} onClick={createCampaignDraft} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "create" ? "Creating…" : "Create campaign draft"}</button>}
                       </div>
                     )}

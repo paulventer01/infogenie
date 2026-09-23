@@ -29,7 +29,7 @@ no assistant production spending, approval, cancellation or configuration change
 is implied. Generic workflow approval is separate from an exact brief approval.
 Existing deployment-owner proposal gates remain unchanged.
 
-The next scoped UI correction refreshes shared credit accounting after proposal,
+Human-merged PR #214 refreshes shared credit accounting after proposal,
 static-image and video requests, after terminal image/video polling, and after
 video cancellation. Operator screenshots showed the old balance until a full
 reload after the successful static fixture. This establishes stale UI evidence,
@@ -39,7 +39,14 @@ Campaign validation explains missing Meta advertising credentials in both
 campaign screens; the server continues to deny validation without them. Fixture
 research does not establish an advertising account connection. No limits are
 raised, credentials created, approval gates bypassed or live providers called.
-Deployed acceptance of this correction remains pending.
+Deployed acceptance of #214 remains pending.
+
+The next interface slice adds persistent campaign-draft field labels, groups the
+saved creative reference, and explains advertising-budget micros in the campaign
+currency separately from AI credits. Account-reference guidance directs credentials
+to Settings; date guidance explains browser-local time. Contract values, validation
+and approval controls are unchanged. Hosted browser evidence and operator visual
+acceptance must be recorded separately; this does not complete live validation.
 
 | Gap | Evidence / current status | Acceptance requirement |
 | --- | --- | --- |
