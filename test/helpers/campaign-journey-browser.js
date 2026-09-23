@@ -209,7 +209,7 @@ module.exports = async function campaignJourney(page, account, origin) {
       assert.ok(savedReview.includes('Published: false'));
       assert.ok(savedReview.includes('approved_for_publish'));
       const savedLanding=await ownerPage.$eval('[aria-label="Saved campaign snapshot"]',el=>[...el.querySelectorAll('dt')].find(dt=>dt.textContent==='Landing page URL').nextElementSibling.textContent);
-      assert.equal(savedLanding,'https://example.com');
+      assert.equal(savedLanding,'https://example.com/');
       assert.ok(savedReview.includes(replacement));
       assert.ok(savedReview.includes('version 1'));
       await ownerPage.setViewport({width:390,height:844});
