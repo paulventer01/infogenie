@@ -1,28 +1,37 @@
 # Launch and interface gap analysis
 
-Updated 2026-09-22. This replaces the old marketing-taxonomy roadmap as the
+Updated 2026-09-23. This replaces the old marketing-taxonomy roadmap as the
 priority order for the current interface work. A shipped route or green build
 is not evidence of production acceptance. Do not start deferred features.
 
 ## Essential before launch
 
-### Active acceptance blocker — research fixture persistence (#210)
+### Research recovery accepted; creative-review journey remains incomplete
 
-Operator evidence on 2026-09-22 shows #209 active and research approval succeeding,
-but starting Meta fixture research returns HTTP 500. PR #210's PostgreSQL regression
-reproduced this: checked-in August capture dates generate a September expiry before
-the insertion date, violating the existing evidence retention constraint. The fix
-dates a new simulated fixture capture at binding time; it does not re-date live
-evidence, extend explicit expiry, change retention constraints or authorize spend.
-PR #210 was human-merged and deployed. Operator diagnostics then show PostgreSQL
-23505 at research_ingest.js:596 (research-run insertion). An earlier interrupted
-run occupying the existing one-active-run-per-workflow index is the working
-diagnosis; the screenshot does not include the violated constraint name.
-The follow-up handles that specific constraint only, returning the existing
-tenant-scoped run and an explicit permission-controlled cancel/retry path.
-It neither cancels work automatically nor removes the concurrency guard.
-Final-head PostgreSQL certification, Security/QA review and deployed human
-acceptance remain required. Campaign save/reload/approval remains unverified.
+PRs #210 and #211 were human-merged and deployed. On 2026-09-23 the operator
+exposed the interrupted Meta run, explicitly cancelled it, and completed a fresh
+Meta Fixture (safe) run (`rr_1c8407425f162eff`). This accepts the demonstrated
+Meta fixture cancel/retry path; it does not establish live-provider, Google,
+TikTok, campaign approval or publishing acceptance.
+
+The next operator screenshots expose a creative-review handoff gap: completed
+single-platform research did not expose proposal generation, and persisted
+proposals were not restored on reload. The workflow reached `creative_approved`
+with a zero credit ceiling, but the screenshots do not establish generated or
+reviewed creative content. Generic workflow approval is separate from approving
+an exact creative brief.
+
+The scoped follow-up restores tenant-scoped completed research and the latest
+saved proposal, displays reviewable brief content and explicit source selection,
+and explains existing state/credit prerequisites. Fixture proposal generation
+still reserves 10,000 micros ($0.01); it is unavailable at `creative_approved`.
+No approval, ceiling, production state or provider boundary is changed. Existing
+proposal routes remain deployment-owner gated; ordinary preview tenant owners
+cannot access them. Browser acceptance covers both the denied tenant-owner read
+and a separate synthetic deployment-owner session in the disposable database. An
+operator-approved new test workspace may be needed to exercise missing generation
+steps. Final-head preview/PostgreSQL/browser certification and human deployed
+creative review plus campaign save/reload/validate/approve remain required.
 
 | Gap | Evidence / current status | Acceptance requirement |
 | --- | --- | --- |

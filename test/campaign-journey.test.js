@@ -264,3 +264,144 @@ for(const requested of ['workflow','foreign-workflow']){
   assert.equal(h.calls.filter(r=>r.method!=='GET').length,0);
  });
 }
+
+async function creativeReviewHarness(t, options = {}) {
+ const run={id:'meta-completed',workflow_id:'workflow',state:'completed',requested_platforms:['meta']};
+ const generation={id:'proposal',workflow_id:'workflow',status:'pending_review',version:1,provider:'fixture',artifacts:[{id:'brief',kind:'creative_brief',status:'draft',format:'image',payload:{objective:'Review this creative',primary_message:{text:'<script>not executable</script>'}},citations:[]}]};
+ const state={runs:options.runs || [],generation:options.generation ? generation : null,contextError:false};
+ const h=await harness(t,async(r)=>{
+  if(options.handler){const result=await options.handler(r,state);if(result!==undefined)return result;}
+  if(r.url==='/api/tenants/active')return {ok:true,permissions:['orchestrator.workflows.view','orchestrator.workflows.approve.research_execution',...(options.readOnly?[]:['orchestrator.workflows.edit','orchestrator.workflows.approve.creative_generation'])],isPlatformAdmin:false};
+  if(r.url.endsWith('/workflows'))return {ok:true,workflows:[workflow,{...workflow,id:'other',name:'Other workflow'}]};
+  if(r.url.endsWith('/workflows/workflow'))return {ok:true,workflow:{...workflow,current_state:options.advanced?'creative_approved':'research_approved',current_phase:'research',version:1,credit_ceiling_micros:options.zero?0:1000000}};
+  if(r.url.endsWith('/workflows/other'))return {ok:true,workflow:{...workflow,id:'other',name:'Other workflow',current_state:'research_approved',version:1}};
+  if(r.url.includes('/proposals?workflow_id='))return state.contextError?{ok:false,error:'permission_denied'}:{ok:true,research_runs:state.runs,generation:state.generation,can_generate_in_state:!options.advanced,estimated_cost_micros:'10000'};
+  if(r.url.endsWith('/research/runs')&&r.method==='POST'){state.runs=[run];return {ok:true,run};}
+  if(r.url.endsWith('/proposals')&&r.method==='POST'){state.generation=generation;return {ok:true,generation};}
+  return {ok:true};
+ },{component:'components/features/manage/AgentOrchestrator.tsx',url:'http://localhost/manage/agent-orchestrator?workflow_id=workflow'});
+ return {...h,context:state,run,generation};
+}
+
+test('completed Meta research becomes an explicit proposal source without cross-platform research',async t=>{
+ const h=await creativeReviewHarness(t);
+ assert.match(h.text(),/No creative proposal has been generated/);
+ await h.click('Start Meta research');
+ assert.equal(document.querySelector('[aria-label="Completed research snapshot"]').value,'meta-completed');
+ await h.click('Generate proposals');
+ const call=h.calls.find(r=>r.url.endsWith('/proposals')&&r.method==='POST');
+ assert.equal(call.body.research_run_id,'meta-completed');assert.equal(call.body.workflow_id,'workflow');assert.equal(call.body.mode,'fixture');
+ assert.match(h.text(),/Review this creative/);assert.match(h.text(),/<script>not executable<\/script>/);
+ assert.equal(document.querySelectorAll('script').length,0);
+ assert.equal(h.calls.filter(r=>r.url.endsWith('/approve')).length,0);
+});
+
+test('saved proposal and completed research restore on a new page mount without mutations',async t=>{
+ const run={id:'restored',workflow_id:'workflow',state:'completed',requested_platforms:['google']};
+ const h=await creativeReviewHarness(t,{runs:[run],generation:true});
+ assert.match(h.text(),/Review this creative/);assert.equal(document.querySelector('[aria-label="Completed research snapshot"]').value,'restored');
+ assert.ok(h.calls.every(r=>r.method==='GET'));
+});
+
+for(const options of [{zero:true},{advanced:true},{readOnly:true}])test('creative review preserves generation boundary '+JSON.stringify(options),async t=>{
+ const run={id:'saved',workflow_id:'workflow',state:'completed',requested_platforms:['meta']};
+ const h=await creativeReviewHarness(t,{...options,runs:[run]});
+ const button=[...document.querySelectorAll('button')].find(b=>b.textContent==='Generate proposals');
+ if(options.readOnly)assert.equal(button,undefined);else assert.equal(button.disabled,true);
+ if(options.zero)assert.match(h.text(),/blocked by the workflow credit ceiling/);
+ if(options.advanced)assert.match(h.text(),/unavailable in this workflow state/);
+ assert.ok(h.calls.every(r=>r.method==='GET'));
+});
+
+test('multiple research sources require a choice and foreign or unfinished runs are excluded',async t=>{
+ const h=await creativeReviewHarness(t,{runs:[
+  {id:'meta',workflow_id:'workflow',state:'completed',requested_platforms:['meta']},
+  {id:'google',workflow_id:'workflow',state:'completed',requested_platforms:['google']},
+  {id:'foreign',workflow_id:'elsewhere',state:'completed'},
+  {id:'unfinished',workflow_id:'workflow',state:'running'},
+ ]});
+ const select=document.querySelector('[aria-label="Completed research snapshot"]');
+ assert.equal(select.options.length,3);assert.equal(select.value,'');
+ assert.equal([...document.querySelectorAll('button')].find(b=>b.textContent==='Generate proposals').disabled,true);
+ assert.ok(h.calls.every(r=>r.method==='GET'));
+});
+
+test('creative review read failure clears stale proposal and exposes retry',async t=>{
+ const h=await creativeReviewHarness(t,{generation:true});assert.match(h.text(),/Review this creative/);
+ h.context.contextError=true;await h.click('Refresh creative review');
+ assert.doesNotMatch(h.text(),/Review this creative/);assert.match(h.text(),/Could not load creative review/);
+ h.context.contextError=false;await h.click('Refresh creative review');assert.match(h.text(),/Review this creative/);
+});
+
+test('late creative context from the prior workflow cannot populate the selected workflow',async t=>{
+ let release;
+ const h=await creativeReviewHarness(t,{handler:r=>{
+  if(r.url.endsWith('/proposals?workflow_id=workflow'))return new Promise(resolve=>{release=resolve;});
+ }});
+ await act(async()=>[...document.querySelectorAll('tr')].find(row=>row.textContent.includes('Other workflow')).click());
+ await act(async()=>release({ok:true,research_runs:[h.run],generation:h.generation,can_generate_in_state:true,estimated_cost_micros:'10000'}));
+ assert.doesNotMatch(h.text(),/Review this creative/);
+ assert.equal(document.querySelector('[aria-label="Completed research snapshot"]'),null);
+});
+
+
+test('replacing an approved proposal clears exact image and video confirmations',async t=>{
+ const h=await creativeReviewHarness(t);
+ const approved=(id,approval)=>({...h.generation,id,content_hash:id,artifacts:['image','video'].map(format=>({
+  id:format,kind:'creative_brief',format,status:'approved',version:1,content_hash:id,approval_id:approval,approval_hash:id,
+ }))});
+ h.context.generation=approved('first',1);await h.click('Refresh creative review');
+ const checkboxes=()=>[...document.querySelectorAll('label')].filter(l=>l.textContent.includes('exact approved proposal version')).map(l=>l.querySelector('input'));
+ assert.equal(checkboxes().length,2);
+ await act(async()=>checkboxes().forEach(el=>el.click()));assert.ok(checkboxes().every(el=>el.checked));
+ h.context.generation=approved('second',2);await h.click('Refresh creative review');
+ assert.ok(checkboxes().every(el=>!el.checked));
+ for(const label of ['Generate static image','Enqueue video job'])assert.equal([...document.querySelectorAll('button')].find(b=>b.textContent===label).disabled,true);
+ // A changed approval of the same proposal also requires fresh confirmation.
+ await act(async()=>checkboxes().forEach(el=>el.click()));
+ h.context.generation=approved('second',3);await h.click('Refresh creative review');
+ assert.ok(checkboxes().every(el=>!el.checked));assert.ok(h.calls.every(r=>r.method==='GET'));
+});
+
+test('creative review displays escaped safety notes and claim qualifications',async t=>{
+ const h=await creativeReviewHarness(t);
+ h.context.generation={...h.generation,research_run_id:'saved-source',artifacts:[{...h.generation.artifacts[0],payload:{
+  compliance_notes:'<img src=x onerror=alert(1)>',prohibited_claims:['Guaranteed returns'],limitations:'No performance evidence',
+  supporting_claims:[{text:'Creative hypothesis',claim_kind:'hypothesis',evidence_backed:false}],
+ }}]};
+ await h.click('Refresh creative review');
+ for(const text of ['Saved proposal research source: saved-source','<img src=x onerror=alert(1)>','Guaranteed returns','No performance evidence','claim kind: hypothesis','evidence backed: false'])assert.ok(h.text().includes(text),text);
+ assert.equal(document.querySelector('img[src="x"]'),null);assert.ok(h.calls.every(r=>r.method==='GET'));
+});
+
+
+test('late context refresh cannot replace a newly generated proposal',async t=>{
+ let defer=false,release;
+ const run={id:'saved',workflow_id:'workflow',state:'completed',requested_platforms:['meta']};
+ const h=await creativeReviewHarness(t,{runs:[run],handler:r=>{
+  if(defer&&r.url.includes('/proposals?'))return new Promise(resolve=>{release=resolve;});
+ }});
+ defer=true;await h.click('Refresh creative review');
+ await h.click('Generate proposals');assert.match(h.text(),/Review this creative/);
+ await act(async()=>release({ok:true,research_runs:[run],generation:null,can_generate_in_state:true,estimated_cost_micros:'10000'}));
+ assert.match(h.text(),/Review this creative/);
+});
+
+test('late generation response cannot populate another workflow',async t=>{
+ let release;
+ const run={id:'saved',workflow_id:'workflow',state:'completed',requested_platforms:['meta']};
+ const h=await creativeReviewHarness(t,{runs:[run],handler:r=>{
+  if(r.url.endsWith('/proposals')&&r.method==='POST')return new Promise(resolve=>{release=resolve;});
+ }});
+ await h.click('Generate proposals');
+ await act(async()=>[...document.querySelectorAll('tr')].find(row=>row.textContent.includes('Other workflow')).click());
+ await act(async()=>release({ok:true,generation:h.generation}));
+ assert.doesNotMatch(h.text(),/Review this creative|Fixture proposal generated/);
+});
+
+
+test('owner-gated creative review explains the existing account boundary',async t=>{
+ const h=await creativeReviewHarness(t,{handler:r=>r.url.includes('/proposals?')?{ok:false,error:'owner_only'}:undefined});
+ assert.match(h.text(),/requires the deployment owner account/);
+ assert.ok(h.calls.every(r=>r.method==='GET'));
+});

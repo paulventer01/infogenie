@@ -11,6 +11,18 @@ function formatMicros(n: number | string | null | undefined): string {
   return (Number(n || 0) / MICROS_PER_USD).toFixed(2);
 }
 
+function creativeReviewText(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(creativeReviewText).filter(Boolean).join("\n");
+  if (value && typeof value === "object" && "text" in value) {
+    const claim = value as Record<string, unknown>;
+    const qualification = ["claim_kind", "evidence_backed"].filter(key => key in claim)
+      .map(key => `${key.replaceAll("_", " ")}: ${creativeReviewText(claim[key])}`);
+    return [creativeReviewText(claim.text), ...qualification].join(" · ");
+  }
+  return "";
+}
+
 function dollarsToMicros(dollars: string | number): number {
   const n = Number(dollars);
   if (!Number.isFinite(n) || n < 0) return 0;
@@ -168,6 +180,8 @@ interface ResearchRun {
 
 interface CreativeProposal {
   id: string;
+  research_run_id?: string;
+  workflow_id: string;
   status: string;
   version: number;
   content_hash?: string;
@@ -186,6 +200,7 @@ interface CreativeProposal {
     approval_hash?: string | null;
     content_hash?: string;
     citations?: Array<{ evidence_id?: string }>;
+    payload?: Record<string, unknown>;
   }>;
 }
 
@@ -561,6 +576,14 @@ export default function AgentOrchestrator() {
   const [orchMsg, setOrchMsg] = useState("");
   const [orchMsgIsError, setOrchMsgIsError] = useState(false);
   const [creativeProposal, setCreativeProposal] = useState<CreativeProposal | null>(null);
+  const [proposalRuns, setProposalRuns] = useState<ResearchRun[]>([]);
+  const [proposalRunId, setProposalRunId] = useState("");
+  const [proposalContext, setProposalContext] = useState<{ can_generate_in_state: boolean; estimated_cost_micros: string } | null>(null);
+  const [proposalLoadError, setProposalLoadError] = useState("");
+  const proposalEpoch = useRef(0);
+  const proposalLoadSeq = useRef(0);
+  const activeWorkflowId = useRef(selectedId);
+  activeWorkflowId.current = selectedId;
   const [proposalBusy, setProposalBusy] = useState("");
   const [proposalMsg, setProposalMsg] = useState("");
   const [proposalMsgIsError, setProposalMsgIsError] = useState(false);
@@ -572,6 +595,15 @@ export default function AgentOrchestrator() {
   const [videoJob, setVideoJob] = useState<VideoJob | null>(null);
   const [videoGenConfirm, setVideoGenConfirm] = useState(false);
   const [videoGenBusy, setVideoGenBusy] = useState(""); const [videoGenMsg, setVideoGenMsg] = useState(""); const [videoGenMsgIsError, setVideoGenMsgIsError] = useState(false);
+  const proposalApprovalIdentity = JSON.stringify([
+    creativeProposal?.id, creativeProposal?.version, creativeProposal?.content_hash,
+    ...(creativeProposal?.artifacts || []).filter(a => a.kind === "creative_brief").map(a =>
+      [a.artifact_id || a.id, a.version, a.content_hash, a.status, a.approval_id, a.approval_hash]),
+  ]);
+  useEffect(() => {
+    setStaticGenConfirm(false);
+    setVideoGenConfirm(false);
+  }, [proposalApprovalIdentity]);
   const [campaignDraft, setCampaignDraft] = useState<CampaignDraft | null>(null);
   const [draftSnapshot, setDraftSnapshot] = useState<{ contract_hash?: string; status?: string; object_kind?: string; published?: boolean } | null>(null);
   const [draftHistory, setDraftHistory] = useState<{ revisions?: { revision: number; contract_hash: string; created_at: string }[]; approvals?: { id: number; revision: number; contract_hash: string; created_at: string; revoked_at?: string | null }[] } | null>(null);
@@ -765,6 +797,15 @@ export default function AgentOrchestrator() {
   }, [selectedId, loadSelected]);
 
   useEffect(() => {
+    proposalEpoch.current += 1;
+    setCreativeProposal(null);
+    setProposalRuns([]);
+    setProposalRunId("");
+    setProposalContext(null);
+    setProposalLoadError("");
+    setProposalBusy("");
+    setProposalMsg("");
+    setProposalMsgIsError(false);
     setMetaResearchRun(null);
     setMetaResearchMsg("");
     setMetaResearchMsgIsError(false);
@@ -1485,33 +1526,59 @@ export default function AgentOrchestrator() {
     setOrchMsg("Research run continued.");
   }
 
+  const loadProposalContext = useCallback(async (workflowId: string) => {
+    const epoch = proposalEpoch.current;
+    const sequence = ++proposalLoadSeq.current;
+    setProposalLoadError("");
+    const r = await apiGet<{ ok: boolean; research_runs?: ResearchRun[]; generation?: CreativeProposal | null; can_generate_in_state: boolean; estimated_cost_micros: string; error?: string }>(
+      `/api/agent-orchestrator/proposals?workflow_id=${encodeURIComponent(workflowId)}`,
+    );
+    if (activeWorkflowId.current !== workflowId || proposalEpoch.current !== epoch || sequence !== proposalLoadSeq.current) return;
+    if (!r.ok) {
+      setProposalRuns([]); setProposalContext(null); setCreativeProposal(null);
+      setProposalLoadError(r.error === "owner_only"
+        ? "Creative review currently requires the deployment owner account. No access permissions have been changed."
+        : "Could not load creative review. Retry to restore saved proposals and completed research.");
+      return;
+    }
+    const runs = (r.research_runs || []).filter(run => run.workflow_id === workflowId && run.state === "completed");
+    setProposalRuns(runs);
+    setProposalRunId(previous => runs.some(run => run.id === previous) ? previous : runs.length === 1 ? runs[0].id : "");
+    setCreativeProposal(r.generation?.workflow_id === workflowId ? r.generation : null);
+    setProposalContext({ can_generate_in_state: r.can_generate_in_state === true, estimated_cost_micros: r.estimated_cost_micros });
+  }, []);
+
+  useEffect(() => {
+    if (selected?.id && selected.id === selectedId) void loadProposalContext(selected.id);
+  }, [selected?.id, selected?.current_state, selected?.version, selectedId, metaResearchRun?.state, googleResearchRun?.state, tiktokResearchRun?.state, orchRun?.state, loadProposalContext]);
+
   async function generateCreativeProposal() {
-    if (!selected || !orchRun?.id) return;
+    if (!selected || selected.id !== activeWorkflowId.current || !proposalContext?.can_generate_in_state || proposalBusy) return;
+    if (!proposalRuns.some(run => run.id === proposalRunId && run.workflow_id === selected.id && run.state === "completed")) return;
     if (!can("orchestrator.workflows.edit") && !can("orchestrator.workflows.approve.creative_generation")) return;
+    if (Number(selected.credit_ceiling_micros || 0) < Number(proposalContext.estimated_cost_micros)) return;
+    const workflowId = selected.id, epoch = proposalEpoch.current;
+    proposalLoadSeq.current += 1;
     setProposalBusy("generate");
     setProposalMsg("");
     const r = await orchMutate<{ ok: boolean; generation?: CreativeProposal; error?: string }>(
-      "/api/agent-orchestrator/proposals",
-      "POST",
-      { workflow_id: selected.id, research_run_id: orchRun.id, mode: "fixture" },
+      "/api/agent-orchestrator/proposals", "POST",
+      { workflow_id: workflowId, research_run_id: proposalRunId, mode: "fixture" },
     );
+    if (activeWorkflowId.current !== workflowId || epoch !== proposalEpoch.current) return;
     setProposalBusy("");
     if (r.ok === false) {
       setProposalMsgIsError(true);
-      setProposalMsg(r.error || "Proposal generation failed");
+      setProposalMsg(BLOCK_REASON_LABELS[r.error || ""] || r.error || "Proposal generation failed");
       return;
     }
-    if (r.generation) setCreativeProposal(r.generation);
+    if (r.generation?.workflow_id === workflowId) setCreativeProposal(r.generation);
     setProposalMsgIsError(false);
-    setProposalMsg("Proposal generated for review. No ads were published.");
+    setProposalMsg("Fixture proposal generated for review. No ads were published.");
   }
 
   async function refreshCreativeProposal() {
-    if (!creativeProposal?.id) return;
-    const r = await apiGet<{ ok: boolean; generation?: CreativeProposal; error?: string }>(
-      `/api/agent-orchestrator/proposals/${creativeProposal.id}`,
-    );
-    if (r.ok && r.generation) setCreativeProposal(r.generation);
+    if (selected?.id) await loadProposalContext(selected.id);
   }
 
   async function approveImageBrief() {
@@ -3031,23 +3098,42 @@ export default function AgentOrchestrator() {
                     <p style={{ margin: "0 0 10px", fontSize: "0.72rem", color: "#6B7280" }}>
                       Generate angles, hooks, messages, claims and creative briefs from an approved research snapshot. Outputs stay pending review — this stage does not render images or videos and does not draft or activate campaigns.
                     </p>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                      {orchRun?.state === "completed" && (can("orchestrator.workflows.edit") || can("orchestrator.workflows.approve.creative_generation")) && (
-                        <button type="button" disabled={!!proposalBusy} onClick={generateCreativeProposal} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: proposalBusy ? 0.6 : 1 }}>
+                    <p style={{ fontSize: "0.78rem" }}>Workflow approval does not generate a proposal or approve an individual creative brief. Review the proposal content here before approving its image or video brief.</p>
+                    <button type="button" disabled={!!proposalBusy} onClick={refreshCreativeProposal} style={btnSecondary}>Refresh creative review</button>
+                    {proposalLoadError && <p role="alert">{proposalLoadError}</p>}
+                    {!proposalLoadError && !proposalContext && <p role="status">Loading creative review…</p>}
+                    {proposalContext && <>
+                      {!creativeProposal && <p>No creative proposal has been generated for this workflow.</p>}
+                      {proposalRuns.length === 0 ? <p>Complete Meta, Google, TikTok or cross-platform research in this workflow, then refresh creative review.</p> : (
+                        <label style={{ display: "block", marginTop: 10 }}>Completed research snapshot
+                          <select aria-label="Completed research snapshot" value={proposalRunId} onChange={e => setProposalRunId(e.target.value)} disabled={!!proposalBusy} style={{ ...draftFld, width: "100%" }}>
+                            <option value="">Choose a completed research run</option>
+                            {proposalRuns.map(run => <option key={run.id} value={run.id}>{(run.requested_platforms || []).join(", ")} · {run.id}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      {!proposalContext.can_generate_in_state && <p>Proposal generation is unavailable in this workflow state. Workflow approval alone does not mean creative content exists. Review an existing proposal, or use a new campaign workspace for a new test.</p>}
+                      <p>Fixture proposals use simulated content. Estimated credit cost: {formatMicros(proposalContext.estimated_cost_micros)} USD. Existing credit and approval checks still apply.</p>
+                      {Number(selected.credit_ceiling_micros || 0) < Number(proposalContext.estimated_cost_micros) && <p>Proposal generation is blocked by the workflow credit ceiling. No credits or spending permissions have been changed.</p>}
+                      {(can("orchestrator.workflows.edit") || can("orchestrator.workflows.approve.creative_generation")) && (
+                        <button type="button" disabled={!!proposalBusy || !proposalRunId || !proposalContext.can_generate_in_state || Number(selected.credit_ceiling_micros || 0) < Number(proposalContext.estimated_cost_micros)} onClick={generateCreativeProposal} style={btnPrimary}>
                           {proposalBusy === "generate" ? "Generating…" : "Generate proposals"}
                         </button>
                       )}
-                      {creativeProposal?.id && (
-                        <button type="button" disabled={!!proposalBusy} onClick={refreshCreativeProposal} style={{ ...btnSecondary, opacity: proposalBusy ? 0.6 : 1 }}>Refresh status</button>
-                      )}
-                    </div>
+                    </>}
                     {proposalMsg && <p style={{ fontSize: "0.78rem", color: proposalMsgIsError ? "#B91C1C" : "#3730A3", margin: "0 0 8px" }}>{proposalMsg}</p>}
                     {creativeProposal && (
                       <div style={{ fontSize: "0.78rem", color: "#374151" }}>
                         <div>Proposal {creativeProposal.id} · {creativeProposal.status} · v{creativeProposal.version}</div>
+                        <div>Saved proposal research source: {creativeProposal.research_run_id || "Not available"}</div>
                         {creativeProposal.provider && <div style={{ color: "#6B7280" }}>{creativeProposal.provider}/{creativeProposal.model} · template {creativeProposal.prompt_template_version}</div>}
                         {(creativeProposal.artifacts || []).map((a) => (
-                          <div key={a.kind + a.status}>{a.kind} · {a.status} · citations {(a.citations || []).length}</div>
+                          <details key={a.id || a.artifact_id || a.kind} style={{ marginTop: 8 }}>
+                            <summary>{a.kind} · {a.status} · citations {(a.citations || []).length}</summary>
+                            {Object.entries(a.payload || {}).filter(([key]) => ["text", "title", "summary", "objective", "target_audience", "platform", "placement", "format", "angle", "hook", "primary_message", "offer", "call_to_action", "supporting_claims", "visual_direction", "script_or_storyboard", "compliance_notes", "prohibited_claims", "limitations", "claim_kind", "evidence_backed"].includes(key)).map(([key, value]) => (
+                              <p key={key} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}><strong>{key.replaceAll("_", " ")}: </strong>{creativeReviewText(value)}</p>
+                            ))}
+                          </details>
                         ))}
                       </div>
                     )}
