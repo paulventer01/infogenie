@@ -648,6 +648,7 @@ export default function AgentOrchestrator() {
   const [draftSnapshot, setDraftSnapshot] = useState<{ draft: CampaignDraft; published: boolean } | null>(null);
   const draftReadSeq = useRef(0);
   const snapshotSeq = useRef(0);
+  const draftOperationIdentity = useRef("");
   const draftIdentity = JSON.stringify([selectedId, campaignDraft?.id, campaignDraft?.current_revision, campaignDraft?.contract_hash, campaignDraft?.status]);
   const activeDraftIdentity = useRef(draftIdentity);
   activeDraftIdentity.current = draftIdentity;
@@ -655,6 +656,11 @@ export default function AgentOrchestrator() {
     snapshotSeq.current += 1;
     setDraftSnapshot(null);
     setDraftApproveConfirm(false);
+    if (draftOperationIdentity.current !== draftIdentity) {
+      draftOperationIdentity.current = "";
+      setDraftBusy("");
+      setDraftMsg("");
+    }
   }, [draftIdentity]);
   const [draftHistory, setDraftHistory] = useState<{ revisions?: { revision: number; contract_hash: string; created_at: string }[]; approvals?: { id: number; revision: number; contract_hash: string; created_at: string; revoked_at?: string | null }[] } | null>(null);
   const [draftForm, setDraftForm] = useState({ label: "", notes: "", landing_page_url: "", credential_ref: "user_integrations", asset_id: "", asset_version: "1", content_hash: "", budget_micros: "1000000", start_at: defaultDraftStartLocal() });
@@ -1754,6 +1760,7 @@ export default function AgentOrchestrator() {
 
   async function draftAct(busy: string, run: () => Promise<{ ok: boolean; error?: string; draft?: CampaignDraft }>, okMsg: string, after?: () => void | Promise<void>) {
     const identity = activeDraftIdentity.current;
+    draftOperationIdentity.current = identity;
     setDraftSnapshot(null); setDraftApproveConfirm(false);
     snapshotSeq.current += 1;
     setDraftBusy(busy); setDraftMsg("");
@@ -1761,7 +1768,10 @@ export default function AgentOrchestrator() {
     if (activeDraftIdentity.current !== identity) return;
     setDraftBusy("");
     if (r.ok === false) { setDraftMsgIsError(true); setDraftMsg(r.error || "Request failed"); return; }
-    if (r.draft) setCampaignDraft(r.draft);
+    if (r.draft) {
+      draftOperationIdentity.current = JSON.stringify([selectedId, r.draft.id, r.draft.current_revision, r.draft.contract_hash, r.draft.status]);
+      setCampaignDraft(r.draft);
+    }
     await after?.();
     setDraftMsgIsError(false); setDraftMsg(okMsg);
   }
@@ -1787,6 +1797,7 @@ export default function AgentOrchestrator() {
   async function loadCampaignSnapshot() {
     if (!campaignDraft?.id || !selected) return;
     const identity = activeDraftIdentity.current, seq = ++snapshotSeq.current;
+    draftOperationIdentity.current = identity;
     setDraftSnapshot(null); setDraftApproveConfirm(false);
     setDraftBusy("snapshot"); setDraftMsg("");
     const r = await apiGet<{ ok: boolean; published?: boolean; draft?: CampaignDraft; error?: string }>(

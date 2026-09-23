@@ -664,3 +664,21 @@ test('late snapshot from a previous workspace is discarded',async t=>{
  await act(async()=>release());assert.equal(document.querySelector('[aria-label="Saved campaign snapshot"]'),null);
  assert.doesNotMatch(h.text(),/Saved campaign snapshot loaded/);assert.match(h.text(),/Other workflow/);
 });
+
+for(const operation of ['snapshot','patch']){
+ test('same-workflow revision change releases only the stale '+operation+' operation',async t=>{
+  let release, revision=2;
+  const h=await snapshotHarness(t,{handler:(r,draft)=>{
+   if(r.url.includes('/campaign-drafts?'))return {ok:true,drafts:[{...draft,current_revision:revision}]};
+   if((operation==='snapshot'&&r.url.endsWith('/snapshot'))||(operation==='patch'&&r.method==='PATCH'))return new Promise(resolve=>{release=()=>resolve({ok:true,published:false,draft});});
+  }});
+  await h.click(operation==='snapshot'?'Preview snapshot':'Save label/notes');
+  revision=3;h.context.generation={...h.generation,id:'new-proposal'};
+  await h.click('Refresh creative review');
+  assert.equal([...document.querySelectorAll('button')].find(b=>b.textContent==='Preview snapshot').disabled,false);
+  assert.equal([...document.querySelectorAll('button')].find(b=>b.textContent==='Save label/notes').disabled,false);
+  await act(async()=>release());
+  assert.match(h.text(),/rev 3/);assert.equal(document.querySelector('[aria-label="Saved campaign snapshot"]'),null);
+  assert.doesNotMatch(h.text(),/Saved campaign snapshot loaded|Campaign draft label\/notes updated/);
+ });
+}
