@@ -39,14 +39,24 @@ Campaign validation explains missing Meta advertising credentials in both
 campaign screens; the server continues to deny validation without them. Fixture
 research does not establish an advertising account connection. No limits are
 raised, credentials created, approval gates bypassed or live providers called.
-Deployed acceptance of #214 remains pending.
+Railway operator screenshots confirm #214 and #215 deployed successfully.
+Behavioral acceptance of their credit refresh and field guidance remains separate.
 
-The next interface slice adds persistent campaign-draft field labels, groups the
+Human-merged and deployed PR #215 adds persistent campaign-draft field labels, groups the
 saved creative reference, and explains advertising-budget micros in the campaign
 currency separately from AI credits. Account-reference guidance directs credentials
 to Settings; date guidance explains browser-local time. Contract values, validation
 and approval controls are unchanged. Hosted browser evidence and operator visual
 acceptance must be recorded separately; this does not complete live validation.
+
+The saved campaign snapshot review now exposes the existing saved contract's
+budget, platforms, objective, destination, schedule, targeting, tracking and exact
+creative versions in the workspace. It uses server-returned saved values rather
+than unsaved form edits. Reads reject mismatched draft/workflow/tenant/revision/hash
+or status, discard late workspace responses and clear old content on failure.
+This is a read-only review surface; missing credential validation, approval and
+publication boundaries remain unchanged. Hosted fixture verification and operator
+acceptance remain separate; no production validation success is claimed.
 
 | Gap | Evidence / current status | Acceptance requirement |
 | --- | --- | --- |

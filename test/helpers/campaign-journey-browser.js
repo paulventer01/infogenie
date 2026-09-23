@@ -203,6 +203,18 @@ module.exports = async function campaignJourney(page, account, origin) {
       assert.equal(await ownerPage.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Generate proposals').disabled),true);
       assert.equal(await ownerPage.$eval('#campaign-draft-label',el=>el.labels[0].textContent),'Campaign name');
       assert.equal(await ownerPage.$eval('#campaign-draft-notes',el=>el.labels[0].textContent),'Campaign notes');
+      await ownerPage.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Preview snapshot').click());
+      await ownerPage.waitForSelector('[aria-label="Saved campaign snapshot"]');
+      const savedReview=await ownerPage.$eval('[aria-label="Saved campaign snapshot"]',el=>el.textContent);
+      assert.ok(savedReview.includes('Published: false'));
+      assert.ok(savedReview.includes('approved_for_publish'));
+      const savedLanding=await ownerPage.$eval('[aria-label="Saved campaign snapshot"]',el=>[...el.querySelectorAll('dt')].find(dt=>dt.textContent==='Landing page URL').nextElementSibling.textContent);
+      assert.equal(savedLanding,'https://example.com/');
+      assert.ok(savedReview.includes(replacement));
+      assert.ok(savedReview.includes('version 1'));
+      await ownerPage.setViewport({width:390,height:844});
+      assert.ok(await ownerPage.$eval('[aria-label="Saved campaign snapshot"]',el=>el.scrollWidth<=el.clientWidth+1));
+      await ownerPage.screenshot({path:'/tmp/preview-artifacts/campaign-snapshot-mobile.png',fullPage:true});
       assert.deepEqual(mutations,[]);
       await ownerPage.screenshot({path:'/tmp/preview-artifacts/creative-review-restored.png',fullPage:true});
     } finally {await ownerContext.close();}

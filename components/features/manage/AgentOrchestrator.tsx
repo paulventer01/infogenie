@@ -230,11 +230,46 @@ interface VideoJob {
 }
 
 interface CampaignDraft {
-  id: string; status: string; object_kind: string; current_revision: number;
+  id: string; tenant_id?: number; workflow_id?: string; status: string; object_kind: string; current_revision: number;
   contract_hash: string; approval_id: number | null; validation_status?: string;
   validation?: { errors?: { code?: string; field?: string }[] };
   contract?: Record<string, unknown>; published?: boolean; label?: string; notes?: string;
   approval_expires_at?: string | null;
+}
+
+// Render only the campaign contract's known review fields, never arbitrary response data.
+function CampaignSnapshotReview({ draft, published }: { draft: CampaignDraft; published: boolean }) {
+  const record = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
+  const text = (v: unknown) => typeof v === "string" && v.trim() ? v : typeof v === "number" && Number.isFinite(v) ? String(v) : "Not provided";
+  const list = (v: unknown) => Array.isArray(v) && v.length ? v.map(text).join(", ") : "Not provided";
+  const c = record(draft.contract), budget = record(c.budget), schedule = record(c.schedule);
+  const audience = record(c.audience), tracking = record(c.tracking);
+  const amount = typeof budget.amount_micros === "number" && Number.isSafeInteger(budget.amount_micros) && budget.amount_micros >= 0
+    ? (budget.amount_micros / MICROS_PER_USD).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : "Not provided";
+  const rows = [
+    ["Saved revision", draft.current_revision], ["Status", draft.status], ["Campaign name", draft.label],
+    ["Campaign notes", draft.notes], ["Objective", c.objective], ["Platforms", list(c.platforms)],
+    ["Advertising budget", `${amount} ${text(budget.currency)}`],
+    ["Landing page URL", record(c.destination).landing_page_url],
+    ["Start (saved time with timezone)", schedule.start_at], ["End (saved time with timezone)", schedule.end_at],
+    ["Markets", list(record(c.geo).countries)], ["Audience", audience.name], ["Audience notes", audience.notes],
+    ["Placements", Array.isArray(c.placements) ? list(c.placements.map(p => record(p).type)) : "Not provided"],
+    ["Tracking source", tracking.utm_source], ["Tracking medium", tracking.utm_medium], ["Tracking campaign", tracking.utm_campaign],
+  ];
+  return <section aria-label="Saved campaign snapshot" style={{ marginBottom: 12, padding: 12, background: "#fff", borderRadius: 6, border: "1px solid #E5E7EB", overflowWrap: "anywhere" }}>
+    <h6 style={{ fontSize: "inherit", margin: "0 0 8px" }}>Saved campaign snapshot</h6>
+    <p>Published: {String(published)}. Reviewing this snapshot does not publish or activate a campaign.</p>
+    <p>This is saved data. Unsaved name or note edits are not included. Advertising budget is separate from AI credits.</p>
+    {!draft.contract ? <p role="alert">Saved campaign details are unavailable. Reload the workspace before reviewing approval.</p> : <>
+      <dl>{rows.map(([label, value]) => <div key={String(label)} style={{ marginBottom: 8 }}><dt style={{ fontWeight: 600 }}>{String(label)}</dt><dd style={{ margin: 0 }}>{text(value)}</dd></div>)}</dl>
+      <h6 style={{ fontSize: "inherit" }}>Saved creative versions</h6>
+      {Array.isArray(c.creatives) && c.creatives.length ? c.creatives.map((value, i) => {
+        const creative = record(value);
+        return <p key={i}>{text(creative.kind)} · {text(creative.asset_id)} · version {text(creative.version)}<br />Content hash: {text(creative.content_hash)}</p>;
+      }) : <p>Not provided</p>}
+    </>}
+    <details><summary>Revision reference</summary><p>Draft: {draft.id}</p><p>Contract hash: {draft.contract_hash}</p></details>
+  </section>;
 }
 
 type LoadStatus = "loading" | "error" | "ready";
@@ -610,7 +645,23 @@ export default function AgentOrchestrator() {
     setVideoGenConfirm(false);
   }, [proposalApprovalIdentity]);
   const [campaignDraft, setCampaignDraft] = useState<CampaignDraft | null>(null);
-  const [draftSnapshot, setDraftSnapshot] = useState<{ contract_hash?: string; status?: string; object_kind?: string; published?: boolean } | null>(null);
+  const [draftSnapshot, setDraftSnapshot] = useState<{ draft: CampaignDraft; published: boolean } | null>(null);
+  const draftReadSeq = useRef(0);
+  const snapshotSeq = useRef(0);
+  const draftOperationIdentity = useRef("");
+  const draftIdentity = JSON.stringify([selectedId, campaignDraft?.id, campaignDraft?.current_revision, campaignDraft?.contract_hash, campaignDraft?.status]);
+  const activeDraftIdentity = useRef(draftIdentity);
+  activeDraftIdentity.current = draftIdentity;
+  useEffect(() => {
+    snapshotSeq.current += 1;
+    setDraftSnapshot(null);
+    setDraftApproveConfirm(false);
+    if (draftOperationIdentity.current !== draftIdentity) {
+      draftOperationIdentity.current = "";
+      setDraftBusy("");
+      setDraftMsg("");
+    }
+  }, [draftIdentity]);
   const [draftHistory, setDraftHistory] = useState<{ revisions?: { revision: number; contract_hash: string; created_at: string }[]; approvals?: { id: number; revision: number; contract_hash: string; created_at: string; revoked_at?: string | null }[] } | null>(null);
   const [draftForm, setDraftForm] = useState({ label: "", notes: "", landing_page_url: "", credential_ref: "user_integrations", asset_id: "", asset_version: "1", content_hash: "", budget_micros: "1000000", start_at: defaultDraftStartLocal() });
   const [draftApproveConfirm, setDraftApproveConfirm] = useState(false);
@@ -841,10 +892,13 @@ export default function AgentOrchestrator() {
   }, [selectedId]);
 
   const loadCampaignDraft = useCallback(async (wfId: string, wf: Workflow | null, brief?: { artifact_id?: string; id?: string; version?: number; content_hash?: string }) => {
+    if (activeWorkflowId.current !== wfId) return;
+    const seq = ++draftReadSeq.current;
     setDraftRevokeReason("");
     const r = await apiGet<{ ok: boolean; drafts?: CampaignDraft[]; error?: string }>(
       `/api/agent-orchestrator/campaign-drafts?workflow_id=${encodeURIComponent(wfId)}`,
     );
+    if (activeWorkflowId.current !== wfId || seq !== draftReadSeq.current) return;
     if (r.ok !== false && r.drafts && r.drafts.length > 0) {
       const d = r.drafts[0];
       setCampaignDraft(d);
@@ -853,6 +907,7 @@ export default function AgentOrchestrator() {
       const h = await apiGet<{ ok: boolean; revisions?: { revision: number; contract_hash: string; created_at: string }[]; approvals?: { id: number; revision: number; contract_hash: string; created_at: string; revoked_at?: string | null }[] }>(
         `/api/agent-orchestrator/campaign-drafts/${d.id}/history`,
       );
+      if (activeWorkflowId.current !== wfId || seq !== draftReadSeq.current) return;
       if (h.ok !== false) setDraftHistory({ revisions: h.revisions, approvals: h.approvals });
       return;
     }
@@ -1704,11 +1759,19 @@ export default function AgentOrchestrator() {
   }
 
   async function draftAct(busy: string, run: () => Promise<{ ok: boolean; error?: string; draft?: CampaignDraft }>, okMsg: string, after?: () => void | Promise<void>) {
+    const identity = activeDraftIdentity.current;
+    draftOperationIdentity.current = identity;
+    setDraftSnapshot(null); setDraftApproveConfirm(false);
+    snapshotSeq.current += 1;
     setDraftBusy(busy); setDraftMsg("");
     const r = await run();
+    if (activeDraftIdentity.current !== identity) return;
     setDraftBusy("");
     if (r.ok === false) { setDraftMsgIsError(true); setDraftMsg(r.error || "Request failed"); return; }
-    if (r.draft) setCampaignDraft(r.draft);
+    if (r.draft) {
+      draftOperationIdentity.current = JSON.stringify([selectedId, r.draft.id, r.draft.current_revision, r.draft.contract_hash, r.draft.status]);
+      setCampaignDraft(r.draft);
+    }
     await after?.();
     setDraftMsgIsError(false); setDraftMsg(okMsg);
   }
@@ -1732,15 +1795,24 @@ export default function AgentOrchestrator() {
   }
 
   async function loadCampaignSnapshot() {
-    if (!campaignDraft?.id) return;
+    if (!campaignDraft?.id || !selected) return;
+    const identity = activeDraftIdentity.current, seq = ++snapshotSeq.current;
+    draftOperationIdentity.current = identity;
+    setDraftSnapshot(null); setDraftApproveConfirm(false);
     setDraftBusy("snapshot"); setDraftMsg("");
-    const r = await apiGet<{ ok: boolean; status?: string; object_kind?: string; published?: boolean; snapshot?: { contract_hash?: string }; error?: string }>(
+    const r = await apiGet<{ ok: boolean; published?: boolean; draft?: CampaignDraft; error?: string }>(
       `/api/agent-orchestrator/campaign-drafts/${campaignDraft.id}/snapshot`,
     );
+    if (activeDraftIdentity.current !== identity || seq !== snapshotSeq.current) return;
     setDraftBusy("");
     if (r.ok === false) { setDraftMsgIsError(true); setDraftMsg(r.error || "Snapshot failed"); return; }
-    setDraftSnapshot({ contract_hash: r.snapshot?.contract_hash || campaignDraft.contract_hash, status: r.status, object_kind: r.object_kind, published: r.published });
-    setDraftMsgIsError(false); setDraftMsg("Publishing snapshot preview loaded (draft only — not published).");
+    const d = r.draft;
+    if (!d || d.id !== campaignDraft.id || d.workflow_id !== selected.id || d.tenant_id !== campaignDraft.tenant_id
+      || d.current_revision !== campaignDraft.current_revision || d.contract_hash !== campaignDraft.contract_hash || d.status !== campaignDraft.status || typeof r.published !== "boolean") {
+      setDraftMsgIsError(true); setDraftMsg("The saved campaign changed or could not be verified. Reload the workspace before reviewing approval."); return;
+    }
+    setDraftSnapshot({ draft: d, published: r.published });
+    setDraftMsgIsError(false); setDraftMsg("Saved campaign snapshot loaded for review.");
   }
 
   async function approveCampaignDraft() {
@@ -3240,6 +3312,7 @@ export default function AgentOrchestrator() {
                         <input id="campaign-draft-label" name="draft_label" placeholder="Label" value={draftForm.label} onChange={(e) => setDraftForm((f) => ({ ...f, label: e.target.value }))} style={draftFld} />
                         <label htmlFor="campaign-draft-notes" style={draftLabel}>Campaign notes</label>
                         <textarea id="campaign-draft-notes" name="draft_notes" placeholder="Notes" value={draftForm.notes} onChange={(e) => setDraftForm((f) => ({ ...f, notes: e.target.value }))} rows={2} style={draftFld} />
+                        {draftSnapshot && <CampaignSnapshotReview draft={draftSnapshot.draft} published={draftSnapshot.published} />}
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "10px 0" }}>
                           {can("orchestrator.workflows.edit") && <button type="button" disabled={!!draftBusy} onClick={patchCampaignDraft} style={{ ...btnSecondary, opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "patch" ? "Saving…" : "Save label/notes"}</button>}
                           {can("orchestrator.workflows.edit") && <button type="button" disabled={!!draftBusy} onClick={validateCampaignDraft} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "validate" ? "Validating…" : "Validate draft"}</button>}
@@ -3257,7 +3330,6 @@ export default function AgentOrchestrator() {
                             <button type="button" disabled={!!draftBusy || !draftRevokeReason.trim()} onClick={revokeCampaignDraft} style={{ ...btnSecondary, opacity: draftBusy || !draftRevokeReason.trim() ? 0.6 : 1 }}>{draftBusy === "revoke" ? "Revoking…" : "Revoke approval"}</button>
                           )}
                         </div>
-                        {draftSnapshot && <div style={{ marginBottom: 8, padding: 8, background: "#fff", borderRadius: 6, border: "1px solid #E5E7EB" }}>Snapshot · {draftSnapshot.object_kind} · {draftSnapshot.status} · published: {String(draftSnapshot.published ?? false)} · hash {draftSnapshot.contract_hash}</div>}
                         {draftHistory && (
                           <div style={{ marginTop: 8 }}>
                             <div style={{ fontWeight: 600 }}>Campaign draft history</div>
