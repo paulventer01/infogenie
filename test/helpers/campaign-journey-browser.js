@@ -158,9 +158,11 @@ module.exports = async function campaignJourney(page, account, origin) {
       await ownerPage.locator('#email').fill(ownerEmail);await ownerPage.locator('#pass').fill(ownerPassword);
       const [login]=await Promise.all([
         ownerPage.waitForResponse(r=>new URL(r.url()).pathname==='/api/auth/login'&&r.request().method()==='POST'),
+        ownerPage.waitForNavigation({waitUntil:'networkidle2'}),
         ownerPage.locator('form button[type="submit"]').click(),
       ]);
       assert.equal(login.status(),200);
+      assert.equal(new URL(ownerPage.url()).pathname,'/');
       const mutations=[];
       ownerPage.on('request',request=>{if(request.method()!=='GET'&&request.url().includes('/api/agent-orchestrator/'))mutations.push(request.url());});
       await ownerPage.goto(origin+'/manage/agent-orchestrator?workflow_id='+wf,{waitUntil:'networkidle2'});
