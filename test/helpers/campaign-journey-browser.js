@@ -121,6 +121,7 @@ module.exports = async function campaignJourney(page, account, origin, restartAn
     });
     assert.equal(placed.status,200);assert.equal(placed.body.ok,true);
     assert.deepEqual(placed.body.draft.contract.placements,{meta:{type:'feed'}});
+    const id=placed.body.draft.id;
     await click('Refresh saved status');
     await click('Validate saved campaign');
     await page.waitForFunction(()=>document.body.innerText.includes('Meta advertising credentials were not found'));
@@ -140,6 +141,13 @@ module.exports = async function campaignJourney(page, account, origin, restartAn
     await page.click('section[aria-label="Campaign journey"] input[type="checkbox"]');
     await click('Approve saved campaign');
     await page.waitForFunction(()=>document.body.innerText.includes('Approved — not published'));
+    const approved=await page.evaluate(async id=>{
+      const response=await fetch('/api/agent-orchestrator/campaign-drafts/'+encodeURIComponent(id));
+      return {status:response.status,body:await response.json()};
+    },id);
+    assert.equal(approved.status,200);assert.equal(approved.body.ok,true);
+    assert.equal(approved.body.draft.status,'approved_for_publish');
+    assert.deepEqual(approved.body.draft.contract.placements,{meta:{type:'feed'}});
     await page.screenshot({path:'/tmp/preview-artifacts/campaign-journey-desktop.png',fullPage:true});
     await page.setViewport({width:390,height:844});
     await page.waitForFunction(()=>document.documentElement.scrollWidth<=innerWidth+1);
@@ -148,7 +156,6 @@ module.exports = async function campaignJourney(page, account, origin, restartAn
     await page.waitForSelector('[name="marketing_brief"]:enabled');
     await page.select('[name="marketing_brief"]',String(brief.id)); await page.select('[name="campaign_workflow"]',wf);
     await page.waitForFunction(()=>document.querySelector('[name="saved_campaign"]')?.options.length>1);
-    const id=placed.body.draft.id;
     await page.waitForFunction(id=>[...(document.querySelector('[name="saved_campaign"]')?.options||[])].some(o=>o.value===id),{},id);
     await page.select('[name="saved_campaign"]',id);
     await page.waitForFunction(()=>document.body.innerText.includes('Approved — not published'));
@@ -269,13 +276,13 @@ module.exports = async function campaignJourney(page, account, origin, restartAn
     assert.equal(beforeRestart.snapshot.draft.id,id);
     assert.equal(beforeRestart.snapshot.draft.tenant_id,tid);
     assert.equal(beforeRestart.snapshot.draft.workflow_id,wf);
-    assert.equal(beforeRestart.snapshot.draft.current_revision,placed.body.draft.current_revision);
-    assert.equal(beforeRestart.snapshot.draft.contract_hash,placed.body.draft.contract_hash);
+    assert.equal(beforeRestart.snapshot.draft.current_revision,approved.body.draft.current_revision);
+    assert.equal(beforeRestart.snapshot.draft.contract_hash,approved.body.draft.contract_hash);
     assert.equal(beforeRestart.snapshot.draft.validation_status,'passed');
     assert.equal(beforeRestart.snapshot.status,'approved_for_publish');
     assert.equal(beforeRestart.snapshot.published,false);
     assert.ok(beforeRestart.snapshot.draft.approval_id);
-    assert.ok(beforeRestart.approvals.some(a=>!a.revoked_at&&a.contract_hash===placed.body.draft.contract_hash));
+    assert.ok(beforeRestart.approvals.some(a=>!a.revoked_at&&a.contract_hash===approved.body.draft.contract_hash));
     page=await restartAndLogin();
     const restartMutations=[];
     const observe=request=>{
