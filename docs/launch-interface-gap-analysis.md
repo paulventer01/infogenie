@@ -59,8 +59,10 @@ This is a read-only review surface; missing credential validation, approval and
 publication boundaries remain unchanged. A post-merge review found keyed saved
 placements were rendered as missing; the correction displays each known platform
 and its saved placement type, with canonical persistence/browser regression coverage.
-This correction requires its own deployment and acceptance. Hosted fixture verification and operator
-acceptance remain separate; no production validation success is claimed.
+The correction was human-merged as #217; the operator's Railway screenshot on
+2026-09-23 confirms it active and deployed successfully. Its production UI
+acceptance remains separate from deployment and hosted fixture verification;
+no production validation success is claimed.
 
 | Gap | Evidence / current status | Acceptance requirement |
 | --- | --- | --- |
@@ -76,7 +78,7 @@ acceptance remain separate; no production validation success is claimed.
 | --- | --- | --- |
 | Workspace home and navigation | PR #204 and #206 are merged; Railway screenshots subsequently show #207 active. Campaign Journey is accessible; the navigation button still needs explicit operator confirmation. | Verify the deployed navigation button and retain both browser journeys. |
 | Marketing journey prerequisites | Guided workspace creation (#207) is deployed and operator screenshots confirm creation/selection. The deployed orchestrator review path through #213 is demonstrated. The separate Campaign Journey handoff, refreshed creative selection and preservation of edits still need operator acceptance. | Verify the handoff and refreshed creative choices, complete creative review and save/reload/validate/approve a campaign; verify tenant ownership against the deployed database. Creative generation and approval still use the existing workspace tools. |
-| Hosted review workspace | Railway production is running; disposable Codespaces preview exists. A separate Railway staging environment has not been verified. | Prepare an isolated staging database and synthetic account plan; verify provider/job isolation before any hosting changes. |
+| Hosted review workspace | Railway production is running; disposable Codespaces preview exists. The [staging readiness plan](staging-readiness.md) records the separate database/account requirements, current preview limits and acceptance evidence. A persistent staging service has not been provisioned or verified. | Review the plan, implement only missing isolation/acceptance in a scoped build, and obtain authorization for a concrete hosting setup after verification. |
 | Visual acceptance | CI covers responsive behavior; operator review of the combined home and campaign screens remains outstanding. | Review desktop/mobile navigation, missing prerequisites, loading/error states, saved data and approval states. |
 
 ## Deferred
