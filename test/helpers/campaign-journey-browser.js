@@ -35,7 +35,6 @@ module.exports = async function campaignJourney(page, account, origin) {
     }
     await seedApprovedCreative(art);
     const zero = Buffer.from([0]);
-    await pool.query(`INSERT INTO user_integrations (user_id,platform,ciphertext,iv,tag,status) VALUES ($1,'meta_ads',$2,$2,$2,'connected')`, [user.id,zero]);
     await page.setViewport({width:1440,height:1000});
     await page.goto(origin + '/manage/campaign-journey', {waitUntil:'networkidle2'});
     await page.waitForSelector('[name="marketing_brief"]:enabled');
@@ -94,6 +93,14 @@ module.exports = async function campaignJourney(page, account, origin) {
     },new Date(Date.now()+864e5).toISOString().slice(0,16));
     await click('Save campaign draft');
     await page.waitForFunction(()=>document.body.innerText.includes('Campaign draft saved.'));
+    await click('Validate saved campaign');
+    await page.waitForFunction(()=>document.body.innerText.includes('Meta advertising credentials were not found'));
+    assert.ok(await page.evaluate(()=>document.querySelector('[role="alert"]').textContent.includes('adding AI credits will not resolve')));
+    assert.equal(await page.evaluate(()=>[...document.querySelectorAll('button')].some(b=>b.textContent==='Approve saved campaign')),false);
+    const failed=(await pool.query('SELECT status FROM orchestrator_campaign_drafts WHERE tenant_id=$1 AND workflow_id=$2',[tid,wf])).rows[0];
+    assert.equal(failed.status,'validation_failed');
+    // A synthetic stored credential exists only in this disposable CI database.
+    await pool.query(`INSERT INTO user_integrations (user_id,platform,ciphertext,iv,tag,status) VALUES ($1,'meta_ads',$2,$2,$2,'connected')`, [user.id,zero]);
     await click('Validate saved campaign');
     await page.waitForFunction(()=>document.body.innerText.includes('Validation passed.'));
     await page.click('section[aria-label="Campaign journey"] input[type="checkbox"]');

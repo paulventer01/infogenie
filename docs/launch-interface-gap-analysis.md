@@ -6,51 +6,44 @@ is not evidence of production acceptance. Do not start deferred features.
 
 ## Essential before launch
 
-### Research recovery accepted; creative-review journey remains incomplete
+### Fixture journey accepted through draft preview; live validation remains blocked
 
-PRs #210 and #211 were human-merged and deployed. On 2026-09-23 the operator
-exposed the interrupted Meta run, explicitly cancelled it, and completed a fresh
-Meta Fixture (safe) run (`rr_1c8407425f162eff`). This accepts the demonstrated
-Meta fixture cancel/retry path; it does not establish live-provider, Google,
-TikTok, campaign approval or publishing acceptance.
+PRs #210–#213 were human-merged and deployed. Operator screenshots on
+2026-09-23 establish the following production fixture acceptance:
 
-The next operator screenshots expose a creative-review handoff gap: completed
-single-platform research did not expose proposal generation, and persisted
-proposals were not restored on reload. The workflow reached `creative_approved`
-with a zero credit ceiling, but the screenshots do not establish generated or
-reviewed creative content. Generic workflow approval is separate from approving
-an exact creative brief.
+- Meta interrupted-run cancellation and retry (`rr_1c8407425f162eff`).
+- In the new CMTrading Creative Test 2 workspace, Meta fixture research
+  `rr_318d27ef2e776e06`, saved proposal `pgen_cce17d0c732a7d9e` v1,
+  read-only creative refresh feedback, and individual image/video brief approvals.
+- Static image job `sij_a75fc37cd1bcc745` succeeded with a synthetic 1×1 PNG.
+- Video job `vgj_aed99c56cb8f8461` succeeded with fixture metadata only;
+  no finished video is stored and no live provider generated either output.
+- Campaign draft `cd_576b284f1e0ca209` revision 1 was saved and its snapshot
+  preview loaded with `published: false`. Validation failed with
+  `missing_credentials (accounts.meta)`; successful validation, same-revision
+  campaign approval and full reload persistence remain unverified in production.
 
-The scoped follow-up restores tenant-scoped completed research and the latest
-saved proposal, displays reviewable brief content and explicit source selection,
-and explains existing state/credit prerequisites. Fixture proposal generation
-still reserves 10,000 micros ($0.01); it is unavailable at `creative_approved`.
-No approval, ceiling, production state or provider boundary is changed. Existing
-proposal routes remain deployment-owner gated; ordinary preview tenant owners
-cannot access them. Browser acceptance covers both the denied tenant-owner read
-and a separate synthetic deployment-owner session in the disposable database. An
-operator-approved new test workspace may be needed to exercise missing generation
-steps. Final-head preview/PostgreSQL/browser certification and human deployed
-creative review plus campaign save/reload/validate/approve remain required.
+These results do not establish live-provider, Google/TikTok or publishing
+acceptance. The operator changed credit limits and granted test credits himself;
+no assistant production spending, approval, cancellation or configuration change
+is implied. Generic workflow approval is separate from an exact brief approval.
+Existing deployment-owner proposal gates remain unchanged.
 
-PR #212 was human-merged on 2026-09-23 at 11:03:34 UTC (main `c5930f3`);
-Railway reports success for that commit. Subsequent operator screenshots show
-the restored review panel and, in a new CMTrading Creative Test 2 workspace,
-completed Meta fixture run `rr_318d27ef2e776e06` and fixture proposal
-`pgen_cce17d0c732a7d9e` at `pending_review`, version 1. This accepts displayed
-fixture proposal generation, not individual brief approval, image/video
-generation, live research or the full campaign journey. The operator changed
-the test credit limits; no automated production approval or spending is implied.
-
-The next small interface slice addresses the observed “refresh does nothing”
-confusion: read-only loading/result feedback, distinct image/video brief labels,
-and directions to existing individual approval controls. Refresh does not
-generate, approve or spend. Existing tenant, owner, state and credit checks stay
-unchanged; deployed acceptance of this feedback remains pending.
+The next scoped UI correction refreshes shared credit accounting after proposal,
+static-image and video requests, after terminal image/video polling, and after
+video cancellation. Operator screenshots showed the old balance until a full
+reload after the successful static fixture. This establishes stale UI evidence,
+not a ledger defect. Background reads preserve limit edits and reject older
+responses. Credit refusals explain the separate balance and ceiling checks.
+Campaign validation explains missing Meta advertising credentials in both
+campaign screens; the server continues to deny validation without them. Fixture
+research does not establish an advertising account connection. No limits are
+raised, credentials created, approval gates bypassed or live providers called.
+Deployed acceptance of this correction remains pending.
 
 | Gap | Evidence / current status | Acceptance requirement |
 | --- | --- | --- |
-| Railway acceptance | Operator screenshots show #207 active on Railway and the CMTrading test campaign workspace created and selected. The next prerequisite is an approved creative brief. Campaign save/reload/approval and deployed database checks remain unverified. | Sign in, load the intended workspace, save a draft, reload it, validate and approve the same saved revision. Verify migrations and tenant context in the deployed database. |
+| Railway acceptance | Screenshots establish workspace creation, exact brief approvals, fixture generation, campaign draft save and snapshot preview. Meta credentials block validation. Campaign full reload/approval and deployed database checks remain unverified. | Sign in, load the intended workspace, save a draft, reload it, validate and approve the same saved revision. Verify migrations and tenant context in the deployed database. |
 | Production background jobs | Operator logs from the older #160 deployment showed digest tenant_id failures and mentions 401s. Current deployed behavior needs checking. | Inspect current logs; repair reproducible failures without weakening tenant or authentication checks. |
 | Secret handling | Session and credential encryption secrets appeared in operator screenshots. | Rotate the session secret; plan encryption-key migration against existing encrypted records before replacing that key. Never store secret values in this document. |
 | Content safety coverage | docs/step6-content-safety-coverage.md records remaining partial/gap routes. | Reconcile against current main; enforce safety on launch-exposed create/save/approve/publish paths, or explicitly exclude incomplete paths from launch. Preserve failure-closed behavior. |
@@ -61,7 +54,7 @@ unchanged; deployed acceptance of this feedback remains pending.
 | Gap | Evidence / current status | Next action |
 | --- | --- | --- |
 | Workspace home and navigation | PR #204 and #206 are merged; Railway screenshots subsequently show #207 active. Campaign Journey is accessible; the navigation button still needs explicit operator confirmation. | Verify the deployed navigation button and retain both browser journeys. |
-| Marketing journey prerequisites | Guided workspace creation (#207) is deployed and operator screenshots confirm creation/selection. Creative-review handoff (#208) is merged; deployment remains unverified. Follow-up restores review/refresh when approved briefs already exist and requires explicit reselection if the chosen approved version disappears or changes, preserving other campaign edits. | Verify the handoff and refreshed creative choices, complete creative review and save/reload/validate/approve a campaign; verify tenant ownership against the deployed database. Creative generation and approval still use the existing workspace tools. |
+| Marketing journey prerequisites | Guided workspace creation (#207) is deployed and operator screenshots confirm creation/selection. The deployed orchestrator review path through #213 is demonstrated. The separate Campaign Journey handoff, refreshed creative selection and preservation of edits still need operator acceptance. | Verify the handoff and refreshed creative choices, complete creative review and save/reload/validate/approve a campaign; verify tenant ownership against the deployed database. Creative generation and approval still use the existing workspace tools. |
 | Hosted review workspace | Railway production is running; disposable Codespaces preview exists. A separate Railway staging environment has not been verified. | Prepare an isolated staging database and synthetic account plan; verify provider/job isolation before any hosting changes. |
 | Visual acceptance | CI covers responsive behavior; operator review of the combined home and campaign screens remains outstanding. | Review desktop/mobile navigation, missing prerequisites, loading/error states, saved data and approval states. |
 

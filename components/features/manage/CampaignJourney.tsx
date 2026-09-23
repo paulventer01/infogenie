@@ -6,6 +6,7 @@ import { apiGet, apiPost, apiPatch, apiFetch, type ApiResult } from "@/lib/api";
 import { API, EDIT, APPROVE, access, allowed, requireOk, emptyForm, buildContract, approvalBody, verifiedDraft,
   type Context, type Brief, type Creative, type Workflow, type Form, type Campaign } from "@/lib/campaignJourney";
 import styles from "@/styles/campaign-journey.module.css";
+import { campaignValidationMessage } from "@/lib/campaignFeedback";
 
 const CREATE = "orchestrator.workflows.create";
 const newWorkspace = () => ({ name: "", objective: "traffic", landing: "", platform: "meta", currency: "USD" });
@@ -245,7 +246,7 @@ export default function CampaignJourney() {
             <dt>Audience</dt><dd>{saved.contract.audience?.name}</dd><dt>Markets</dt><dd>{saved.contract.geo.countries.join(", ")}</dd>
             <dt>Creative versions</dt><dd>{saved.contract.creatives.map(c => `${c.asset_id} · v${c.version}`).join(", ")}</dd>
           </dl>
-          {saved.validation.errors.length > 0 && <div role="alert"><h3>Resolve before approval</h3><ul>{saved.validation.errors.map((e,i) => <li key={i}>{e.code.replaceAll("_", " ")}{e.field ? ` — ${e.field}` : ""}</li>)}</ul></div>}
+          {saved.validation.errors.length > 0 && <div role="alert"><h3>Resolve before approval</h3><ul>{saved.validation.errors.map((e,i) => <li key={i}>{campaignValidationMessage(e)}</li>)}</ul></div>}
           {!savedCreativesAvailable && <p role="alert">A saved creative version is no longer in the approved choices. Choose an approved creative brief and save a new revision before approval.</p>}
           <button disabled={busy || dirty} onClick={() => transition("refresh")}>Refresh saved status</button>
           {allowed(context, EDIT) && ["draft", "validation_failed", "ready_for_approval", "approval_expired"].includes(saved.status) && <button disabled={busy || dirty} onClick={() => transition("validate")}>Validate saved campaign</button>}
