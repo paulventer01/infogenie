@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>InfoGenie — Integrations Inventory</title>
+<style>
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: #0f172a; background: #f8fafc; margin: 0; padding: 28px 18px 56px; line-height: 1.5; }
+  main { max-width: 980px; margin: 0 auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px 36px; box-shadow: 0 8px 28px rgba(15,23,42,.06); }
+  h1 { font-size: 1.75rem; margin: 0 0 10px; letter-spacing: -0.02em; }
+  h2 { font-size: 1.2rem; margin: 28px 0 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+  h3 { font-size: 1.05rem; margin: 18px 0 8px; }
+  blockquote { margin: 12px 0; padding: 10px 14px; background: #f1f5f9; border-left: 3px solid #0f766e; color: #475569; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 0.88rem; }
+  th, td { border: 1px solid #e2e8f0; padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: #f8fafc; font-weight: 700; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 0.84em; background: #f1f5f9; padding: 1px 5px; border-radius: 4px; }
+  ul, ol { margin: 8px 0; padding-left: 22px; }
+  .footer { color: #64748b; font-size: 0.85rem; margin-top: 28px; }
+  @media print { body { background:#fff; padding:0; } main { border:none; box-shadow:none; padding:12px; } }
+</style>
+</head>
+<body><main>
+<h1>InfoGenie — Integrations Inventory</h1>
+<p><strong>Document type:</strong> Integration status reference  </p>
+<p><strong>Source of truth:</strong> Codebase reverse-scan (<code>services/</code>, <code>platform_keys.js</code>, OAuth routes, ops tooling)  </p>
+<p><strong>Generated:</strong> 2026-08-11  </p>
+<p><strong>Repo tip referenced:</strong> <code>main</code> + related service modules  </p>
+<h2>Status legend</h2>
+<table>
+<tr><th>Status</th><th>Meaning</th></tr>
+<tr><td><strong>DONE</strong></td><td>Integration path exists in code and is mounted/used</td></tr>
+<tr><td><strong>PARTIAL</strong></td><td>Scaffolded, optional, stubbed, or not fully end-to-end</td></tr>
+<tr><td><strong>NOT DONE</strong></td><td>Deferred, placeholder, or mentioned only</td></tr>
+</table>
+<blockquote><strong>DONE</strong> means the product has a code path for the integration. It does <strong>not</strong> mean every API key is configured in a given environment (preview/local/production).</blockquote>
+<p>---</p>
+<h2>1. LLMs / AI models</h2>
+<table>
+<tr><th>Tool</th><th>Status</th><th>How used</th><th>Typical env / key</th></tr>
+<tr><td>OpenAI</td><td><strong>DONE</strong></td><td>Primary chat, embeddings, TTS, images; <code>/api/openai</code> proxy</td><td><code>OPENAI_API_KEY</code> / <code>AI_INTEGRATIONS_OPENAI_API_KEY</code></td></tr>
+<tr><td>Anthropic Claude</td><td><strong>DONE</strong></td><td>Long-form analysis, Creator Studio</td><td><code>ANTHROPIC_API_KEY</code> / <code>AI_INTEGRATIONS_ANTHROPIC_API_KEY</code></td></tr>
+<tr><td>Google Gemini</td><td><strong>DONE</strong></td><td>Multimodal, GEO, chat router</td><td><code>GEMINI_API_KEY</code></td></tr>
+<tr><td>Perplexity</td><td><strong>DONE</strong></td><td>Web-grounded research</td><td><code>PERPLEXITY_API_KEY</code></td></tr>
+<tr><td>Cloudflare Workers AI</td><td><strong>DONE</strong></td><td>Llama inference / fallback</td><td><code>CLOUDFLARE_ACCOUNT_ID</code>, <code>CLOUDFLARE_AI_TOKEN</code></td></tr>
+<tr><td>RapidAPI (Meta Llama etc.)</td><td><strong>DONE</strong></td><td>LLM fallback + keyword hosts</td><td><code>RAPIDAPI_KEY</code></td></tr>
+<tr><td>Z.ai / GLM (AutoClaw)</td><td><strong>DONE</strong></td><td>Coding/agent OpenAI-compatible models</td><td><code>ZAI_API_KEY</code> / <code>GLM_API_KEY</code></td></tr>
+<tr><td>Moonshot / Kimi</td><td><strong>DONE</strong></td><td>Long-context models</td><td><code>MOONSHOT_API_KEY</code> / <code>KIMI_API_KEY</code></td></tr>
+<tr><td>DeepSeek</td><td><strong>PARTIAL</strong></td><td>AI Providers preset</td><td><code>DEEPSEEK_API_KEY</code></td></tr>
+<tr><td>Groq</td><td><strong>PARTIAL</strong></td><td>AI Providers preset</td><td><code>GROQ_API_KEY</code></td></tr>
+<tr><td>Mistral</td><td><strong>PARTIAL</strong></td><td>AI Providers preset</td><td><code>MISTRAL_API_KEY</code></td></tr>
+<tr><td>OpenRouter</td><td><strong>PARTIAL</strong></td><td>Multi-model gateway preset</td><td><code>OPENROUTER_API_KEY</code></td></tr>
+<tr><td>Together AI</td><td><strong>PARTIAL</strong></td><td>OpenAI-compatible preset</td><td><code>TOGETHER_API_KEY</code></td></tr>
+<tr><td>Ollama Cloud</td><td><strong>PARTIAL</strong></td><td>Cloud OpenAI-compatible models</td><td><code>OLLAMA_API_KEY</code></td></tr>
+<tr><td>Ollama (local)</td><td><strong>PARTIAL</strong></td><td>Local <code>localhost:11434</code></td><td>*(none; allow empty key)*</td></tr>
+<tr><td>Azure OpenAI</td><td><strong>PARTIAL</strong></td><td>Custom-URL OpenAI-compatible preset</td><td><code>AZURE_OPENAI_API_KEY</code></td></tr>
+</table>
+<p>---</p>
+<h2>2. Other AI tools</h2>
+<table>
+<tr><th>Tool</th><th>Status</th><th>How used</th><th>Typical env / key</th></tr>
+<tr><td>OpenAI TTS / Voiceover</td><td><strong>DONE</strong></td><td>MP3 voiceover generation</td><td>OpenAI keys</td></tr>
+<tr><td>Remove.bg</td><td><strong>DONE</strong></td><td>Background removal for creatives</td><td><code>REMOVE_BG_API_KEY</code></td></tr>
+<tr><td>Profound</td><td><strong>DONE</strong></td><td>LLM brand-visibility API</td><td><code>PROFOUND_API_KEY</code></td></tr>
+<tr><td>Promptfoo</td><td><strong>DONE</strong></td><td>Prompt/model eval gate</td><td><code>PROMPTFOO_*</code></td></tr>
+<tr><td>Traceloop / OpenLLMetry</td><td><strong>PARTIAL</strong></td><td>LLM observability / FinOps</td><td><code>TRACELOOP_API_KEY</code></td></tr>
+<tr><td>Confident AI</td><td><strong>PARTIAL</strong></td><td>Optional Promptfoo companion</td><td><code>CONFIDENT_API_KEY</code></td></tr>
+<tr><td>Canva</td><td><strong>PARTIAL</strong></td><td>Template-link bridge (no live OAuth)</td><td><code>CANVA_CLIENT_ID</code>, <code>CANVA_API_KEY</code></td></tr>
+<tr><td>MCP client (generic)</td><td><strong>PARTIAL</strong></td><td>Connect REST/JSON-RPC MCP servers</td><td>Per-server URL</td></tr>
+</table>
+<p>---</p>
+<h2>3. Data / SEO / intelligence APIs</h2>
+<table>
+<tr><th>Tool</th><th>Status</th><th>How used</th><th>Typical env / key</th></tr>
+<tr><td>DataForSEO</td><td><strong>DONE</strong></td><td>SERP, keywords, SEO intel</td><td><code>DATAFORSEO_LOGIN</code>, <code>DATAFORSEO_PASSWORD</code></td></tr>
+<tr><td>Firecrawl</td><td><strong>DONE</strong></td><td>Site scrape/crawl (WAF bypass)</td><td><code>FIRECRAWL_API_KEY</code></td></tr>
+<tr><td>Apollo.io</td><td><strong>DONE</strong></td><td>B2B enrichment / lead finder</td><td><code>APOLLO_API_KEY</code></td></tr>
+<tr><td>BuiltWith</td><td><strong>DONE</strong></td><td>Tech-stack detection</td><td><code>BUILTWITH_API_KEY</code></td></tr>
+<tr><td>Modash</td><td><strong>DONE</strong></td><td>Influencer discovery</td><td><code>MODASH_API_KEY</code></td></tr>
+<tr><td>Google PageSpeed</td><td><strong>DONE</strong></td><td>Core Web Vitals / performance</td><td><code>GOOGLE_PAGESPEED_API_KEY</code></td></tr>
+<tr><td>Google Custom Search</td><td><strong>DONE</strong></td><td>SERP visibility</td><td><code>GOOGLE_SEARCH_API_KEY</code>, <code>GOOGLE_SEARCH_CX</code></td></tr>
+<tr><td>YouTube Data API</td><td><strong>DONE</strong></td><td>Trending / channel monitor</td><td><code>YOUTUBE_DATA_API_KEY</code></td></tr>
+<tr><td>Bing Webmaster</td><td><strong>DONE</strong></td><td>Bing SEO stats</td><td><code>BING_WEBMASTER_API_KEY</code></td></tr>
+<tr><td>SpyFu</td><td><strong>DONE</strong></td><td>Competitor PPC/SEO spy</td><td><code>SPYFU_API_KEY</code></td></tr>
+<tr><td>Majestic</td><td><strong>DONE</strong></td><td>Trust/Citation Flow, backlinks</td><td><code>MAJESTIC_API_KEY</code></td></tr>
+<tr><td>Semrush</td><td><strong>DONE</strong></td><td>Domain/keyword intel</td><td><code>SEMRUSH_API_KEY</code></td></tr>
+<tr><td>Ahrefs</td><td><strong>DONE</strong></td><td>DR/UR/backlinks/keywords</td><td><code>AHREFS_API_KEY</code></td></tr>
+<tr><td>Serpstat</td><td><strong>DONE</strong></td><td>Visibility / competitors</td><td><code>SERPSTAT_API_KEY</code></td></tr>
+<tr><td>ContentKing</td><td><strong>DONE</strong></td><td>Real-time SEO change monitor</td><td><code>CONTENTKING_API_KEY</code></td></tr>
+<tr><td>Hunter.io</td><td><strong>DONE</strong></td><td>Email finder/verifier</td><td><code>HUNTER_API_KEY</code></td></tr>
+<tr><td>Apify</td><td><strong>DONE</strong></td><td>Scraping actors</td><td><code>APIFY_API_KEY</code></td></tr>
+<tr><td>Google Trends (npm)</td><td><strong>DONE</strong></td><td>Interest/related/trending (no key)</td><td>*(none)*</td></tr>
+<tr><td>Zernio</td><td><strong>DONE</strong></td><td>Social publishing API</td><td><code>ZERNIO_API_KEY</code></td></tr>
+<tr><td>Reddit public JSON</td><td><strong>DONE</strong></td><td>Reddit Pulse / AEO</td><td>*(User-Agent)*</td></tr>
+<tr><td>tikwm.com</td><td><strong>DONE</strong></td><td>Free TikTok no-watermark resolve</td><td>*(none)*</td></tr>
+<tr><td>SerpAPI</td><td><strong>PARTIAL</strong></td><td>SERP snapshot fallback</td><td><code>SERP_API_KEY</code></td></tr>
+<tr><td>OmniSocials</td><td><strong>PARTIAL</strong></td><td>Social DM/comment inbox</td><td><code>OMNISOCIALS_API_KEY</code></td></tr>
+<tr><td>RapidAPI TikTok Scraper</td><td><strong>PARTIAL</strong></td><td>Paid TikTok download fallback</td><td><code>TIKTOK_RAPIDAPI_KEY</code></td></tr>
+<tr><td>Quora mining</td><td><strong>PARTIAL</strong></td><td>Via Perplexity (not Quora API)</td><td><code>PERPLEXITY_API_KEY</code></td></tr>
+<tr><td>Glassdoor sentiment</td><td><strong>PARTIAL</strong></td><td>Scrape/AI sentiment</td><td>*(no dedicated Glassdoor key)*</td></tr>
+<tr><td>Google Maps / local leads</td><td><strong>PARTIAL</strong></td><td>Local lead aggregation</td><td>*(source always “available”)*</td></tr>
+</table>
+<p>---</p>
+<h2>4. OAuth / social login / ad connect</h2>
+<table>
+<tr><th>Tool</th><th>Status</th><th>How used</th><th>Typical env / key</th></tr>
+<tr><td>Google social login</td><td><strong>DONE</strong></td><td>Login/signup OIDC</td><td><code>AUTH_GOOGLE_CLIENT_ID</code>, <code>AUTH_GOOGLE_CLIENT_SECRET</code></td></tr>
+<tr><td>Facebook social login</td><td><strong>DONE</strong></td><td>Login/signup</td><td><code>AUTH_FACEBOOK_CLIENT_ID</code>, <code>AUTH_FACEBOOK_CLIENT_SECRET</code></td></tr>
+<tr><td>Microsoft social login</td><td><strong>DONE</strong></td><td>Azure AD login</td><td><code>AUTH_MICROSOFT_CLIENT_ID</code>, <code>AUTH_MICROSOFT_CLIENT_SECRET</code></td></tr>
+<tr><td>Google Ads OAuth</td><td><strong>DONE</strong></td><td>Vaulted Ads connect</td><td><code>GOOGLE_ADS_OAUTH_CLIENT_ID</code>/<code>SECRET</code>, developer/refresh tokens</td></tr>
+<tr><td>Meta Ads OAuth</td><td><strong>DONE</strong></td><td>Vaulted Meta connect</td><td><code>META_OAUTH_CLIENT_ID</code>/<code>SECRET</code>, <code>META_ACCESS_TOKEN</code></td></tr>
+<tr><td>Google Workspace OAuth</td><td><strong>DONE</strong></td><td>Gmail / Drive / Calendar vault</td><td><code>GOOGLE_WORKSPACE_CLIENT_ID</code>, <code>GOOGLE_WORKSPACE_CLIENT_SECRET</code></td></tr>
+<tr><td>Google Service Account</td><td><strong>DONE</strong></td><td>GSC + GA4 server auth</td><td><code>GOOGLE_SERVICE_ACCOUNT_JSON</code>, <code>GSC_SITE_URL</code></td></tr>
+<tr><td>Microsoft Advertising OAuth</td><td><strong>DONE</strong></td><td>Bing Ads reporting/launch</td><td><code>MICROSOFT_ADS_*</code></td></tr>
+<tr><td>WordPress App Password</td><td><strong>DONE</strong></td><td>Per-site Basic auth (tenant vaulted)</td><td>Tenant credentials + <code>CREDENTIAL_ENCRYPTION_KEY</code></td></tr>
+<tr><td>Nango</td><td><strong>PARTIAL</strong></td><td>Unified OAuth foundation (Meta/Google Ads/HubSpot/Shopify)</td><td><code>NANGO_SECRET_KEY</code>, <code>NANGO_HOST</code></td></tr>
+<tr><td>LinkedIn Ads OAuth</td><td><strong>PARTIAL</strong></td><td>Research / CAPI via vault token</td><td><code>LINKEDIN_ACCESS_TOKEN</code> / vault</td></tr>
+<tr><td>Canva OAuth</td><td><strong>PARTIAL</strong></td><td>Referenced; bridge is template links only</td><td><code>CANVA_CLIENT_ID</code>, <code>CANVA_API_KEY</code></td></tr>
+</table>
+<p>---</p>
+<h2>5. Email / messaging / communications</h2>
+<table>
+<tr><th>Tool</th><th>Status</th><th>How used</th><th>Typical env / key</th></tr>
+<tr><td>Resend</td><td><strong>DONE</strong></td><td>Auth, drip, broadcast, alerts</td><td><code>RESEND_API_KEY</code>, <code>RESEND_FROM_EMAIL</code></td></tr>
+<tr><td>Twilio SMS</td><td><strong>DONE</strong></td><td>Omnichannel / journey SMS</td><td><code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>, <code>TWILIO_FROM_NUMBER</code></td></tr>
+<tr><td>WhatsApp Cloud API</td><td><strong>DONE</strong></td><td>Messaging + webhooks</td><td><code>WHATSAPP_*</code></td></tr>
+<tr><td>Vapi.ai</td><td><strong>DONE</strong></td><td>AI voice outbound calls</td><td><code>VAPI_API_KEY</code>, <code>VAPI_PHONE_NUMBER_ID</code></td></tr>
+<tr><td>Web Push (VAPID)</td><td><strong>DONE</strong></td><td>Browser push</td><td><code>VAPID_PUBLIC_KEY</code>, <code>VAPID_PRIVATE_KEY</code></td></tr>
+<tr><td>Slack Incoming Webhooks</td><td><strong>DONE</strong></td><td>Digests, crisis, alert routing</td><td><code>SLACK_WEBHOOK_URL</code></td></tr>
+<tr><td>Mailchimp</td><td><strong>DONE</strong></td><td>CRM sync</td><td><code>MAILCHIMP_API_KEY</code>, <code>MAILCHIMP_SERVER_PREFIX</code></td></tr>
+<tr><td>ActiveCampaign</td><td><strong>DONE</strong></td><td>CRM sync</td><td><code>ACTIVECAMPAIGN_API_KEY</code>, <code>ACTIVECAMPAIGN_BASE_URL</code></td></tr>
+<tr><td>ConvertKit</td><td><strong>DONE</strong></td><td>CRM sync</td><td><code>CONVERTKIT_API_KEY</code></td></tr>
+<tr><td>Discord webhooks</td><td><strong>PARTIAL</strong></td><td>Allowed host on Slack-style dispatcher</td><td>User webhook URL</td></tr>
+<tr><td>Telegram Bot API</td><td><strong>PARTIAL</strong></td><td>Optional notify destination</td><td>Bot URL/token; <code>INFOGENIE_NOTIFY_SECRET</code></td></tr>
+<tr><td>OneSignal</td><td><strong>PARTIAL</strong></td><td>Presence check in channel studios</td><td><code>ONESIGNAL_APP_ID</code></td></tr>
+<tr><td>Firebase Cloud Messaging</td><td><strong>PARTIAL</strong></td><td>Presence check in channel studios</td><td><code>FIREBASE_SERVER_KEY</code></td></tr>
+<tr><td>RCS</td><td><strong>PARTIAL</strong></td><td>Module present; no carrier API</td><td>*(none)*</td></tr>
+</table>
+<p>---</p>
+<h2>6. Ads / marketing platforms</h2>
+<table>
+<tr><th>Tool</th><th>Status</th><th>How used</th><th>Typical env / key</th></tr>
+<tr><td>Meta Ads / Graph / CAPI</td><td><strong>DONE</strong></td><td>Campaigns, insights, Ad Library, CAPI</td><td><code>META_ACCESS_TOKEN</code>, Meta OAuth</td></tr>
+<tr><td>Google Ads</td><td><strong>DONE</strong></td><td>Insights, launch, optimizer</td><td><code>GOOGLE_ADS_*</code></td></tr>
+<tr><td>TikTok Ads</td><td><strong>DONE</strong></td><td>Campaign create + reporting</td><td><code>TIKTOK_ACCESS_TOKEN</code>, <code>TIKTOK_ADVERTISER_ID</code></td></tr>
+<tr><td>Microsoft Advertising</td><td><strong>DONE</strong></td><td>Insights + campaign paths</td><td><code>MICROSOFT_ADS_*</code></td></tr>
+<tr><td>HubSpot CRM</td><td><strong>DONE</strong></td><td>Contacts/deals/audiences/True ROAS</td><td><code>HUBSPOT_PRIVATE_APP_TOKEN</code></td></tr>
+<tr><td>Shopify Admin</td><td><strong>DONE</strong></td><td>Orders + SEO publish destination</td><td><code>SHOPIFY_SHOP</code>, <code>SHOPIFY_ADMIN_TOKEN</code></td></tr>
+<tr><td>AppsFlyer</td><td><strong>DONE</strong></td><td>Mobile install aggregation</td><td><code>APPSFLYER_API_TOKEN</code>, <code>APPSFLYER_APP_ID</code></td></tr>
+<tr><td>LinkedIn Ads</td><td><strong>PARTIAL</strong></td><td>Research via Perplexity; CAPI via vault</td><td>LinkedIn token env/vault</td></tr>
+<tr><td>Google Merchant Center</td><td><strong>PARTIAL</strong></td><td>Shopping campaign requirement flag</td><td><code>GOOGLE_MERCHANT_CENTER_ID</code></td></tr>
+<tr><td>Webflow CMS</td><td><strong>PARTIAL</strong></td><td>SEO Autopilot publish destination</td><td><code>WEBFLOW_API_TOKEN</code>, collection/site IDs</td></tr>
+<tr><td>SEO publish webhook</td><td><strong>PARTIAL</strong></td><td>Generic CMS/webhook publish</td><td><code>SEO_PUBLISH_WEBHOOK_URL</code></td></tr>
+<tr><td>CTV</td><td><strong>PARTIAL</strong></td><td>Creative brief scaffold (LLM); no ad network</td><td>Uses LLM keys</td></tr>
+</table>
+<p>---</p>
+<h2>7. Analytics</h2>
+<table>
+<tr><th>Tool</th><th>Status</th><th>How used</th><th>Typical env / key</th></tr>
+<tr><td>Amplitude</td><td><strong>DONE</strong></td><td>Product analytics + Agents + attribution</td><td><code>AMPLITUDE_API_KEY</code>, <code>AMPLITUDE_SECRET_KEY</code></td></tr>
+<tr><td>Segment</td><td><strong>DONE</strong></td><td>CDP event track forwarder</td><td><code>SEGMENT_WRITE_KEY</code></td></tr>
+<tr><td>GA4 (Data API)</td><td><strong>DONE</strong></td><td>Reports via service account</td><td><code>GOOGLE_SERVICE_ACCOUNT_JSON</code></td></tr>
+<tr><td>Google Search Console</td><td><strong>DONE</strong></td><td>Search analytics / social winners</td><td><code>GOOGLE_SERVICE_ACCOUNT_JSON</code>, <code>GSC_SITE_URL</code></td></tr>
+<tr><td>PostHog</td><td><strong>PARTIAL</strong></td><td>Browser key via <code>/api/config</code></td><td><code>POSTHOG_API_KEY</code></td></tr>
+</table>
+<p>---</p>
+<h2>8. Payments</h2>
+<table>
+<tr><th>Tool</th><th>Status</th><th>How used</th><th>Typical env / key</th></tr>
+<tr><td>Stripe</td><td><strong>DONE</strong></td><td>Checkout / billing / webhooks</td><td><code>STRIPE_SECRET_KEY</code>, <code>STRIPE_WEBHOOK_SECRET</code></td></tr>
+</table>
+<p>---</p>
+<h2>9. Storage</h2>
+<table>
+<tr><th>Tool</th><th>Status</th><th>How used</th><th>Typical env / key</th></tr>
+<tr><td>PostgreSQL</td><td><strong>DONE</strong></td><td>Primary DB / sessions</td><td><code>DATABASE_URL</code></td></tr>
+<tr><td>Local uploads filesystem</td><td><strong>DONE</strong></td><td>Default asset store (<code>/uploads</code>)</td><td>*(path)*</td></tr>
+<tr><td>Redis / Upstash</td><td><strong>PARTIAL</strong></td><td>Optional cache/rate-limit</td><td><code>REDIS_URL</code>, <code>UPSTASH_REDIS_URL</code></td></tr>
+<tr><td>S3-compatible object storage</td><td><strong>PARTIAL</strong></td><td>Uploads with local fallback</td><td><code>S3_*</code> / <code>AWS_*</code></td></tr>
+</table>
+<p>---</p>
+<h2>10. Infra / ops / security tooling</h2>
+<table>
+<tr><th>Tool</th><th>Status</th><th>How used</th><th>Typical env / key</th></tr>
+<tr><td>Chromium / Puppeteer</td><td><strong>DONE</strong></td><td>Headless HTML fetch</td><td><code>CHROMIUM_PATH</code>, <code>PUPPETEER_EXECUTABLE_PATH</code></td></tr>
+<tr><td>Credential vault (AES-GCM)</td><td><strong>DONE</strong></td><td>Encrypt platform + tenant secrets</td><td><code>CREDENTIAL_ENCRYPTION_KEY</code></td></tr>
+<tr><td>Session signing</td><td><strong>DONE</strong></td><td>Express sessions</td><td><code>SESSION_SECRET</code></td></tr>
+<tr><td>InfoGenie API gate</td><td><strong>DONE</strong></td><td>Global <code>/api</code> auth + quotas</td><td><code>INFOGENIE_API_KEY</code></td></tr>
+<tr><td>Public base URLs</td><td><strong>DONE</strong></td><td>OAuth redirects, CSRF, synthetics</td><td><code>PUBLIC_BASE_URL</code>, <code>APP_URL</code></td></tr>
+<tr><td>Sentry</td><td><strong>PARTIAL</strong></td><td>Optional error tracking</td><td><code>SENTRY_DSN</code></td></tr>
+<tr><td>Checkly</td><td><strong>PARTIAL</strong></td><td>External synthetics</td><td><code>CHECKLY_API_KEY</code>, <code>CHECKLY_ACCOUNT_ID</code></td></tr>
+<tr><td>Better Stack (Uptime)</td><td><strong>PARTIAL</strong></td><td>Alternate synthetics</td><td><code>BETTERSTACK_API_KEY</code></td></tr>
+<tr><td>OpenTelemetry → SigNoz</td><td><strong>PARTIAL</strong></td><td>Trace/metrics export</td><td><code>OTEL_*</code> / <code>SIGNOZ_*</code></td></tr>
+<tr><td>GitGuardian</td><td><strong>PARTIAL</strong></td><td>Secret-scan API + CI</td><td><code>GITGUARDIAN_API_KEY</code></td></tr>
+<tr><td>Notify shared secret</td><td><strong>PARTIAL</strong></td><td>Gate <code>/api/notify/send</code></td><td><code>INFOGENIE_NOTIFY_SECRET</code></td></tr>
+<tr><td>Infisical</td><td><strong>NOT DONE</strong></td><td>Deferred secrets manager</td><td>—</td></tr>
+<tr><td>incident.io</td><td><strong>NOT DONE</strong></td><td>Deferred incident tool</td><td>—</td></tr>
+<tr><td>PagerDuty</td><td><strong>NOT DONE</strong></td><td>Deferred paging</td><td>—</td></tr>
+<tr><td>Uptrace</td><td><strong>NOT DONE</strong></td><td>Deferred APM</td><td>—</td></tr>
+</table>
+<p>---</p>
+<h2>11. Explicitly not integrated</h2>
+<p>These appear only as missing/deferred mentions (docs or ops status). There is <strong>no DONE code path</strong>:</p>
+<ul>
+<li>Moz, Similarweb, Searchmetrics  </li>
+<li>Brandwatch, Mention, Sprout Social  </li>
+<li>Clearbit, Crunchbase, PitchBook  </li>
+<li>Salesforce, Pipedrive  </li>
+<li>Mixpanel, Heap  </li>
+<li>ElevenLabs  </li>
+<li>Runway / Kling, Midjourney, Stability AI  </li>
+<li>Pinterest Ads, Snapchat Ads, Amazon Ads, Twitter/X Ads (official Ads API)</li>
+</ul>
+<p>---</p>
+<h2>12. Where keys are managed</h2>
+<table>
+<tr><th>Location</th><th>What lives there</th></tr>
+<tr><td><strong>Manage → AI Providers / platform keys</strong></td><td>Admin-managed platform secrets overlay (<code>services/credentials/platform_keys.js</code>) — OpenAI, Anthropic, Gemini, Perplexity, Firecrawl, DataForSEO, Apollo, Resend, Stripe, Amplitude, many data APIs, etc.</td></tr>
+<tr><td><strong>Environment variables</strong></td><td>Ads OAuth tokens, Twilio/WhatsApp/Vapi, HubSpot, Shopify, Redis/S3, ops tooling (Checkly, OTEL, GitGuardian), session/vault secrets</td></tr>
+<tr><td><strong>Tenant credential vault</strong></td><td>Per-user/per-tenant OAuth tokens and WordPress credentials (encrypted with <code>CREDENTIAL_ENCRYPTION_KEY</code>)</td></tr>
+</table>
+<h3>Platform key registry groups (admin UI)</h3>
+<p>From <code>services/credentials/platform_keys.js</code>:</p>
+<ol>
+<li><strong>AI Models</strong> — OpenAI, Anthropic, Gemini, Perplexity, Cloudflare Workers AI, RapidAPI, Z.ai, Moonshot/Kimi, Groq, DeepSeek, Mistral, OpenRouter, Together, Ollama Cloud  </li>
+<li><strong>Data &amp; Intelligence</strong> — DataForSEO, Firecrawl, Apollo, Zernio, OmniSocials, Modash, BuiltWith, Google PageSpeed, Google Search, YouTube Data, Bing Webmaster, SpyFu, Majestic  </li>
+<li><strong>Infrastructure</strong> — Resend (+ webhook/from), Amplitude, Stripe (+ webhook), VAPID  </li>
+</ol>
+<p>Many additional services are wired in code but configured only via env (Semrush, Ahrefs, HubSpot, Twilio, ad-platform OAuth, ops stack, etc.).</p>
+<p>---</p>
+<h2>13. Approximate counts (code-backed)</h2>
+<table>
+<tr><th>Category</th><th>Approx. items (DONE or PARTIAL)</th></tr>
+<tr><td>LLM</td><td>16</td></tr>
+<tr><td>AI-other</td><td>8</td></tr>
+<tr><td>API-data</td><td>28</td></tr>
+<tr><td>OAuth/social</td><td>12</td></tr>
+<tr><td>Email/comms</td><td>14</td></tr>
+<tr><td>Ads/marketing</td><td>13</td></tr>
+<tr><td>Analytics</td><td>5</td></tr>
+<tr><td>Payments</td><td>1</td></tr>
+<tr><td>Storage</td><td>4</td></tr>
+<tr><td>Infra/ops</td><td>14 (+ 4 NOT DONE deferred)</td></tr>
+</table>
+<p>Primary evidence files:</p>
+<ul>
+<li><code>services/credentials/platform_keys.js</code></li>
+<li><code>services/integrations_status/routes.js</code></li>
+<li><code>services/ops_tooling/status.js</code></li>
+<li><code>services/ai_providers/presets.js</code></li>
+<li><code>services/execution_hub/api.js</code></li>
+<li>Individual <code>services/*/api.js</code> modules</li>
+</ul>
+<p>---</p>
+<h2>14. Preview / ops note</h2>
+<p>In a typical preview environment, many integrations are <strong>code-DONE</strong> but <strong>keys missing</strong>. Example:</p>
+<ul>
+<li>SEO On-Page Auditor → Firecrawl path is DONE in code, but without <code>FIRECRAWL_API_KEY</code>, WAF-protected sites (e.g. fxpro.com) cannot be scraped.</li>
+</ul>
+<p>To check live configuration in a running instance, use integrations/status surfaces in the app and/or the platform keys admin UI.</p>
+<p>---</p>
+<p>*End of document — InfoGenie integrations inventory*</p>
+<p class="footer">InfoGenie Integrations Inventory — printable HTML export</p>
+</main></body></html>
