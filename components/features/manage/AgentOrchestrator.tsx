@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { useRouter } from "next/navigation";
 import { apiFetch, apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
+import { campaignValidationMessage } from "@/lib/campaignFeedback";
 
 const MICROS_PER_USD = 1_000_000;
 
@@ -30,11 +31,11 @@ function dollarsToMicros(dollars: string | number): number {
 }
 
 const BLOCK_REASON_LABELS: Record<string, string> = {
-  insufficient_credits: "Insufficient credits — add a grant or reduce spend.",
-  credit_ceiling_exceeded: "Workflow credit ceiling exceeded — raise the workflow ceiling or reduce cost.",
-  rate_limit_exceeded: "AI request rate limit exceeded — wait or raise tenant limits.",
-  concurrency_limit_exceeded: "Too many concurrent AI operations — wait or raise tenant limits.",
-  tenant_cost_limit_exceeded: "Tenant daily or monthly AI cost limit exceeded.",
+  insufficient_credits: "Not enough available AI credits. Review Shared credits & cost controls; an authorised administrator can review the balance. A higher spending limit does not add credits.",
+  credit_ceiling_exceeded: "The request exceeds a workflow or tenant credit ceiling, or a ceiling is zero. Review Shared credits & cost controls and this workflow's ceiling, including consumed and reserved credits. Adding credits alone does not change spending limits.",
+  rate_limit_exceeded: "AI request rate limit reached. Wait before trying again.",
+  concurrency_limit_exceeded: "The concurrent AI operation limit has been reached. Wait for an active operation to finish.",
+  tenant_cost_limit_exceeded: "A tenant daily, monthly or per-workflow AI cost cap blocks this request. Review Shared credits & cost controls. Any limit change requires an authorised administrator.",
 };
 
 const RESERVATION_STATUSES = new Set(["reserved", "committed", "released", "expired"]);
@@ -515,6 +516,7 @@ export default function AgentOrchestrator() {
   const [creditsStatus, setCreditsStatus] = useState<LoadStatus>("loading");
   const [creditsLoadError, setCreditsLoadError] = useState("");
   const [creditsData, setCreditsData] = useState<CreditsSnapshot | null>(null);
+  const creditsLoadSeq = useRef(0);
   const [creditsBusy, setCreditsBusy] = useState("");
   const [creditsMsg, setCreditsMsg] = useState("");
   const [creditsMsgIsError, setCreditsMsgIsError] = useState(false);
@@ -678,7 +680,8 @@ export default function AgentOrchestrator() {
     setWfStatus("ready");
   }, []);
 
-  const loadCredits = useCallback(async () => {
+  const loadCredits = useCallback(async (syncLimitsForm = true) => {
+    const sequence = ++creditsLoadSeq.current;
     if (!can("orchestrator.credits.view")) {
       setCreditsData(null);
       setCreditsLoadError("");
@@ -690,6 +693,7 @@ export default function AgentOrchestrator() {
     const r = await apiGet<{ ok: boolean; error?: string } & Partial<CreditsSnapshot>>(
       "/api/agent-orchestrator/credits",
     );
+    if (sequence !== creditsLoadSeq.current) return;
     if (r.ok === false) {
       setCreditsData(null);
       setCreditsLoadError(r.error || "Failed to load credit accounting.");
@@ -719,7 +723,7 @@ export default function AgentOrchestrator() {
     setCreditsData(snap);
     setCreditsLoadError("");
     setCreditsStatus("ready");
-    if (can("orchestrator.credits.limits.edit")) {
+    if (syncLimitsForm && can("orchestrator.credits.limits.edit")) {
       setLimitsForm({
         credit_ceiling_dollars: formatMicros(snap.limits.credit_ceiling_micros),
         requests_per_minute: String(snap.limits.requests_per_minute ?? 0),
@@ -786,6 +790,7 @@ export default function AgentOrchestrator() {
   useEffect(() => { loadWorkflows(); }, [loadWorkflows]);
   useEffect(() => {
     if (permissions.length > 0 || isPlatformAdmin) loadCredits();
+    return () => { creditsLoadSeq.current += 1; };
   }, [loadCredits, permissions, isPlatformAdmin]);
 
   useEffect(() => {
@@ -946,11 +951,12 @@ export default function AgentOrchestrator() {
       );
       if (cancelled || r.ok === false || !r.job) return;
       setStaticImageJob(r.job);
+      if (!["queued", "running"].includes(r.job.status)) void loadCredits(false);
     };
     poll();
     const iv = setInterval(poll, 2000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [staticImageJob?.id, staticImageJob?.status]);
+  }, [staticImageJob?.id, staticImageJob?.status, loadCredits]);
 
   useEffect(() => {
     if (!videoJob?.id || !ACTIVE_VIDEO_JOB_STATES.has(videoJob.status)) return;
@@ -960,11 +966,12 @@ export default function AgentOrchestrator() {
       const r = await apiGet<{ ok: boolean; job?: VideoJob; error?: string }>(`/api/agent-orchestrator/video-jobs/${jobId}`);
       if (cancelled || r.ok === false || !r.job) return;
       setVideoJob(r.job);
+      if (!ACTIVE_VIDEO_JOB_STATES.has(r.job.status)) void loadCredits(false);
     };
     poll();
     const iv = setInterval(poll, 2000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [videoJob?.id, videoJob?.status]);
+  }, [videoJob?.id, videoJob?.status, loadCredits]);
 
   const actionsLocked = status === "loading" || !!busy;
   const wfActionsLocked = wfStatus === "loading" || !!wfBusy || detailLoading;
@@ -1579,6 +1586,7 @@ export default function AgentOrchestrator() {
       "/api/agent-orchestrator/proposals", "POST",
       { workflow_id: workflowId, research_run_id: proposalRunId, mode: "fixture" },
     );
+    void loadCredits(false);
     if (activeWorkflowId.current !== workflowId || epoch !== proposalEpoch.current) return;
     setProposalBusy("");
     if (r.ok === false) {
@@ -1620,6 +1628,7 @@ export default function AgentOrchestrator() {
     const brief = imageBriefOf(creativeProposal);
     if (!selected || !creativeProposal?.content_hash || !brief?.approval_id || !brief.approval_hash || !staticGenConfirm) return;
     if (!can("orchestrator.workflows.edit") && !can("orchestrator.workflows.approve.creative_generation")) return;
+    const workflowId = selected.id, epoch = proposalEpoch.current;
     setStaticGenBusy("generate");
     setStaticGenMsg("");
     const r = await orchMutate<{ ok: boolean; job?: StaticImageJob; error?: string }>(
@@ -1637,10 +1646,12 @@ export default function AgentOrchestrator() {
         mode: "fixture",
       },
     );
+    void loadCredits(false);
+    if (activeWorkflowId.current !== workflowId || epoch !== proposalEpoch.current) return;
     setStaticGenBusy("");
     if (r.ok === false) {
       setStaticGenMsgIsError(true);
-      setStaticGenMsg(r.error || "Generation failed");
+      setStaticGenMsg(BLOCK_REASON_LABELS[r.error || ""] || r.error || "Generation failed");
       return;
     }
     if (r.job) setStaticImageJob(r.job);
@@ -1663,22 +1674,28 @@ export default function AgentOrchestrator() {
     const brief = videoBriefOf(creativeProposal);
     if (!selected || !creativeProposal?.content_hash || !brief?.approval_id || !brief.approval_hash || !videoGenConfirm) return;
     if (!can("orchestrator.workflows.edit") && !can("orchestrator.workflows.approve.creative_generation")) return;
+    const workflowId = selected.id, epoch = proposalEpoch.current;
     setVideoGenBusy("generate"); setVideoGenMsg("");
     const r = await orchMutate<{ ok: boolean; job?: VideoJob; error?: string }>("/api/agent-orchestrator/video-jobs", "POST", {
       workflow_id: selected.id, proposal_id: creativeProposal.id, proposal_version: creativeProposal.version,
       proposal_content_hash: creativeProposal.content_hash, approval_id: brief.approval_id, approval_hash: brief.approval_hash,
       estimated_max_cost_micros: 10000, confirm: true,
     });
+    void loadCredits(false);
+    if (activeWorkflowId.current !== workflowId || epoch !== proposalEpoch.current) return;
     setVideoGenBusy("");
-    if (r.ok === false) { setVideoGenMsgIsError(true); setVideoGenMsg(r.error || "Enqueue failed"); return; }
+    if (r.ok === false) { setVideoGenMsgIsError(true); setVideoGenMsg(BLOCK_REASON_LABELS[r.error || ""] || r.error || "Enqueue failed"); return; }
     if (r.job) setVideoJob(r.job);
     setVideoGenMsgIsError(false); setVideoGenMsg("Video job queued.");
   }
 
   async function cancelVideoJob() {
     if (!videoJob?.id || !ACTIVE_VIDEO_JOB_STATES.has(videoJob.status) || !can("orchestrator.workflows.cancel")) return;
+    const workflowId = activeWorkflowId.current, epoch = proposalEpoch.current;
     setVideoGenBusy("cancel"); setVideoGenMsg("");
     const r = await orchMutate<{ ok: boolean; job?: VideoJob; error?: string }>(`/api/agent-orchestrator/video-jobs/${videoJob.id}/cancel`, "POST", {});
+    void loadCredits(false);
+    if (activeWorkflowId.current !== workflowId || epoch !== proposalEpoch.current) return;
     setVideoGenBusy("");
     if (r.ok === false) { setVideoGenMsgIsError(true); setVideoGenMsg(r.error || "Cancel failed"); return; }
     if (r.job) setVideoJob(r.job);
@@ -2013,7 +2030,7 @@ export default function AgentOrchestrator() {
                 <span>{creditsLoadError || "Failed to load credit accounting."}</span>
                 <button
                   type="button"
-                  onClick={() => loadCredits()}
+                  onClick={() => loadCredits(false)}
                   style={{ ...btnPrimary, padding: "8px 12px", borderRadius: 8, fontSize: "0.75rem" }}
                 >
                   Retry
@@ -3217,7 +3234,7 @@ export default function AgentOrchestrator() {
                     {campaignDraft ? (
                       <div style={{ fontSize: "0.78rem", color: "#374151" }}>
                         <div>Campaign draft {campaignDraft.id} · {campaignDraft.status} · rev {campaignDraft.current_revision}{campaignDraft.label ? ` · ${campaignDraft.label}` : ""}</div>
-                        {(campaignDraft.validation?.errors || []).map((e, i) => <div key={i} style={{ color: "#B91C1C", marginTop: 4 }}>{e.code}{e.field ? ` (${e.field})` : ""}</div>)}
+                        {(campaignDraft.validation?.errors || []).map((e, i) => <div role="alert" key={i} style={{ color: "#B91C1C", marginTop: 4 }}>{campaignValidationMessage(e)}</div>)}
                         <input placeholder="Label" value={draftForm.label} onChange={(e) => setDraftForm((f) => ({ ...f, label: e.target.value }))} style={{ ...draftFld, marginTop: 8 }} />
                         <textarea placeholder="Notes" value={draftForm.notes} onChange={(e) => setDraftForm((f) => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...draftFld, marginTop: 6 }} />
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "10px 0" }}>

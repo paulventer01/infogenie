@@ -465,3 +465,105 @@ test('owner-gated creative review explains the existing account boundary',async 
  assert.match(h.text(),/requires the deployment owner account/);
  assert.ok(h.calls.every(r=>r.method==='GET'));
 });
+
+function creditSnapshot(available = 30000, consumed = 0, reserved = 0) {
+ return {ok:true,account:{available_micros:available,consumed_micros:consumed,reserved_micros:reserved,currency:'USD'},
+  limits:{credit_ceiling_micros:50000,requests_per_minute:2,max_concurrent_ai:1,daily_ai_cost_micros:50000,monthly_ai_cost_micros:50000,per_workflow_cost_micros:50000},
+  usage:{daily_micros:consumed,monthly_micros:consumed},reservations:[],workflows:[]};
+}
+async function generationCreditHarness(t, format, options = {}) {
+ const ledger={snapshot:creditSnapshot()};
+ const h=await creativeReviewHarness(t,{generation:true,runs:[{id:'completed',workflow_id:'workflow',state:'completed'}],handler:async(r,state)=>{
+  if(state.generation){state.generation.content_hash='p'.repeat(64);Object.assign(state.generation.artifacts[0],{format,status:'approved',approval_id:12,approval_hash:'a'.repeat(64)});}
+  if(options.handler){const result=await options.handler(r,ledger);if(result!==undefined)return result;}
+  if(r.url==='/api/tenants/active')return {ok:true,isPlatformAdmin:false,permissions:['orchestrator.workflows.view','orchestrator.workflows.edit','orchestrator.credits.limits.edit',...(options.noCredits?[]:['orchestrator.credits.view'])]};
+  if(r.url==='/api/agent-orchestrator/credits')return ledger.snapshot;
+  if(r.method==='POST'&&(r.url.endsWith('/static-images')||r.url.endsWith('/video-jobs')||r.url.endsWith('/proposals'))){ledger.snapshot=creditSnapshot(20000,10000);return options.error?{ok:false,error:options.error}:{ok:true,job:{id:'generated',status:'succeeded'}};}
+ }});
+ return {...h,ledger,generate:async()=>{
+  await act(async()=>[...document.querySelectorAll('label')].find(l=>l.textContent.includes(format==='image'?'I confirm generation':'I confirm enqueue')).querySelector('input').click());
+  await h.click(format==='image'?'Generate static image':'Enqueue video job');
+ }};
+}
+function creditValue(label) {
+ const el=[...document.querySelectorAll('div')].find(el=>el.textContent===label);
+ return el?.nextElementSibling?.textContent.trim();
+}
+for(const format of ['image','video']) {
+ test(format+' generation refreshes ledger without changing limit edits or sending extra writes',async t=>{
+  const h=await generationCreditHarness(t,format);
+  assert.equal(creditValue('Available'),'0.03 USD');
+  const input=[...document.querySelectorAll('label')].find(l=>l.textContent.trim()==='Credit ceiling (USD)').querySelector('input');
+  await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set.call(input,'0.09');input.dispatchEvent(new window.Event('input',{bubbles:true}));});
+  await h.generate();
+  assert.equal(creditValue('Available'),'0.02 USD');assert.equal(creditValue('Consumed'),'0.01 USD');assert.equal(creditValue('Daily usage'),'0.01 USD');
+  assert.equal([...document.querySelectorAll('label')].find(l=>l.textContent.trim()==='Credit ceiling (USD)').querySelector('input').value,'0.09');
+  const writes=h.calls.filter(r=>r.method!=='GET');assert.equal(writes.length,1);
+  assert.equal(writes[0].body.confirm,true);assert.equal(writes[0].body.estimated_max_cost_micros,10000);assert.equal(writes[0].body.approval_id,12);assert.equal(writes[0].body.proposal_content_hash,'p'.repeat(64));
+ });
+ test(format+' credit refusal shows guidance and refreshes accounting without retry',async t=>{
+  const h=await generationCreditHarness(t,format,{error:'credit_ceiling_exceeded'});
+  await h.generate();assert.match(h.text(),/workflow or tenant credit ceiling/);assert.match(h.text(),/Adding credits alone does not change spending limits/);
+  assert.equal(creditValue('Consumed'),'0.01 USD');assert.equal(h.calls.filter(r=>r.method==='POST').length,1);
+ });
+ test(format+' terminal polling refreshes settled credits',async t=>{
+  const h=await generationCreditHarness(t,format,{handler:(r,ledger)=>{
+   if(r.method==='POST'){ledger.snapshot=creditSnapshot(20000,0,10000);return {ok:true,job:{id:'queued-job',status:'queued'}};}
+   if(r.url.endsWith('/queued-job')){ledger.snapshot=creditSnapshot(20000,10000);return {ok:true,job:{id:'queued-job',status:'succeeded'}};}
+  }});
+  await h.generate();assert.match(h.text(),/queued-job · succeeded/);assert.equal(creditValue('Reserved'),'0.00 USD');assert.equal(creditValue('Consumed'),'0.01 USD');
+ });
+ test(format+' stale response cannot show a job in a different workflow',async t=>{
+  let release;
+  const h=await generationCreditHarness(t,format,{handler:r=>{if(r.method==='POST')return new Promise(resolve=>{release=resolve;});}});
+  await h.generate();await act(async()=>[...document.querySelectorAll('tr')].find(r=>r.textContent.includes('Other workflow')).click());
+  await act(async()=>release({ok:true,job:{id:'old-workflow-job',status:'succeeded'}}));
+  assert.doesNotMatch(h.text(),/old-workflow-job|job queued/);
+ });
+}
+test('generation does not request credit data without credits.view',async t=>{
+ const h=await generationCreditHarness(t,'image',{noCredits:true});await h.generate();
+ assert.equal(h.calls.filter(r=>r.url==='/api/agent-orchestrator/credits').length,0);
+});
+test('failed credit refresh hides outdated balance and offers read-only retry',async t=>{
+ const h=await generationCreditHarness(t,'image',{handler:(r,ledger)=>{
+  if(r.method==='POST'){ledger.snapshot={ok:false,error:'credit_read_unavailable'};return {ok:true,job:{id:'generated',status:'succeeded'}};}
+ }});
+ await h.generate();assert.equal(creditValue('Available'),undefined);assert.match(h.text(),/credit_read_unavailable/);
+ h.ledger.snapshot=creditSnapshot(20000,10000);await h.click('Retry');assert.equal(creditValue('Available'),'0.02 USD');
+ assert.equal(h.calls.filter(r=>r.method==='POST').length,1);
+});
+test('older credit read cannot overwrite the balance refreshed after a second operation',async t=>{
+ let pending=false,release;
+ const h=await generationCreditHarness(t,'image',{handler:r=>{
+  if(pending&&r.url==='/api/agent-orchestrator/credits'){pending=false;return new Promise(resolve=>{release=resolve;});}
+ }});
+ pending=true;await h.generate();assert.match(h.text(),/Loading credit accounting/);
+ await h.click('Generate proposals');assert.equal(creditValue('Consumed'),'0.01 USD');
+ await act(async()=>release(creditSnapshot(30000,0)));assert.equal(creditValue('Available'),'0.02 USD');
+});
+test('proposal generation refreshes accounting',async t=>{
+ const h=await generationCreditHarness(t,'image');await h.click('Generate proposals');
+ assert.equal(creditValue('Consumed'),'0.01 USD');assert.equal(h.calls.filter(r=>r.method==='POST').length,1);
+});
+for(const component of ['AgentOrchestrator','CampaignJourney']) {
+ test(component+' explains missing Meta credentials and keeps approval unavailable',async t=>{
+  const draft={id:'draft',tenant_id:7,workflow_id:'workflow',status:'validation_failed',current_revision:1,contract_hash:'d'.repeat(64),label:'Fixture draft',notes:'Do not publish',validation_status:'failed',validation:{errors:[{code:'missing_credentials',field:'accounts.meta'}]}};
+  const h=component==='AgentOrchestrator'?await creativeReviewHarness(t,{handler:r=>{
+   if(r.url.includes('/campaign-drafts?'))return {ok:true,drafts:[draft]};
+   if(r.url.endsWith('/campaign-drafts/draft/snapshot'))return {ok:true,status:'validation_failed',published:false,object_kind:'campaign_draft'};
+  }}):await harness(t,(r,state)=>{if(r.url.endsWith('/validate')){state.draft={...state.draft,...draft};return {ok:true,draft:state.draft};}});
+  if(component==='CampaignJourney'){await prepare(h);await h.click('Save campaign draft');await h.click('Validate saved campaign');}
+  assert.match(h.text(),/Meta advertising credentials were not found/);assert.match(h.text(),/Settings & Integrations/);assert.match(h.text(),/adding AI credits will not resolve/);
+  assert.ok(![...document.querySelectorAll('button')].some(b=>/^Approve (snapshot|saved campaign)$/.test(b.textContent)));
+  if(component==='AgentOrchestrator'){await h.click('Preview snapshot');assert.match(h.text(),/published: false/);}
+  assert.ok(!h.calls.some(r=>r.url.includes('/settings')||r.url.includes('/publish')||r.url.endsWith('/approve')));
+ });
+}
+
+test('campaign validation guidance preserves other errors and handles missing codes',()=>{
+ const {campaignValidationMessage}=loader()('lib/campaignFeedback.ts');
+ assert.match(campaignValidationMessage({code:'missing_credentials',field:'accounts.google'}),/Advertising credentials could not be verified/);
+ assert.equal(campaignValidationMessage({code:'missing_creative',field:'creatives.0'}),'missing creative (creatives.0)');
+ assert.equal(campaignValidationMessage({}),'Validation issue');
+});
