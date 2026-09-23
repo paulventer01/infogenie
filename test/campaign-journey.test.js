@@ -50,7 +50,7 @@ async function harness(t,handler=()=>undefined,options={}){
   await act(async()=>root.render(React.createElement(React.StrictMode,null,React.createElement(loader()(options.component||'components/features/manage/CampaignJourney.tsx').default))));
   const h={state,calls,text:()=>document.body.textContent,
     set:async(name,value)=>act(async()=>{const el=document.querySelector('[name="'+name+'"]');assert.ok(el,name);
-      Object.getOwnPropertyDescriptor(el.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype,'value').set.call(el,value);
+      Object.getOwnPropertyDescriptor(el.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:el.tagName==='TEXTAREA'?dom.window.HTMLTextAreaElement.prototype:dom.window.HTMLInputElement.prototype,'value').set.call(el,value);
       el.dispatchEvent(new dom.window.Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));}),
     click:async(text)=>act(async()=>{const el=[...document.querySelectorAll('button')].find(b=>b.textContent===text);assert.ok(el,text);assert.equal(el.disabled,false,text+' disabled');el.click();}),
     confirm:async()=>act(async()=>document.querySelector('input[type="checkbox"]').click()),
@@ -566,4 +566,50 @@ test('campaign validation guidance preserves other errors and handles missing co
  assert.match(campaignValidationMessage({code:'missing_credentials',field:'accounts.google'}),/Advertising credentials could not be verified/);
  assert.equal(campaignValidationMessage({code:'missing_creative',field:'creatives.0'}),'missing creative (creatives.0)');
  assert.equal(campaignValidationMessage({}),'Validation issue');
+});
+
+
+test('workspace draft fields keep visible labels and preserve the exact submitted contract',async t=>{
+ let saved=null;
+ const h=await creativeReviewHarness(t,{handler:r=>{
+  if(r.url.includes('/campaign-drafts?'))return {ok:true,drafts:saved?[saved]:[]};
+  if(r.url.endsWith('/campaign-drafts')&&r.method==='POST'){
+   saved={...r.body,id:'saved-draft',status:'draft',current_revision:1,contract_hash:'d'.repeat(64)};
+   return {ok:true,draft:saved};
+  }
+  if(r.url.endsWith('/saved-draft')&&r.method==='PATCH'){saved={...saved,...r.body};return {ok:true,draft:saved};}
+ }});
+ const labels={draft_label:'Campaign name',draft_notes:'Campaign notes',draft_landing:'Landing page URL',draft_account:'Advertising account reference',draft_asset:'Creative asset ID',draft_version:'Creative version',draft_hash:'Creative content hash',draft_budget:'Advertising budget (micros)',draft_start:'Campaign start date and time'};
+ for(const [name,label]of Object.entries(labels)){
+  const el=document.querySelector('[name="'+name+'"]');assert.ok(el,name);
+  assert.equal(el.labels.length,1);assert.equal(el.labels[0].textContent,label);
+  if(el.getAttribute('aria-describedby'))assert.ok(document.getElementById(el.getAttribute('aria-describedby')));
+ }
+ assert.match(h.text(),/Do not enter an API key or token here/);
+ assert.match(h.text(),/separate from AI credits/);
+ assert.equal(h.calls.filter(r=>r.method!=='GET').length,0);
+ for(const [name,value]of Object.entries({draft_label:'Fixture draft',draft_notes:'Do not publish',draft_landing:'https://example.com/test',draft_account:'user_integrations',draft_asset:'approved-asset',draft_version:'3',draft_hash:'f'.repeat(64),draft_budget:'1250000',draft_start:'2030-01-01T10:00'}))await h.set(name,value);
+ assert.match(document.getElementById('campaign-draft-budget-help').textContent,/1.25 USD/);
+ await h.click('Create campaign draft');
+ const writes=h.calls.filter(r=>r.method!=='GET');assert.equal(writes.length,1);
+ const {contract,label,notes}=writes[0].body;
+ assert.equal(label,'Fixture draft');assert.equal(notes,'Do not publish');
+ assert.deepEqual(contract.budget,{amount_micros:1250000,currency:'USD'});
+ assert.deepEqual(contract.creatives,[{kind:'creative_brief',asset_id:'approved-asset',version:3,content_hash:'f'.repeat(64)}]);
+ assert.deepEqual(contract.accounts,[{platform:'meta',credential_ref:'user_integrations'}]);
+ assert.equal(contract.destination.landing_page_url,'https://example.com/test');
+ assert.equal(contract.schedule.start_at,new Date('2030-01-01T10:00').toISOString());
+ for(const name of ['draft_label','draft_notes'])assert.equal(document.querySelector('[name="'+name+'"]').labels[0].textContent,labels[name]);
+ await h.set('draft_notes','Updated draft notes');await h.click('Save label/notes');
+ assert.deepEqual(h.calls.filter(r=>r.method==='PATCH')[0].body,{label:'Fixture draft',notes:'Updated draft notes'});
+});
+
+test('workspace budget guidance distinguishes zero, small amounts and invalid input without writes',async t=>{
+ const h=await creativeReviewHarness(t,{readOnly:true});
+ for(const [value,expected]of [['0','0.00 USD'],['1','0.000001 USD'],['1000000','1.00 USD'],['','Enter a non-negative whole number'],['-1','Enter a non-negative whole number'],['1.5','Enter a non-negative whole number']]){
+  await h.set('draft_budget',value);
+  assert.ok(document.getElementById('campaign-draft-budget-help').textContent.includes(expected));
+ }
+ assert.ok(![...document.querySelectorAll('button')].some(b=>b.textContent==='Create campaign draft'));
+ assert.equal(h.calls.filter(r=>r.method!=='GET').length,0);
 });

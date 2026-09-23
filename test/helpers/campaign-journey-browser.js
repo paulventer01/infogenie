@@ -63,6 +63,18 @@ module.exports = async function campaignJourney(page, account, origin) {
       await reviewPage.goto(reviewLink,{waitUntil:'networkidle2'});
       await reviewPage.waitForFunction(()=>document.querySelector('#campaign-workspace-details')?.textContent.includes('DEMO inline workspace'));
       assert.ok(await reviewPage.$eval('#campaign-workspace-details',el=>el.innerText.includes('DEMO inline workspace')));
+      await reviewPage.waitForSelector('#campaign-draft-start');
+      const draftLabels=await reviewPage.$$eval('[name^="draft_"]',els=>els.map(el=>el.labels?.[0]?.textContent));
+      assert.deepEqual(draftLabels,['Campaign name','Campaign notes','Landing page URL','Advertising account reference','Creative asset ID','Creative version','Creative content hash','Advertising budget (micros)','Campaign start date and time']);
+      await reviewPage.locator('#campaign-draft-budget').fill('1250000');
+      await reviewPage.waitForFunction(()=>document.querySelector('#campaign-draft-budget-help').textContent.includes('1.25 USD'));
+      await reviewPage.setViewport({width:390,height:844});
+      assert.ok(await reviewPage.$$eval('[name^="draft_"]',els=>els.every(el=>{
+        const field=el.getBoundingClientRect(),panel=el.parentElement.getBoundingClientRect();
+        return field.width>0&&field.width<=panel.width;
+      })));
+      await reviewPage.locator('#campaign-draft-label').fill('DEMO labelled draft form');
+      await reviewPage.screenshot({path:'/tmp/preview-artifacts/campaign-draft-fields-mobile.png',fullPage:true});
       assert.equal(await page.$eval('[name="campaign_workflow"]',el=>el.value),createdId);
       await page.bringToFront();
       await click('Refresh creative briefs');
@@ -189,6 +201,8 @@ module.exports = async function campaignJourney(page, account, origin) {
       },wf);
       assert.equal(read.status,200);assert.equal(read.body.generation.id,proposal);
       assert.equal(await ownerPage.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Generate proposals').disabled),true);
+      assert.equal(await ownerPage.$eval('#campaign-draft-label',el=>el.labels[0].textContent),'Campaign name');
+      assert.equal(await ownerPage.$eval('#campaign-draft-notes',el=>el.labels[0].textContent),'Campaign notes');
       assert.deepEqual(mutations,[]);
       await ownerPage.screenshot({path:'/tmp/preview-artifacts/creative-review-restored.png',fullPage:true});
     } finally {await ownerContext.close();}
