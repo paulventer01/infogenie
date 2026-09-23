@@ -38,8 +38,11 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
   browser=await require('puppeteer').launch({headless:true,pipe:true,args:['--disable-dev-shm-usage']});
   page=await browser.newPage(); page.setDefaultTimeout(60000);
   const externalResponses=[];
-  page.on('response',r=>{const u=new URL(r.url());if(['http:','https:'].includes(u.protocol) && u.origin!==ORIGIN) externalResponses.push(u.origin);});
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  function observePage(){
+    page.on('response',r=>{const u=new URL(r.url());if(['http:','https:'].includes(u.protocol) && u.origin!==ORIGIN) externalResponses.push(u.origin);});
+    page.on('pageerror',e=>errors.push(e.message));
+  }
+  const errors=[];observePage();
   async function login(){
     const documentResponse=await page.goto(ORIGIN+'/login?next=%2Fmanage%2Fclient-reporting',{waitUntil:'networkidle2'});
     assert.match(documentResponse.headers()['content-security-policy'],/connect-src 'self'(;|$)/);
@@ -116,14 +119,22 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
   assert.equal(await page.$eval('main header h1',el=>getComputedStyle(el).color),'rgb(255, 255, 255)');
   await page.screenshot({path:'/tmp/preview-artifacts/reporting-mobile.png',fullPage:true});
   stage='campaign brief to approval';
-  await require('../helpers/campaign-journey-browser')(page,account,ORIGIN);
-  await stop();
-  fs.renameSync(accessPath,accessPath+'.pending'); // interrupted first boot after commit, before rename
-  await new Promise(r=>setTimeout(r,2000));await start();
-  assert.equal(fs.readFileSync(accessPath,'utf8'),original,'restart retains test credentials and workspace');
-  await page.deleteCookie(...await page.cookies());await login();
-  await page.select('select[name="client_id"]',String(account.clientId));
-  await page.waitForFunction(()=>document.querySelector('[name="report_title"]')?.value==='DEMO — Monthly client review');
+  await require('../helpers/campaign-journey-browser')(page,account,ORIGIN,async()=>{
+    stage='restart preview and sign in with a fresh browser context';
+    const previousPid=child.pid;
+    await page.close();await stop();
+    fs.renameSync(accessPath,accessPath+'.pending'); // interrupted first boot after commit, before rename
+    await new Promise(r=>setTimeout(r,2000));await start();
+    assert.notEqual(child.pid,previousPid,'a new preview process must serve the saved campaign');
+    assert.equal(fs.readFileSync(accessPath,'utf8'),original,'restart retains test credentials and workspace');
+    const freshContext=await browser.createBrowserContext();
+    page=await freshContext.newPage();page.setDefaultTimeout(60000);observePage();
+    await page.setViewport({width:1440,height:1000});await login();
+    await page.select('select[name="client_id"]',String(account.clientId));
+    await page.waitForFunction(()=>document.querySelector('[name="report_title"]')?.value==='DEMO — Monthly client review');
+    stage='restore exact saved campaign after process restart';
+    return page;
+  });
   assert.deepEqual(errors,[]);
   assert.deepEqual(externalResponses,[],'preview browser has no external HTTP responses');
 });

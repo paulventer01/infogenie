@@ -12,7 +12,7 @@ created by this document. Production remains separate.
 | --- | --- | --- |
 | Private Codespaces preview | Dedicated `infogenie_preview` PostgreSQL container; real login, tenant permissions and CSRF; restart persistence | A temporary private preview, not a verified always-on Railway staging service |
 | Normal preview reviewer | Synthetic tenant owner with `users.is_owner=false` | Proposal routes correctly return `403 owner_only`; do not promote this account to make the journey pass |
-| Campaign browser acceptance | Saves, reloads, validates and approves a synthetic draft; checks no publish request exists | Seeds approved creative and a synthetic integration row directly in disposable CI; does not prove live Meta authentication or the entire research-to-generation journey |
+| Campaign browser acceptance | Saves, reloads, validates and approves a synthetic draft; the restart regression compares its exact snapshot, revision history and approval records through a fresh login and checks no publish request exists | Seeds approved creative and a synthetic integration row directly in disposable CI; does not prove live Meta authentication or the entire research-to-generation journey |
 | Owner creative review acceptance | Separate synthetic owner uses real login, reads persisted research/proposal and saved snapshot | Owner exists only in disposable CI; this is not an operator-accessible owner provisioning feature |
 | Production | Operator evidence establishes #217 active and deployed, and earlier fixture steps through draft snapshot | Successful production validation/approval and full reload acceptance remain unverified; missing Meta credentials are still enforced |
 
@@ -98,7 +98,11 @@ green result cannot certify the next candidate.
 | Desktop/mobile review | Navigation and controls are usable; long fields wrap; inspect whole-page overflow as well as the snapshot panel |
 
 The current preview workflow and `test/helpers/campaign-journey-browser.js`
-provide part of this evidence. They do not certify every row above: in particular,
+provide part of this evidence. The process-restart check retains the reporting
+assertions, restores the exact campaign and creative choice in the UI, and
+confirms ordinary-reviewer proposal denial still holds. It performs no campaign
+mutation or repeat approval during restoration. This is disposable preview
+acceptance, not production reload acceptance. They do not certify every row above: in particular,
 the campaign helper seeds upstream objects and the normal preview account cannot
 perform the full owner-only journey. Extend only missing acceptance in a later
 bounded build; do not duplicate tests or weaken gates.

@@ -4,8 +4,9 @@ const crypto = require('node:crypto');
 
 // Fixture accounts and assets exist only inside the disposable CI preview DB.
 // They are deliberately not seeded into user previews or production databases.
-module.exports = async function campaignJourney(page, account, origin) {
+module.exports = async function campaignJourney(page, account, origin, restartAndLogin) {
   assert.equal(process.env.INFOGENIE_REQUIRE_PREVIEW_TEST, '1');
+  assert.equal(typeof restartAndLogin, 'function', 'restart acceptance must execute');
   const pool = new (require('pg').Pool)({ connectionString: 'postgresql://preview:preview-container-only@127.0.0.1:5432/infogenie_preview', ssl: { rejectUnauthorized: false } });
   let briefId;
   const wf = 'journey-' + crypto.randomUUID(), art = 'creative-' + crypto.randomUUID(), run = 'research-' + crypto.randomUUID();
@@ -147,7 +148,8 @@ module.exports = async function campaignJourney(page, account, origin) {
     await page.waitForSelector('[name="marketing_brief"]:enabled');
     await page.select('[name="marketing_brief"]',String(brief.id)); await page.select('[name="campaign_workflow"]',wf);
     await page.waitForFunction(()=>document.querySelector('[name="saved_campaign"]')?.options.length>1);
-    const id=await page.$eval('[name="saved_campaign"]',el=>el.options[1].value);
+    const id=placed.body.draft.id;
+    await page.waitForFunction(id=>[...(document.querySelector('[name="saved_campaign"]')?.options||[])].some(o=>o.value===id),{},id);
     await page.select('[name="saved_campaign"]',id);
     await page.waitForFunction(()=>document.body.innerText.includes('Approved — not published'));
     const status=(await pool.query('SELECT status FROM orchestrator_campaign_drafts WHERE tenant_id=$1 AND id=$2',[tid,id])).rows[0];
@@ -236,6 +238,63 @@ module.exports = async function campaignJourney(page, account, origin) {
       assert.deepEqual(mutations,[]);
       await ownerPage.screenshot({path:'/tmp/preview-artifacts/creative-review-restored.png',fullPage:true});
     } finally {await ownerContext.close();}
+
+    // Capture the exact saved revision and approval before stopping both app processes.
+    // Read it again through a new browser context/session, never from cached React state.
+    async function checkpoint(currentPage) {
+      const result=await currentPage.evaluate(async id=>{
+        const base='/api/agent-orchestrator/campaign-drafts/'+encodeURIComponent(id);
+        const read=async suffix=>{
+          const response=await fetch(base+suffix);
+          return {status:response.status,body:await response.json()};
+        };
+        return {snapshot:await read('/snapshot'),history:await read('/history')};
+      },id);
+      for(const response of Object.values(result)) {
+        assert.equal(response.status,200);assert.equal(response.body.ok,true);
+      }
+      return {snapshot:result.snapshot.body,revisions:result.history.body.revisions,approvals:result.history.body.approvals};
+    }
+    const beforeRestart=await checkpoint(page);
+    assert.equal(beforeRestart.snapshot.draft.id,id);
+    assert.equal(beforeRestart.snapshot.draft.tenant_id,tid);
+    assert.equal(beforeRestart.snapshot.draft.workflow_id,wf);
+    assert.equal(beforeRestart.snapshot.draft.current_revision,placed.body.draft.current_revision);
+    assert.equal(beforeRestart.snapshot.draft.contract_hash,placed.body.draft.contract_hash);
+    assert.equal(beforeRestart.snapshot.draft.validation_status,'passed');
+    assert.equal(beforeRestart.snapshot.status,'approved_for_publish');
+    assert.equal(beforeRestart.snapshot.published,false);
+    assert.ok(beforeRestart.snapshot.draft.approval_id);
+    assert.ok(beforeRestart.approvals.some(a=>!a.revoked_at&&a.contract_hash===placed.body.draft.contract_hash));
+    page=await restartAndLogin();
+    const restartMutations=[];
+    const observe=request=>{
+      if(request.method()!=='GET'&&new URL(request.url()).pathname.startsWith('/api/agent-orchestrator/'))restartMutations.push(request.method()+' '+new URL(request.url()).pathname);
+    };
+    page.on('request',observe);
+    try {
+      assert.deepEqual(await checkpoint(page),beforeRestart,'exact saved contract, validation, revisions and approvals survive process restart');
+      await page.setViewport({width:1440,height:1000});
+      await page.goto(origin+'/manage/campaign-journey',{waitUntil:'networkidle2'});
+      await page.waitForSelector('[name="marketing_brief"]:enabled');
+      await page.select('[name="marketing_brief"]',String(brief.id));
+      await page.waitForFunction(w=>[...(document.querySelector('[name="campaign_workflow"]')?.options||[])].some(o=>o.value===w),{},wf);
+      await page.select('[name="campaign_workflow"]',wf);
+      await page.waitForFunction(id=>[...(document.querySelector('[name="saved_campaign"]')?.options||[])].some(o=>o.value===id),{},id);
+      await page.select('[name="saved_campaign"]',id);
+      await page.waitForFunction(()=>document.body.innerText.includes('Approved — not published'));
+      assert.equal(await page.$eval('[name="saved_campaign"]',el=>el.value),id);
+      assert.equal(await page.$eval('[name="creative"]',el=>el.value),replacement);
+      assert.ok(await page.evaluate(revision=>document.body.innerText.includes('Saved revision '+revision),beforeRestart.snapshot.draft.current_revision));
+      const deniedAgain=await page.evaluate(async w=>{
+        const response=await fetch('/api/agent-orchestrator/proposals?workflow_id='+encodeURIComponent(w));
+        return {status:response.status,body:await response.json()};
+      },wf);
+      assert.equal(deniedAgain.status,403);assert.equal(deniedAgain.body.error,'owner_only');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM orchestrator_campaign_publish_requests WHERE tenant_id=$1 AND draft_id=$2',[tid,id])).rows[0].n,0);
+      assert.deepEqual(restartMutations,[],'restart review does not mutate or reapprove the campaign');
+      await page.screenshot({path:'/tmp/preview-artifacts/campaign-after-restart.png',fullPage:true});
+    } finally {page.off('request',observe);}
 
   } finally {
     if (briefId) await pool.query('DELETE FROM marketing_briefs WHERE tenant_id=$1 AND id=$2',[account.tenantId,briefId]);
