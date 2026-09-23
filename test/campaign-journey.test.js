@@ -333,6 +333,64 @@ test('creative review read failure clears stale proposal and exposes retry',asyn
  h.context.contextError=false;await h.click('Refresh creative review');assert.match(h.text(),/Review this creative/);
 });
 
+test('creative refresh reports loading and empty success without mutations',async t=>{
+ let defer=false,release;
+ const h=await creativeReviewHarness(t,{handler:r=>{
+  if(defer&&r.url.includes('/proposals?'))return new Promise(resolve=>{release=resolve;});
+ }});
+ defer=true;await h.click('Refresh creative review');
+ assert.match(h.text(),/Refreshing creative review/);
+ assert.equal([...document.querySelectorAll('button')].find(b=>b.textContent==='Refresh creative review').disabled,true);
+ await act(async()=>release({ok:true,research_runs:[],generation:null,can_generate_in_state:true,estimated_cost_micros:'10000'}));
+ assert.match(h.text(),/Creative review refreshed. No saved proposal was found/);
+ assert.doesNotMatch(h.text(),/Refreshing creative review/);
+ assert.equal([...document.querySelectorAll('button')].find(b=>b.textContent==='Refresh creative review').disabled,false);
+ assert.ok(h.calls.every(r=>r.method==='GET'));
+});
+
+test('saved review labels image and video briefs and explains approval location',async t=>{
+ const h=await creativeReviewHarness(t,{generation:true});
+ h.context.generation.artifacts.push({...h.generation.artifacts[0],id:'video',format:'video'});
+ await h.click('Refresh creative review');
+ assert.match(h.text(),/Creative review refreshed. Saved proposal loaded below/);
+ const labels=[...document.querySelectorAll('summary')].map(e=>e.textContent);
+ assert.ok(labels.includes('Image creative brief · draft · citations 0'));
+ assert.ok(labels.includes('Video creative brief · draft · citations 0'));
+ assert.match(h.text(),/Individual brief approval controls are below this panel/);
+ h.context.contextError=true;await h.click('Refresh creative review');
+ assert.doesNotMatch(h.text(),/Creative review refreshed/);
+ assert.match(h.text(),/Could not load creative review/);
+ assert.ok(h.calls.every(r=>r.method==='GET'));
+});
+
+for(const format of ['image','video']) {
+ test(format+' brief approval silently reloads review',async t=>{
+  const h=await creativeReviewHarness(t,{generation:true});
+  h.context.generation.artifacts[0].format=format;
+  await h.click('Refresh creative review');
+  await h.click('Approve '+format+' brief');
+  assert.match(h.text(),new RegExp(format==='image'?'Image brief approved':'Video brief approved'));
+  assert.doesNotMatch(h.text(),/Creative review refreshed|Refreshing creative review/);
+  assert.equal(h.calls.filter(r=>r.method==='POST').length,1);
+ });
+
+ test('late '+format+' brief approval does not block another workflow review',async t=>{
+  let release;
+  const h=await creativeReviewHarness(t,{generation:true,handler:r=>{
+   if(r.url.endsWith('/approve-brief'))return new Promise(resolve=>{release=resolve;});
+  }});
+  h.context.generation.artifacts[0].format=format;
+  await h.click('Refresh creative review');
+  await h.click('Approve '+format+' brief');
+  await act(async()=>[...document.querySelectorAll('tr')].find(row=>row.textContent.includes('Other workflow')).click());
+  const count=h.calls.filter(r=>r.url.includes('/proposals?')).length;
+  await act(async()=>release({ok:true}));
+  assert.equal(h.calls.filter(r=>r.url.includes('/proposals?')).length,count);
+  assert.doesNotMatch(h.text(),/Refreshing creative review|Creative review refreshed/);
+  assert.equal([...document.querySelectorAll('button')].find(b=>b.textContent==='Refresh creative review').disabled,false);
+ });
+}
+
 test('late creative context from the prior workflow cannot populate the selected workflow',async t=>{
  let release;
  const h=await creativeReviewHarness(t,{handler:r=>{
@@ -341,6 +399,7 @@ test('late creative context from the prior workflow cannot populate the selected
  await act(async()=>[...document.querySelectorAll('tr')].find(row=>row.textContent.includes('Other workflow')).click());
  await act(async()=>release({ok:true,research_runs:[h.run],generation:h.generation,can_generate_in_state:true,estimated_cost_micros:'10000'}));
  assert.doesNotMatch(h.text(),/Review this creative/);
+ assert.doesNotMatch(h.text(),/Creative review refreshed. Saved proposal/);
  assert.equal(document.querySelector('[aria-label="Completed research snapshot"]'),null);
 });
 
@@ -385,6 +444,7 @@ test('late context refresh cannot replace a newly generated proposal',async t=>{
  await h.click('Generate proposals');assert.match(h.text(),/Review this creative/);
  await act(async()=>release({ok:true,research_runs:[run],generation:null,can_generate_in_state:true,estimated_cost_micros:'10000'}));
  assert.match(h.text(),/Review this creative/);
+ assert.doesNotMatch(h.text(),/Refreshing creative review|Creative review refreshed/);
 });
 
 test('late generation response cannot populate another workflow',async t=>{

@@ -158,9 +158,11 @@ module.exports = async function campaignJourney(page, account, origin) {
       await ownerPage.locator('#email').fill(ownerEmail);await ownerPage.locator('#pass').fill(ownerPassword);
       const [login]=await Promise.all([
         ownerPage.waitForResponse(r=>new URL(r.url()).pathname==='/api/auth/login'&&r.request().method()==='POST'),
+        ownerPage.waitForNavigation({waitUntil:'networkidle2'}),
         ownerPage.locator('form button[type="submit"]').click(),
       ]);
       assert.equal(login.status(),200);
+      assert.equal(new URL(ownerPage.url()).pathname,'/');
       const mutations=[];
       ownerPage.on('request',request=>{if(request.method()!=='GET'&&request.url().includes('/api/agent-orchestrator/'))mutations.push(request.url());});
       await ownerPage.goto(origin+'/manage/agent-orchestrator?workflow_id='+wf,{waitUntil:'networkidle2'});
@@ -169,6 +171,11 @@ module.exports = async function campaignJourney(page, account, origin) {
       await ownerPage.waitForFunction(p=>document.body.innerText.includes('Proposal '+p),{},proposal);
       await ownerPage.reload({waitUntil:'networkidle2'});
       await ownerPage.waitForFunction(p=>document.body.innerText.includes('Proposal '+p),{},proposal);
+      await ownerPage.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent==='Refresh creative review'&&!b.disabled));
+      await ownerPage.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Refresh creative review').click());
+      await ownerPage.waitForFunction(()=>[...document.querySelectorAll('[role="status"]')].some(el=>el.textContent.includes('Creative review refreshed. Saved proposal loaded below')));
+      assert.ok(await ownerPage.evaluate(()=>[...document.querySelectorAll('summary')].some(el=>el.textContent.startsWith('Image creative brief'))));
+      assert.ok(await ownerPage.evaluate(()=>document.body.innerText.includes('Individual brief approval controls are below this panel')));
       const read=await ownerPage.evaluate(async w=>{
         const response=await fetch('/api/agent-orchestrator/proposals?workflow_id='+encodeURIComponent(w));
         return {status:response.status,body:await response.json()};

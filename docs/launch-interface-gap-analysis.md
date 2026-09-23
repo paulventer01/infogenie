@@ -33,6 +33,21 @@ operator-approved new test workspace may be needed to exercise missing generatio
 steps. Final-head preview/PostgreSQL/browser certification and human deployed
 creative review plus campaign save/reload/validate/approve remain required.
 
+PR #212 was human-merged on 2026-09-23 at 11:03:34 UTC (main `c5930f3`);
+Railway reports success for that commit. Subsequent operator screenshots show
+the restored review panel and, in a new CMTrading Creative Test 2 workspace,
+completed Meta fixture run `rr_318d27ef2e776e06` and fixture proposal
+`pgen_cce17d0c732a7d9e` at `pending_review`, version 1. This accepts displayed
+fixture proposal generation, not individual brief approval, image/video
+generation, live research or the full campaign journey. The operator changed
+the test credit limits; no automated production approval or spending is implied.
+
+The next small interface slice addresses the observed “refresh does nothing”
+confusion: read-only loading/result feedback, distinct image/video brief labels,
+and directions to existing individual approval controls. Refresh does not
+generate, approve or spend. Existing tenant, owner, state and credit checks stay
+unchanged; deployed acceptance of this feedback remains pending.
+
 | Gap | Evidence / current status | Acceptance requirement |
 | --- | --- | --- |
 | Railway acceptance | Operator screenshots show #207 active on Railway and the CMTrading test campaign workspace created and selected. The next prerequisite is an approved creative brief. Campaign save/reload/approval and deployed database checks remain unverified. | Sign in, load the intended workspace, save a draft, reload it, validate and approve the same saved revision. Verify migrations and tenant context in the deployed database. |

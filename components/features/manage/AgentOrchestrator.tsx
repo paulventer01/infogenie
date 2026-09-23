@@ -580,6 +580,8 @@ export default function AgentOrchestrator() {
   const [proposalRunId, setProposalRunId] = useState("");
   const [proposalContext, setProposalContext] = useState<{ can_generate_in_state: boolean; estimated_cost_micros: string } | null>(null);
   const [proposalLoadError, setProposalLoadError] = useState("");
+  const [proposalLoading, setProposalLoading] = useState(false);
+  const [proposalRefreshMessage, setProposalRefreshMessage] = useState("");
   const proposalEpoch = useRef(0);
   const proposalLoadSeq = useRef(0);
   const activeWorkflowId = useRef(selectedId);
@@ -804,6 +806,8 @@ export default function AgentOrchestrator() {
     setProposalContext(null);
     setProposalLoadError("");
     setProposalBusy("");
+    setProposalLoading(false);
+    setProposalRefreshMessage("");
     setProposalMsg("");
     setProposalMsgIsError(false);
     setMetaResearchRun(null);
@@ -1526,14 +1530,18 @@ export default function AgentOrchestrator() {
     setOrchMsg("Research run continued.");
   }
 
-  const loadProposalContext = useCallback(async (workflowId: string) => {
+  const loadProposalContext = useCallback(async (workflowId: string, announceRefresh = false) => {
+    if (activeWorkflowId.current !== workflowId) return;
     const epoch = proposalEpoch.current;
     const sequence = ++proposalLoadSeq.current;
     setProposalLoadError("");
+    setProposalLoading(true);
+    setProposalRefreshMessage("");
     const r = await apiGet<{ ok: boolean; research_runs?: ResearchRun[]; generation?: CreativeProposal | null; can_generate_in_state: boolean; estimated_cost_micros: string; error?: string }>(
       `/api/agent-orchestrator/proposals?workflow_id=${encodeURIComponent(workflowId)}`,
     );
     if (activeWorkflowId.current !== workflowId || proposalEpoch.current !== epoch || sequence !== proposalLoadSeq.current) return;
+    setProposalLoading(false);
     if (!r.ok) {
       setProposalRuns([]); setProposalContext(null); setCreativeProposal(null);
       setProposalLoadError(r.error === "owner_only"
@@ -1544,8 +1552,12 @@ export default function AgentOrchestrator() {
     const runs = (r.research_runs || []).filter(run => run.workflow_id === workflowId && run.state === "completed");
     setProposalRuns(runs);
     setProposalRunId(previous => runs.some(run => run.id === previous) ? previous : runs.length === 1 ? runs[0].id : "");
-    setCreativeProposal(r.generation?.workflow_id === workflowId ? r.generation : null);
+    const generation = r.generation?.workflow_id === workflowId ? r.generation : null;
+    setCreativeProposal(generation);
     setProposalContext({ can_generate_in_state: r.can_generate_in_state === true, estimated_cost_micros: r.estimated_cost_micros });
+    if (announceRefresh) setProposalRefreshMessage(generation
+      ? "Creative review refreshed. Saved proposal loaded below. Refresh does not generate or approve content."
+      : "Creative review refreshed. No saved proposal was found; refreshing does not generate one.");
   }, []);
 
   useEffect(() => {
@@ -1559,6 +1571,8 @@ export default function AgentOrchestrator() {
     if (Number(selected.credit_ceiling_micros || 0) < Number(proposalContext.estimated_cost_micros)) return;
     const workflowId = selected.id, epoch = proposalEpoch.current;
     proposalLoadSeq.current += 1;
+    setProposalLoading(false);
+    setProposalRefreshMessage("");
     setProposalBusy("generate");
     setProposalMsg("");
     const r = await orchMutate<{ ok: boolean; generation?: CreativeProposal; error?: string }>(
@@ -1577,8 +1591,8 @@ export default function AgentOrchestrator() {
     setProposalMsg("Fixture proposal generated for review. No ads were published.");
   }
 
-  async function refreshCreativeProposal() {
-    if (selected?.id) await loadProposalContext(selected.id);
+  async function refreshCreativeProposal(announceRefresh = false) {
+    if (selected?.id) await loadProposalContext(selected.id, announceRefresh);
   }
 
   async function approveImageBrief() {
@@ -3099,9 +3113,10 @@ export default function AgentOrchestrator() {
                       Generate angles, hooks, messages, claims and creative briefs from an approved research snapshot. Outputs stay pending review — this stage does not render images or videos and does not draft or activate campaigns.
                     </p>
                     <p style={{ fontSize: "0.78rem" }}>Workflow approval does not generate a proposal or approve an individual creative brief. Review the proposal content here before approving its image or video brief.</p>
-                    <button type="button" disabled={!!proposalBusy} onClick={refreshCreativeProposal} style={btnSecondary}>Refresh creative review</button>
+                    <button type="button" disabled={!!proposalBusy || proposalLoading} onClick={() => refreshCreativeProposal(true)} style={btnSecondary}>Refresh creative review</button>
+                    <p style={{ fontSize: "0.78rem" }}>Refresh only reloads saved research and proposals. It does not generate content, approve a brief or spend credits.</p>
+                    <div role="status" aria-live="polite">{proposalLoading ? "Refreshing creative review…" : proposalRefreshMessage}</div>
                     {proposalLoadError && <p role="alert">{proposalLoadError}</p>}
-                    {!proposalLoadError && !proposalContext && <p role="status">Loading creative review…</p>}
                     {proposalContext && <>
                       {!creativeProposal && <p>No creative proposal has been generated for this workflow.</p>}
                       {proposalRuns.length === 0 ? <p>Complete Meta, Google, TikTok or cross-platform research in this workflow, then refresh creative review.</p> : (
@@ -3124,12 +3139,13 @@ export default function AgentOrchestrator() {
                     {proposalMsg && <p style={{ fontSize: "0.78rem", color: proposalMsgIsError ? "#B91C1C" : "#3730A3", margin: "0 0 8px" }}>{proposalMsg}</p>}
                     {creativeProposal && (
                       <div style={{ fontSize: "0.78rem", color: "#374151" }}>
+                        <p>Open each brief below to review its content and safety notes. Individual brief approval controls are below this panel, under Static image generation and Video generation jobs.</p>
                         <div>Proposal {creativeProposal.id} · {creativeProposal.status} · v{creativeProposal.version}</div>
                         <div>Saved proposal research source: {creativeProposal.research_run_id || "Not available"}</div>
                         {creativeProposal.provider && <div style={{ color: "#6B7280" }}>{creativeProposal.provider}/{creativeProposal.model} · template {creativeProposal.prompt_template_version}</div>}
                         {(creativeProposal.artifacts || []).map((a) => (
                           <details key={a.id || a.artifact_id || a.kind} style={{ marginTop: 8 }}>
-                            <summary>{a.kind} · {a.status} · citations {(a.citations || []).length}</summary>
+                            <summary>{a.kind === "creative_brief" && a.format === "image" ? "Image creative brief" : a.kind === "creative_brief" && a.format === "video" ? "Video creative brief" : a.kind.replaceAll("_", " ")} · {a.status} · citations {(a.citations || []).length}</summary>
                             {Object.entries(a.payload || {}).filter(([key]) => ["text", "title", "summary", "objective", "target_audience", "platform", "placement", "format", "angle", "hook", "primary_message", "offer", "call_to_action", "supporting_claims", "visual_direction", "script_or_storyboard", "compliance_notes", "prohibited_claims", "limitations", "claim_kind", "evidence_backed"].includes(key)).map(([key, value]) => (
                               <p key={key} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}><strong>{key.replaceAll("_", " ")}: </strong>{creativeReviewText(value)}</p>
                             ))}
