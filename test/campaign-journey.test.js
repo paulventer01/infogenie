@@ -551,12 +551,12 @@ for(const component of ['AgentOrchestrator','CampaignJourney']) {
   const draft={id:'draft',tenant_id:7,workflow_id:'workflow',status:'validation_failed',current_revision:1,contract_hash:'d'.repeat(64),label:'Fixture draft',notes:'Do not publish',validation_status:'failed',validation:{errors:[{code:'missing_credentials',field:'accounts.meta'}]}};
   const h=component==='AgentOrchestrator'?await creativeReviewHarness(t,{handler:r=>{
    if(r.url.includes('/campaign-drafts?'))return {ok:true,drafts:[draft]};
-   if(r.url.endsWith('/campaign-drafts/draft/snapshot'))return {ok:true,status:'validation_failed',published:false,object_kind:'campaign_draft'};
+   if(r.url.endsWith('/campaign-drafts/draft/snapshot'))return {ok:true,status:'validation_failed',published:false,object_kind:'campaign_draft',draft};
   }}):await harness(t,(r,state)=>{if(r.url.endsWith('/validate')){state.draft={...state.draft,...draft};return {ok:true,draft:state.draft};}});
   if(component==='CampaignJourney'){await prepare(h);await h.click('Save campaign draft');await h.click('Validate saved campaign');}
   assert.match(h.text(),/Meta advertising credentials were not found/);assert.match(h.text(),/Settings & Integrations/);assert.match(h.text(),/adding AI credits will not resolve/);
   assert.ok(![...document.querySelectorAll('button')].some(b=>/^Approve (snapshot|saved campaign)$/.test(b.textContent)));
-  if(component==='AgentOrchestrator'){await h.click('Preview snapshot');assert.match(h.text(),/published: false/);}
+  if(component==='AgentOrchestrator'){await h.click('Preview snapshot');assert.match(h.text(),/Published: false/);}
   assert.ok(!h.calls.some(r=>r.url.includes('/settings')||r.url.includes('/publish')||r.url.endsWith('/approve')));
  });
 }
@@ -612,4 +612,55 @@ test('workspace budget guidance distinguishes zero, small amounts and invalid in
  }
  assert.ok(![...document.querySelectorAll('button')].some(b=>b.textContent==='Create campaign draft'));
  assert.equal(h.calls.filter(r=>r.method!=='GET').length,0);
+});
+
+function snapshotDraftFixture(overrides={}) {
+ return {id:'draft',tenant_id:7,workflow_id:'workflow',status:'ready_for_approval',current_revision:2,contract_hash:'d'.repeat(64),label:'Saved campaign',notes:'Saved notes',contract:{
+  objective:'traffic',platforms:['meta','google'],budget:{amount_micros:0,currency:'USD'},destination:{landing_page_url:'https://example.com/saved'},schedule:{start_at:'2030-01-01T10:00:00Z',end_at:'2030-02-01T10:00:00Z'},geo:{countries:['US','ZA']},audience:{name:'Saved audience',notes:'<img src=x onerror=alert(1)>'},placements:[{type:'feed'}],tracking:{utm_source:'saved-source'},creatives:[{kind:'creative_brief',asset_id:'saved-asset',version:4,content_hash:'c'.repeat(64)}],accounts:[{credential_ref:'do-not-display-vault-reference'}],unknown_secret:'do-not-display-secret',
+ },...overrides};
+}
+async function snapshotHarness(t,options={}) {
+ const draft=snapshotDraftFixture(options.draft);
+ const h=await creativeReviewHarness(t,{readOnly:options.readOnly,handler:r=>{
+  if(options.handler){const result=options.handler(r,draft);if(result!==undefined)return result;}
+  if(r.url.includes('/campaign-drafts?'))return {ok:true,drafts:r.url.endsWith('workflow_id=workflow')?[draft]:[]};
+  if(r.url.endsWith('/snapshot'))return {ok:true,published:false,draft};
+ }});return {...h,draft};
+}
+test('snapshot review renders saved contract fields, zero and escaped content with no writes',async t=>{
+ const h=await snapshotHarness(t,{readOnly:true});
+ await h.set('draft_label','Unsaved label');await h.set('draft_notes','Unsaved notes');
+ await h.click('Preview snapshot');
+ const review=document.querySelector('[aria-label="Saved campaign snapshot"]');assert.ok(review);
+ for(const value of ['Saved campaign','Saved notes','meta, google','0.00 USD','https://example.com/saved','2030-01-01T10:00:00Z','2030-02-01T10:00:00Z','US, ZA','Saved audience','saved-asset','version 4','saved-source','<img src=x onerror=alert(1)>','Published: false'])assert.ok(review.textContent.includes(value),value);
+ for(const value of ['Unsaved label','Unsaved notes','do-not-display-vault-reference','do-not-display-secret'])assert.ok(!review.textContent.includes(value),value);
+ assert.equal(review.querySelector('img'),null);assert.equal(review.querySelector('a'),null);
+ assert.equal(h.calls.filter(r=>r.method!=='GET').length,0);
+ assert.equal(document.querySelector('[name="draft_label"]').value,'Unsaved label');
+});
+test('snapshot review distinguishes missing budget from one micro',async t=>{
+ const h=await snapshotHarness(t);h.draft.contract.budget={amount_micros:1,currency:'USD'};
+ await h.click('Preview snapshot');assert.match(h.text(),/0.000001 USD/);
+ delete h.draft.contract.budget.amount_micros;
+ await h.click('Preview snapshot');assert.match(h.text(),/Not provided USD/);
+ assert.doesNotMatch(h.text(),/0.000001 USD/);
+});
+for(const change of [{id:'other'},{tenant_id:8},{workflow_id:'other'},{current_revision:3},{contract_hash:'e'.repeat(64)},{status:'cancelled'}]){
+ test('snapshot refuses mismatched saved identity '+Object.keys(change)[0],async t=>{
+  const h=await snapshotHarness(t,{handler:(r,draft)=>r.url.endsWith('/snapshot')?{ok:true,published:false,draft:{...draft,...change}}:undefined});
+  await h.click('Preview snapshot');assert.equal(document.querySelector('[aria-label="Saved campaign snapshot"]'),null);
+  assert.match(h.text(),/Reload the workspace before reviewing approval/);
+  assert.equal(h.calls.filter(r=>r.method!=='GET').length,0);
+ });
+}
+test('failed snapshot refresh removes previously displayed saved data',async t=>{
+ let fail=false;const h=await snapshotHarness(t,{handler:r=>fail&&r.url.endsWith('/snapshot')?{ok:false,error:'permission_denied'}:undefined});
+ await h.click('Preview snapshot');assert.ok(document.querySelector('[aria-label="Saved campaign snapshot"]'));
+ fail=true;await h.click('Preview snapshot');assert.equal(document.querySelector('[aria-label="Saved campaign snapshot"]'),null);assert.match(h.text(),/permission_denied/);
+});
+test('late snapshot from a previous workspace is discarded',async t=>{
+ let release;const h=await snapshotHarness(t,{handler:(r,draft)=>r.url.endsWith('/snapshot')?new Promise(resolve=>{release=()=>resolve({ok:true,published:false,draft});}):undefined});
+ await h.click('Preview snapshot');await act(async()=>[...document.querySelectorAll('tr')].find(row=>row.textContent.includes('Other workflow')).click());
+ await act(async()=>release());assert.equal(document.querySelector('[aria-label="Saved campaign snapshot"]'),null);
+ assert.doesNotMatch(h.text(),/Saved campaign snapshot loaded/);assert.match(h.text(),/Other workflow/);
 });
