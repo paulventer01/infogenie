@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
 interface Section {
   heading?: string;
@@ -152,6 +153,7 @@ export default function ContentModes() {
   const [wpStatus, setWpStatus] = useState("draft");
   const [wpPublishing, setWpPublishing] = useState(false);
   const [wpError, setWpError] = useState("");
+  const [wpWarnings, setWpWarnings] = useState<string[]>([]);
 
   const cfg = MODE_CONFIG[mode] || MODE_CONFIG.article;
   const fields = cfg.fields;
@@ -321,11 +323,14 @@ export default function ContentModes() {
     }
     setWpPublishing(true);
     setWpError("");
+    setWpWarnings([]);
     const r = await apiPost<{
       ok: boolean;
       error?: string;
       post_url?: string;
       wp_post_id?: number;
+      userMessage?: string;
+      content_safety_warnings?: string[];
     }>("/api/wordpress/publish", {
       title: wpTitle,
       content: last.content,
@@ -336,9 +341,10 @@ export default function ContentModes() {
     });
     setWpPublishing(false);
     if (!r.ok) {
-      setWpError(r.error || "failed");
+      setWpError(r.userMessage || r.error || "failed");
       return;
     }
+    setWpWarnings(r.content_safety_warnings || []);
     setWpOpen(false);
     const verb = wpStatus === "publish" ? "Published" : "Saved as draft";
     if (r.post_url) {
@@ -352,6 +358,7 @@ export default function ContentModes() {
 
   return (
     <div className="view-header-wrap">
+      <ContentSafetyWarnings warnings={wpWarnings} />
       <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
@@ -670,6 +677,7 @@ export default function ContentModes() {
           </div>
           {wpError && (
             <div
+              role="alert"
               style={{
                 marginTop: 10,
                 background: "#FEE2E2",

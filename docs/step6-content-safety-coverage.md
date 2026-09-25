@@ -16,15 +16,15 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Classification | Count | Meaning |
 |----------------|------:|---------|
-| **covered** | 31 | Gate before side effect; field scan complete |
+| **covered** | 32 | Gate before side effect; field scan complete |
 | **partial** | 16 | Gate present but incomplete scan, timing, status, or warning handling |
-| **gap** | 48 | In-scope lifecycle step with no Step 6 gate |
+| **gap** | 47 | In-scope lifecycle step with no Step 6 gate |
 | **out of scope** | 30 | Deferred with explicit justification (§5) |
 | **Total** | **125** | One row per `method + path` (CR-001–CR-124, CR-128) |
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **20** remaining after this PR covering all **64** gap/partial rows |
+| Implementation batches (§4) | **19** remaining after PR-2 covering all **63** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
@@ -163,7 +163,7 @@ Routes using `JSON.stringify` for gate text without flattening are **`partial`**
 
 | ID | Method | Path | Lifecycle | Class | Gate | Field scan | Batch | Tests |
 |----|--------|------|-----------|-------|------|------------|-------|-------|
-| CR-063 | POST | `/api/wordpress/publish` | publish | gap | none | n/a | PR-2 | — |
+| CR-063 | POST | `/api/wordpress/publish` | publish | covered | `gateRouteText` before provider/log | complete | — | wordpress-publish-safety, content-safety-governance browser |
 | CR-064 | POST | `/api/review-monitor/request-rules` | save | gap | none | n/a | PR-4b | — |
 | CR-065 | PUT | `/api/review-monitor/request-rules/:id` | save | gap | none | n/a | PR-4b | — |
 | CR-066 | POST | `/api/reengage/generate` | gen | gap | none | n/a | PR-7c | — |
@@ -288,14 +288,14 @@ References **CR-###** from §2. No separate classifications here.
 
 ## 4. Implementation batches
 
-**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a and PR-1b are merged. **PR-1c is this draft** (CR-062). **20** batches remain after this PR, covering **64** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
+**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b and PR-1c are merged. **PR-2 is implemented in this change** (CR-063), reconciled against main `eda29b41` on 2026-09-25. **19** batches remain, covering **63** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
 
 | Batch | Routes (IDs) | Est. size | Risk |
 |-------|----------------|----------:|------|
 | **PR-1a** | — (merged) | — | High |
 | **PR-1b** | — (merged) | — | High |
-| **PR-1c** | CR-062 (this draft) | — | High |
-| **PR-2** | CR-063 | ~300 lines | High |
+| **PR-1c** | — (merged) | — | High |
+| **PR-2** | CR-063 (this change) | — | High |
 | **PR-3a** | CR-013 | ~200 lines | High |
 | **PR-3b** | CR-019 | ~200 lines | High |
 | **PR-4a** | CR-015 | ~200 lines | Medium |
