@@ -1,6 +1,6 @@
 # Launch and interface gap analysis
 
-Updated 2026-09-23. This replaces the old marketing-taxonomy roadmap as the
+Updated 2026-09-25. This replaces the old marketing-taxonomy roadmap as the
 priority order for the current interface work. A shipped route or green build
 is not evidence of production acceptance. Do not start deferred features.
 
@@ -73,6 +73,14 @@ no production validation success is claimed.
 | Release evidence | Local/CI acceptance does not establish production readiness. | Passing final-head checks, tenant/permission regression evidence, working login, and human release approval. |
 
 ## Needed for the new interface
+
+PR #219 was human-merged on 2026-09-25; the operator's Railway screenshot
+confirms it active and deployed. Its disposable preview acceptance proves exact
+campaign/approval restoration across an app-process restart. The next acceptance
+extension uses a second ordinary reviewer in another synthetic tenant to exercise
+foreign campaign read/edit denial and own-draft positive controls before and after
+restart, with browser selector isolation. This does not establish production reload
+acceptance, persistent staging or the full live-provider journey.
 
 | Gap | Evidence / current status | Next action |
 | --- | --- | --- |

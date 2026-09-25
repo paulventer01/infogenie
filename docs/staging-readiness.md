@@ -109,6 +109,16 @@ the campaign helper seeds upstream objects and the normal preview account cannot
 perform the full owner-only journey. Extend only missing acceptance in a later
 bounded build; do not duplicate tests or weaken gates.
 
+The preview campaign isolation extension adds a second synthetic tenant with an
+ordinary reviewer (`users.is_owner=false`) and fresh real logins before and after
+the same process restart. The reviewer can read and edit its own unvalidated draft;
+the first tenant's workflow/draft reads and draft edits return `404 not_found`,
+and brief/creative/draft lists and browser selectors omit foreign objects. The
+original approved snapshot, revisions and approvals remain identical after these
+attempts. Owner-only proposal denial and absence of publishing requests remain
+required. These are disposable CI assertions; the second tenant and its unresolved
+synthetic creative reference are not provisioned into operator previews or production.
+
 ## Release decision and rollback
 
 First review this plan and the missing evidence against current main. Any staging
