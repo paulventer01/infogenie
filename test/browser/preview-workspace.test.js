@@ -20,7 +20,7 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
     await browser?.close();await stop();
   });
   async function start(){
-    child=spawn(process.execPath,['scripts/preview/start.js'],{cwd:ROOT,env:{...process.env,CODESPACES:'true',CODESPACE_NAME:'preview-ci-workspace',GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:'app.github.dev'},stdio:['ignore','pipe','pipe']});
+    child=spawn(process.execPath,['--require',require.resolve('../helpers/preview-runtime-isolation'),'scripts/preview/start.js'],{cwd:ROOT,env:{...process.env,CODESPACES:'true',CODESPACE_NAME:'preview-ci-workspace',GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:'app.github.dev'},stdio:['ignore','pipe','pipe','ipc']});
     for(const stream of [child.stdout,child.stderr]) stream.on('data',chunk=>{log=(log+chunk).slice(-18000);});
     const deadline=Date.now()+150000;
     while(Date.now()<deadline){
@@ -31,6 +31,7 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
     assert.fail('Preview never served login: '+log);
   }
   await start();
+  await require('../helpers/preview-runtime-isolation')(child);
   const accessPath=path.join(ROOT,'.preview-workspace/access.json');
   const original=fs.readFileSync(accessPath,'utf8'), account=JSON.parse(original);
   assert.equal(fs.statSync(accessPath).mode&0o777,0o600);
@@ -126,6 +127,7 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
     fs.renameSync(accessPath,accessPath+'.pending'); // interrupted first boot after commit, before rename
     await new Promise(r=>setTimeout(r,2000));await start();
     assert.notEqual(child.pid,previousPid,'a new preview process must serve the saved campaign');
+    await require('../helpers/preview-runtime-isolation')(child);
     assert.equal(fs.readFileSync(accessPath,'utf8'),original,'restart retains test credentials and workspace');
     const freshContext=await browser.createBrowserContext();
     page=await freshContext.newPage();page.setDefaultTimeout(60000);observePage();
@@ -136,5 +138,6 @@ test('preview boots, authenticates, renders the journey and preserves its accoun
     return page;
   });
   assert.deepEqual(errors,[]);
+  await require('../helpers/preview-runtime-isolation')(child);
   assert.deepEqual(externalResponses,[],'preview browser has no external HTTP responses');
 });

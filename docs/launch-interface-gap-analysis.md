@@ -82,6 +82,14 @@ foreign campaign read/edit denial and own-draft positive controls before and aft
 restart, with browser selector isolation. This does not establish production reload
 acceptance, persistent staging or the full live-provider journey.
 
+PR #220 was human-merged and the operator's Railway screenshot confirms it active
+and deployed on 2026-09-25. Its disposable two-tenant restart isolation checks pass.
+The next scoped acceptance adds actual-launcher provider/job isolation probes
+before/after restart: external fetch/socket refusals, a working internal connection,
+and observation of scheduler starts and application timers/listeners. This remains
+disposable runtime evidence, not host-level egress certification or a hosted staging
+service; see the exact boundaries in the staging readiness plan.
+
 | Gap | Evidence / current status | Next action |
 | --- | --- | --- |
 | Workspace home and navigation | PR #204 and #206 are merged; Railway screenshots subsequently show #207 active. Campaign Journey is accessible; the navigation button still needs explicit operator confirmation. | Verify the deployed navigation button and retain both browser journeys. |
