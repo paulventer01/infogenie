@@ -121,6 +121,19 @@ synthetic creative reference are not provisioned into operator previews or produ
 
 ## Release decision and rollback
 
+The creative-handoff acceptance extension uses a separate real owner login in
+the disposable preview. It creates a workflow, requests/approves research, runs
+fixture Meta research, generates a fixture proposal and approves its exact image
+brief through UI controls. The video brief must remain unapproved. Campaign
+Journey selects that image brief and saves its exact ID/version/hash, then
+restores it after reload. Proposal and campaign restoration must issue no writes
+or credit changes, and no publishing request may exist. Prerequisites are the
+synthetic account, marketing brief, a bounded 100,000-micro test grant/limits,
+and a 50-record/1-MiB research evidence quota;
+no research, proposal or creative approval rows are seeded for this extension.
+Final-head hosted verification must be recorded in the acceptance PR. This is not live-provider or rendered-media
+acceptance, and does not provision an operator-accessible owner account.
+
 The runtime isolation acceptance uses a test-only IPC observer in the actual
 preview launcher before and after restart, and again after the campaign journey.
 It requires the real server to have loaded, jobs/background flags to remain off,

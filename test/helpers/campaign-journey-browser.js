@@ -338,6 +338,9 @@ module.exports = async function campaignJourney(page, account, origin, restartAn
       await page.screenshot({path:'/tmp/preview-artifacts/campaign-after-restart.png',fullPage:true});
     } finally {page.off('request',observe);}
 
+    await require('./preview-creative-handoff')(page.browser(), pool, origin, {
+      tenantId:tid, ownerId:owner.id, ownerEmail, ownerPassword, briefId:brief.id,
+    });
   } finally {
     if (briefId) await pool.query('DELETE FROM marketing_briefs WHERE tenant_id=$1 AND id=$2',[account.tenantId,briefId]);
     await pool.end();
