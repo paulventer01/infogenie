@@ -1,0 +1,21 @@
+# Local development database for the InfoGenie platform.
+# Usage: docker compose up -d db   (then: npm run migrate && npm test)
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: infogenie
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ig_pgdata:/var/lib/postgresql/data
+
+volumes:
+  ig_pgdata:
