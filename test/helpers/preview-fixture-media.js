@@ -7,6 +7,8 @@ module.exports = async function fixtureMedia({page, pool, origin, tenantId, wf, 
   assert.equal(process.env.INFOGENIE_REQUIRE_PREVIEW_TEST, '1');
   assert.equal((await pool.query('SELECT current_database() AS name')).rows[0].name, 'infogenie_preview');
   assert.equal(origin, 'http://127.0.0.1:5000');
+  assert.equal(require('../../services/infra/object_storage').s3Configured(), false,
+    'fixture worker must use local disposable storage, never S3');
   const api = '/api/agent-orchestrator';
   await page.goto(origin + '/manage/agent-orchestrator?workflow_id=' + wf, {waitUntil:'networkidle2'});
   await page.waitForFunction(id => document.body.innerText.includes('Proposal ' + id), {}, proposal.id);
@@ -80,6 +82,6 @@ module.exports = async function fixtureMedia({page, pool, origin, tenantId, wf, 
   assert.equal(mutations.length, writes, 'reload must not regenerate, enqueue or approve');
   assert.deepEqual(await credits.getSnapshot(pool, tenantId), accounting, 'reload must not charge');
   await disabled('Generate static image'); await disabled('Enqueue video job');
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM orchestrator_campaign_publish_requests WHERE tenant_id=$1 AND workflow_id=$2',
-    [tenantId,wf])).rows[0].n, 0);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM orchestrator_campaign_publish_requests WHERE tenant_id=$1',
+    [tenantId])).rows[0].n, 0);
 };
