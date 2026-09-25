@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
@@ -50,6 +50,21 @@ export default function ReviewAutomation() {
   const [logs, setLogs] = useState<ReviewRequestLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [regenerateErrors, setRegenerateErrors] = useState<Record<number, string>>({});
+  const activeDrafts = useRef(new Set<number>());
+  const [busyDrafts, setBusyDrafts] = useState<number[]>([]);
+  const [approvalWarnings, setApprovalWarnings] = useState<string[]>([]);
+
+  const runDraftAction = async (id: number, action: () => Promise<void>) => {
+    if (activeDrafts.current.has(id)) return;
+    activeDrafts.current.add(id);
+    setBusyDrafts([...activeDrafts.current]);
+    try { await action(); }
+    catch { setRegenerateErrors(prev => ({...prev, [id]: 'The request could not be completed. Refresh the list before trying again.'})); }
+    finally {
+      activeDrafts.current.delete(id);
+      setBusyDrafts([...activeDrafts.current]);
+    }
+  };
 
   // Form states for new rule
   const [showRuleForm, setShowRuleForm] = useState(false);
@@ -86,17 +101,24 @@ export default function ReviewAutomation() {
     fetchData();
   }, []);
 
-  const handleApprove = async (id: number) => {
-    const res = await apiPost<{ ok: boolean }>(`/api/review-monitor/replies/${id}/approve`, {});
-    if (res.ok) setDrafts(drafts.filter(d => d.id !== id));
-  };
+  const handleApprove = (draft: ReviewReplyDraft) => runDraftAction(draft.id, async () => {
+    setApprovalWarnings([]);
+    const res = await apiPost<{ ok: boolean; error?: string; userMessage?: string; content_safety_warnings?: string[] }>(
+      `/api/review-monitor/replies/${draft.id}/approve`, {ai_draft_reply: draft.ai_draft_reply});
+    if (!res.ok) {
+      setRegenerateErrors(prev => ({...prev, [draft.id]: res.userMessage || res.error || 'Reply approval failed.'}));
+      return;
+    }
+    setApprovalWarnings(res.content_safety_warnings || []);
+    setDrafts(current => current.filter(d => d.id !== draft.id));
+  });
 
-  const handleDismiss = async (id: number) => {
+  const handleDismiss = (id: number) => runDraftAction(id, async () => {
     const res = await apiPost<{ ok: boolean }>(`/api/review-monitor/replies/${id}/dismiss`, {});
-    if (res.ok) setDrafts(drafts.filter(d => d.id !== id));
-  };
+    if (res.ok) setDrafts(current => current.filter(d => d.id !== id));
+  });
 
-  const handleRegenerate = async (draft: ReviewReplyDraft) => {
+  const handleRegenerate = (draft: ReviewReplyDraft) => runDraftAction(draft.id, async () => {
     const res = await apiPost<{
       ok: boolean;
       error?: string;
@@ -133,7 +155,7 @@ export default function ReviewAutomation() {
           : d,
       ),
     );
-  };
+  });
 
   const handleCreateRule = async () => {
     const res = await apiPost<{ ok: boolean, rule: ReviewRequestRule }>("/api/review-monitor/request-rules", newRule);
@@ -206,6 +228,7 @@ export default function ReviewAutomation() {
       ) : activeTab === 'replies' ? (
         /* --- AI Reply Drafts Section --- */
         <div className="replies-section">
+          <ContentSafetyWarnings warnings={approvalWarnings} />
           <div style={{ marginBottom: '16px', color: '#666' }}>
             {drafts.length} pending replies needing approval.
           </div>
@@ -263,8 +286,10 @@ export default function ReviewAutomation() {
                     <textarea 
                       className="form-control"
                       value={draft.ai_draft_reply}
+                      disabled={busyDrafts.includes(draft.id)}
                       onChange={(e) => {
-                        setDrafts(drafts.map(d => d.id === draft.id ? { ...d, ai_draft_reply: e.target.value } : d));
+                        const value = e.target.value;
+                        setDrafts(current => current.map(d => d.id === draft.id ? { ...d, ai_draft_reply: value } : d));
                       }}
                       rows={3}
                       style={{ fontSize: '0.9rem' }}
@@ -272,13 +297,13 @@ export default function ReviewAutomation() {
                   </div>
 
                   <div style={{ display: 'flex', gap: '10px' }}>
-                    <button className="btn btn-primary btn-sm" onClick={() => handleApprove(draft.id)}>
-                      Approve & Send
+                    <button disabled={busyDrafts.includes(draft.id)} className="btn btn-primary btn-sm" onClick={() => handleApprove(draft)}>
+                      Approve reply
                     </button>
-                    <button className="btn btn-outline btn-sm" onClick={() => handleRegenerate(draft)}>
+                    <button disabled={busyDrafts.includes(draft.id)} className="btn btn-outline btn-sm" onClick={() => handleRegenerate(draft)}>
                       Regenerate
                     </button>
-                    <button className="btn btn-outline btn-sm" style={{ color: '#ef4444' }} onClick={() => handleDismiss(draft.id)}>
+                    <button disabled={busyDrafts.includes(draft.id)} className="btn btn-outline btn-sm" style={{ color: '#ef4444' }} onClick={() => handleDismiss(draft.id)}>
                       Dismiss
                     </button>
                   </div>

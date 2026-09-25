@@ -608,13 +608,15 @@ describe('PR10H.7 tenant isolation for persisted records', () => {
     tenantCtx.resolveTenantId = async () => 88;
 
     const _db = require('../db');
-    let updateParams = null;
+    let lookupParams = null;
+    let updates = 0;
     _db.getPool = () => ({
       query: async (sql, params) => {
-        if (sql.includes("UPDATE review_reply_drafts SET status = 'approved'")) {
-          updateParams = params;
-          return { rows: [] };
+        if (sql.includes('SELECT ai_draft_reply, status FROM review_reply_drafts')) {
+          assert.match(sql, /WHERE id=\$1 AND tenant_id=\$2/);
+          lookupParams = params;
         }
+        if (sql.includes('UPDATE review_reply_drafts')) updates++;
         return { rows: [] };
       },
     });
@@ -628,8 +630,10 @@ describe('PR10H.7 tenant isolation for persisted records', () => {
     });
     const tmpUrl = `http://127.0.0.1:${tmpServer.address().port}`;
 
-    await fetch(`${tmpUrl}/api/review-monitor/replies/12/approve`, { method: 'POST' });
-    assert.deepEqual(updateParams, ['12', 88]);
+    const res = await fetch(`${tmpUrl}/api/review-monitor/replies/12/approve`, { method: 'POST' });
+    assert.equal(res.status, 404);
+    assert.deepEqual(lookupParams, ['12', 88]);
+    assert.equal(updates, 0);
 
     await new Promise((r) => tmpServer.close(r));
     delete require.cache[require.resolve('../services/review_monitor/reply_api')];

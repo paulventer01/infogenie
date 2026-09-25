@@ -72,7 +72,7 @@ no production validation success is claimed.
 | Content safety coverage | docs/step6-content-safety-coverage.md records remaining partial/gap routes. | Reconcile against current main; enforce safety on launch-exposed create/save/approve/publish paths, or explicitly exclude incomplete paths from launch. Preserve failure-closed behavior. |
 | Release evidence | Local/CI acceptance does not establish production readiness. | Passing final-head checks, tenant/permission regression evidence, working login, and human release approval. |
 
-The next safety build implements audit batch PR-2 / CR-063: `/api/wordpress/publish`
+Merged PR #224 implements audit batch PR-2 / CR-063: `/api/wordpress/publish`
 checks the normalized title, content, excerpt and retained tags before any WordPress
 request or publish-log insert, for draft, pending and published posts alike. It scans
 raw fields plus decoded HTML text within a bounded combined scan ceiling; over-limit
@@ -82,6 +82,17 @@ errors and displays successful warning-only results. Tenant lookup and permissio
 remain unchanged. Final-head focused, real PostgreSQL/browser and independent review
 evidence belongs in the PR; no real WordPress publishing or production acceptance is
 implied. Other safety-audit rows, including `/api/publish-to-wordpress`, remain separate.
+
+Audit batch PR-3a / CR-013 adds approval-time checking to review replies. Older
+clients re-scan stored text; the editor submits its exact displayed reply, which
+is persisted only with successful approval. Tenant-scoped pending-state and text
+comparison reject missing, foreign, already-handled or concurrently changed rows.
+Enforced safety refusal returns 403; unavailable checks return 503; neither changes
+the draft. Successful warning-only results persist and display warnings. The UI
+preserves refused edits and prevents competing actions on the same in-flight draft.
+The action is labelled “Approve reply”: this route records approval only and does
+not deliver to a review platform. Focused, PostgreSQL/browser and independent
+review evidence must be recorded at the final PR head; Step 6 remains Partial.
 
 ## Needed for the new interface
 

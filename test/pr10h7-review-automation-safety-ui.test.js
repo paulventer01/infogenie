@@ -84,6 +84,10 @@ async function reviewHarness(t, opts = {}) {
       if (url.endsWith('/api/review-monitor/request-logs')) {
         return json({ ok: true, logs: [] });
       }
+      if (url.endsWith('/approve') && method === 'POST' && opts.approveHandler) {
+        const response = await opts.approveHandler(JSON.parse(options.body || '{}'));
+        return json(response, response.httpStatus || (response.ok ? 200 : 403));
+      }
       if (url.endsWith('/api/review-monitor/replies/generate') && method === 'POST') {
         const body = JSON.parse(options.body || '{}');
         const response = state.generateHandler
@@ -152,6 +156,10 @@ async function reviewHarness(t, opts = {}) {
     textarea,
     setReplyText,
     clickRegenerate,
+    clickApprove: async () => act(async () => {
+      const button = [...dom.window.document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Approve reply');
+      assert.ok(button); button.click();
+    }),
     state,
     render,
   };
@@ -163,6 +171,27 @@ test('ReviewAutomation renders content safety warning banner from draft warnings
   });
   assert.match(h.text(), /CONTENT SAFETY WARNINGS/i);
   assert.match(h.text(), /Uncited metric or percentage detected/i);
+});
+
+for (const [code,httpStatus] of [['content_safety_blocked',403],['content_safety_unavailable',503],['conflict',409]]) {
+  test('ReviewAutomation approval '+code+' preserves exact edited reply and shows error', async t=>{
+    let submitted;
+    const h=await reviewHarness(t,{approveHandler:async body=>{
+      submitted=body;return {ok:false,error:code,httpStatus,userMessage:'The reply was not approved. Review and retry.'};
+    }});
+    await h.setReplyText('An edited reply.');await h.clickApprove();
+    assert.deepEqual(submitted,{ai_draft_reply:'An edited reply.'});
+    assert.equal(h.textarea().value,'An edited reply.');
+    assert.match(h.document.querySelector('[role="alert"]').textContent,/not approved/);
+    assert.equal(h.textarea().disabled,false);
+  });
+}
+
+test('ReviewAutomation approved reply leaves the list while approval warnings remain visible', async t=>{
+  const h=await reviewHarness(t,{approveHandler:async ()=>({ok:true,content_safety_warnings:['Review the claim before external use.']})});
+  await h.clickApprove();
+  assert.equal(h.textarea(),null);assert.match(h.text(),/Review the claim before external use/);
+  assert.doesNotMatch(h.text(),/Approve & Send/);
 });
 
 test('ReviewAutomation blocked regeneration shows role=alert and preserves edited reply text', async (t) => {
