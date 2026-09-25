@@ -173,3 +173,16 @@ checks fail; never change production routing or remove production records.
 Production acceptance remains a separate human decision. Do not rewind the
 existing CMTrading workflow, regenerate its successful fixture steps or bypass
 missing credentials to manufacture a passing result.
+
+The Marketing Brief delivery extension exercises only the already reachable explicit
+Send to Slack action (CR-023) through the existing content-safety browser chain. Real
+login, PostgreSQL and API gates run; the webhook HTTPS boundary is intercepted with
+synthetic responses, so no external delivery occurs. It checks owned-content refusal
+and scanner outage without brief writes, foreign-row 404, missing configuration,
+provider rejection, warning persistence/reload, confirmed success and concurrent
+send suppression. Row locking holds the scanned snapshot through the bounded request;
+success records deduplicate identical content. A provider-accepted request whose
+database record fails remains ambiguous and requires destination inspection before
+retry, not an exactly-once guarantee. Final-head hosted verification is required.
+This closes CR-023 only; CR-051 remains partial in PR-8b and the 17 remaining batches stay
+paused. No new channel, retry engine, autonomous execution or hosting change is added.

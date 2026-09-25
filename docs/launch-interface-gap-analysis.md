@@ -180,4 +180,13 @@ previously saved data with an explicit stale banner until a successful retry,
 serializes generation requests, and retains persisted warnings after reload.
 Focused deterministic tests pass; real login/Postgres/Chromium coverage is added
 to the existing content-safety browser gate and still requires hosted verification.
-Marketing Brief delivery (CR-023) remains deferred. PR-8b/PR-8c and Step 6 remain partial.
+Marketing Brief delivery safety closes CR-023 at the existing explicit webhook action:
+tenant-owned stored display text and the exact outgoing text are re-scanned before
+sending; refusals leave the brief untouched, and warnings persist on confirmed delivery.
+The panel reports failures and confirmed delivery honestly. A row lock prevents concurrent
+sends and content-hash records deduplicate successful delivery of the same snapshot.
+Provider acceptance followed by a database failure remains an explicitly reported ambiguous
+outcome; this is not a durable outbox or an exactly-once guarantee. Hosted browser coverage
+intercepts the HTTPS boundary and sends nothing to a real destination; final-head hosted
+verification is still required. CR-051 attack-plan warning persistence remains in PR-8b;
+PR-8b/PR-8c and Step 6 remain partial. All 17 remaining batches stay paused.

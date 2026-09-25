@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiGet, apiPut } from '@/lib/api';
+import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { showToast } from '@/hooks/useToast';
 import { goToView } from '@/lib/nav';
 
@@ -790,7 +790,9 @@ export default function MarketingBrief() {
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [delivering, setDelivering] = useState(false);
-  const [delivered, setDelivered]   = useState(false);
+  const [deliveredId, setDeliveredId] = useState<number | null>(null);
+  const [deliveryError, setDeliveryError] = useState<{ id: number; message: string } | null>(null);
+  const deliveryInFlight = useRef(false);
   const [error, setError]           = useState('');
   const [tab, setTab]               = useState<'brief' | 'history'>('brief');
   const [cadence, setCadence]       = useState<Cadence>('daily');
@@ -889,20 +891,32 @@ export default function MarketingBrief() {
   }, []);
 
   const deliver = async () => {
-    if (!data?.brief) return;
+    const id = data?.brief?.id;
+    if (!id || deliveryInFlight.current || deliveredId === id) return;
+    deliveryInFlight.current = true;
     setDelivering(true);
+    setDeliveryError(null);
     try {
-      await fetch(`/api/marketing-brief/${data.brief.id}/deliver`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channels: ['slack'] }),
-      });
-      setDelivered(true);
-      setTimeout(() => setDelivered(false), 3000);
-    } catch { /* ignore */ } finally { setDelivering(false); }
+      const result = await apiPost<{ ok: boolean; userMessage?: string;
+        delivered?: { channel: string; ok: boolean }[]; content_safety_warnings?: string[];
+      }>(`/api/marketing-brief/${id}/deliver`, { channels: ['slack'] });
+      if (!mounted.current) return;
+      if (!result.ok || !result.delivered?.some(d => d.channel === 'slack' && d.ok === true)) {
+        setDeliveryError({ id, message: result.userMessage || 'Delivery was not confirmed. Check the destination before trying again.' });
+        return;
+      }
+      setDeliveredId(id);
+      setData(current => current?.brief?.id === id ? { ...current, brief: {
+        ...current.brief, content_safety_warnings: result.content_safety_warnings || current.brief.content_safety_warnings,
+      } } : current);
+    } finally {
+      deliveryInFlight.current = false;
+      if (mounted.current) setDelivering(false);
+    }
   };
 
   const brief = data?.brief ?? null;
+  const delivered = !!brief && deliveredId === brief.id;
   const digest = data?.digest ?? null;
   const recommendations = data?.recommendations ?? [];
   // Must stay above any early returns — Rules of Hooks
@@ -941,6 +955,12 @@ export default function MarketingBrief() {
           <p style={{ margin: '6px 0' }}>{error}</p>
           <p style={{ margin: '6px 0' }}>This brief and its supporting data have not been refreshed. Last brief saved: {data?.brief?.created_at ? new Date(data.brief.created_at).toLocaleString() : 'unknown'}.</p>
           <button onClick={() => void load(true)} disabled={refreshing}>Retry refresh</button>
+        </div>
+      )}
+
+      {deliveryError?.id === data?.brief?.id && (
+        <div role="alert" style={{ padding: 14, marginBottom: 16, color: '#92400E', background: '#FFFBEB' }}>
+          {deliveryError?.message}
         </div>
       )}
 
@@ -1003,7 +1023,7 @@ export default function MarketingBrief() {
               {refreshing ? '⏳ Refreshing…' : '🔄 Refresh'}
             </button>
             <button
-              onClick={deliver} disabled={delivering || delivered}
+              onClick={deliver} disabled={!brief || delivering || delivered}
               style={{ padding: '6px 12px', background: delivered ? '#16A34A' : 'linear-gradient(135deg,#0f766e,#0284c7)', color: '#fff', border: delivered ? '1.5px solid #16A34A' : '1.5px solid transparent', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
             >
               {delivered ? '✓ Sent' : delivering ? 'Sending…' : '📤 Send to Slack'}

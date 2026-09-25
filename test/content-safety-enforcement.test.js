@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 require('./wordpress-publish-safety.test');
 require('./review-reply-approval-safety.test');
 require('./marketing-brief-safety.test');
+require('./marketing-brief-delivery.test');
 
 const {
   PLATFORM_CONTENT_SAFETY_MODE,
