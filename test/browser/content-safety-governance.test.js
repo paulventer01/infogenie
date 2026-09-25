@@ -33,7 +33,7 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   });
 
   const { startAgencyBrowser } = require('../helpers/agency-browser');
-  const { baseUrl, actors, fx } = await startAgencyBrowser(t);
+  const { baseUrl, actors, fx, db } = await startAgencyBrowser(t);
   await require('../../services/ai_governance/schema').ensureAiGovernanceSchema();
   const realOwner = await fx.seedUser({ tenantId: actors.owner.tid, owner: true });
   const loginActor = { owner: { email: realOwner.email, password: realOwner.password } };
@@ -79,6 +79,8 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
     if (msg.type() !== 'error') return;
     const text = msg.text();
     if (text.includes('ERR_BLOCKED_BY_CLIENT.Inspector')) return;
+    if (msg.location().url === baseUrl + '/api/wordpress/publish' &&
+        /^Failed to load resource:.*\b(403|404|503)\b/.test(text)) return;
     errors.push(text);
   });
 
@@ -102,6 +104,8 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   });
   assert.equal(statusPayload.content_safety_mode, 'enforce');
   assert.ok(statusPayload.banner);
+
+  await require('../helpers/wordpress-safety-browser')({page,baseUrl,actors,db});
 
   await context.close();
 });

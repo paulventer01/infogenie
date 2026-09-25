@@ -3,6 +3,9 @@ const crypto  = require('crypto');
 const _https  = require('https');
 const _db     = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { gateRouteText, contentSafetyHttpBody, contentSafetyUnavailableBody,
+  attachContentSafetyWarnings } = require('../ai_governance/route_gate');
+const { MAX_OUTPUT_SCAN_CHARS } = require('../ai_governance/output_gate');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
@@ -174,6 +177,63 @@ router.post('/publish', async (req, res) => {
     `SELECT * FROM wordpress_sites WHERE id=$1 AND tenant_id=$2 AND status='active'`, [site_id, tid]
   );
   if (!sr.rows[0]) return _err(res, 404, 'Site not found');
+  // Scan the exact retained fields before decrypting credentials or sending any
+  // draft/pending/live post. Include decoded HTML text so markup/entities cannot
+  // split a prohibited phrase; retain raw text to cover attributes as well.
+  let gated;
+  try {
+    const fields = [title, content, excerpt, ...tags];
+    const raw = fields.join('\n');
+    if (raw.length > MAX_OUTPUT_SCAN_CHARS) {
+      return res.status(403).json(contentSafetyHttpBody({ error: 'content_safety_blocked',
+        userMessage: 'This post exceeds the supported content safety scan limit. Shorten it before publishing.' }));
+    }
+    const {JSDOM} = require('jsdom');
+    const blocks = new Set(['P','DIV','BR','LI','H1','H2','H3','H4','H5','H6','SECTION','ARTICLE','TR','TD',
+      'BLOCKQUOTE','PRE','ADDRESS','FIGURE','FIGCAPTION','HEADER','FOOTER','MAIN','NAV','ASIDE',
+      'UL','OL','DL','DT','DD','TABLE','TH','HR','FORM','FIELDSET','DETAILS','SUMMARY']);
+    const rawText = new Set(['IFRAME','XMP','NOEMBED','NOFRAMES','NOSCRIPT','PLAINTEXT','TEXTAREA','STYLE','SCRIPT','TITLE']);
+    const decoded = fields.map(field => {
+      const text = [], spaced = [], attributes = [];
+      function visit(node, depth = 0) {
+        if (node.nodeType === 3) { text.push(node.nodeValue); spaced.push(node.nodeValue); return; }
+        if (blocks.has(node.tagName)) text.push(' ');
+        if (node.nodeType === 1) spaced.push(' ');
+        for (const attr of node.attributes || []) attributes.push(attr.value);
+        // KSES may strip a raw-text wrapper and expose its inner HTML. Reparse
+        // with the HTML parser (quote-safe), never execute scripts or fetch URLs.
+        if (rawText.has(node.tagName) && node.textContent.includes('<')) {
+          if (depth >= 8) throw new Error('HTML normalization depth exceeded');
+          visit(JSDOM.fragment(node.textContent), depth + 1);
+        } else {
+          // Template content may become visible after WordPress sanitization.
+          for (const child of (node.content || node).childNodes || []) visit(child, depth);
+        }
+        if (blocks.has(node.tagName)) text.push(' ');
+        if (node.nodeType === 1) spaced.push(' ');
+      }
+      // Parse fields separately: an unclosed tag in a title must not hide body text.
+      visit(JSDOM.fragment(field));
+      return [text.join(''), attributes.join('\n'), spaced.join('')].join('\n');
+    }).join('\n');
+    if (raw.length + decoded.length + 1 > MAX_OUTPUT_SCAN_CHARS) {
+      return res.status(403).json(contentSafetyHttpBody({ error: 'content_safety_blocked',
+        userMessage: 'This post exceeds the supported content safety scan limit. Shorten it before publishing.' }));
+    }
+    gated = await gateRouteText({tenantId: tid, userId: req.user?.id || null,
+      surface: 'wordpress', action: 'generate_content', text: raw + '\n' + decoded});
+  } catch (_) {
+    return res.status(503).json({...contentSafetyUnavailableBody(),
+      userMessage: 'Content safety checks are temporarily unavailable. Nothing was sent to WordPress. Try again later.'});
+  }
+  if (!gated.ok) {
+    return res.status(gated.error === 'content_safety_unavailable' ? 503 : 403).json({
+      ...contentSafetyHttpBody(gated),
+      userMessage: gated.error === 'content_safety_unavailable'
+        ? 'Content safety checks are temporarily unavailable. Nothing was sent to WordPress. Try again later.'
+        : 'This post did not pass content safety checks. Revise the title, content, excerpt or tags before trying again.',
+    });
+  }
   const { site_url, username, app_password } = sr.rows[0];
   const dec = _decrypt(app_password);
 
@@ -194,7 +254,7 @@ router.post('/publish', async (req, res) => {
     [tid, site_id, resp.body.id, title, status, postUrl, req.body?.source || 'manual']
   );
 
-  res.json({ ok: true, wp_post_id: resp.body.id, post_url: postUrl, status, site_url });
+  res.json(attachContentSafetyWarnings({ ok: true, wp_post_id: resp.body.id, post_url: postUrl, status, site_url }, gated.warnings));
 });
 
 // GET /publish-log — recent publish history
