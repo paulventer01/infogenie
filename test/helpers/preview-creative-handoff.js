@@ -103,6 +103,7 @@ module.exports = async function creativeHandoff(browser, pool, origin, fixture) 
     assert.deepEqual((await read(api + '/proposals?workflow_id=' + wf)).generation, approved);
     assert.equal(mutations.length, writesBeforeReload, 'restoration must not generate or approve again');
     assert.deepEqual(await credits.getSnapshot(pool, tenantId), checkpoint, 'restoration does not charge credits');
+    stage = 'campaign handoff';
     await click('Open Campaign Journey');
     await page.waitForSelector('[name="marketing_brief"]:enabled');
     await page.select('[name="marketing_brief"]', String(briefId));
@@ -112,11 +113,19 @@ module.exports = async function creativeHandoff(browser, pool, origin, fixture) 
     assert.equal(await page.$$eval('[name="creative"] option', (options, id) => options.some(o => o.value === id), video.id), false);
     await page.select('[name="creative"]', image.id);
     await page.locator('[name="label"]').fill('DEMO generated proposal handoff');
+    await page.locator('[name="amount"]').fill('1');
+    await page.locator('[name="country"]').fill('US');
+    await page.locator('[name="audience"]').fill('DEMO homeware audience');
+    await page.$eval('[name="start"]', (el, value) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, value);
+      el.dispatchEvent(new Event('input', {bubbles:true}));
+    }, new Date(Date.now() + 864e5).toISOString().slice(0,16));
     const saved = (await action('Save campaign draft', api + '/campaign-drafts')).draft;
     assert.equal(saved.workflow_id, wf); assert.equal(saved.tenant_id, tenantId);
     assert.deepEqual(saved.contract.creatives, [{kind:'creative_brief', asset_id:artifact, version:approvedImage.version, content_hash:approvedImage.content_hash}]);
     assert.equal(String(saved.contract.provenance.marketing_brief_id), String(briefId));
     const beforeCampaignReload = mutations.length;
+    stage = 'saved campaign restoration';
     await page.reload({waitUntil:'networkidle2'});
     await page.waitForSelector('[name="marketing_brief"]:enabled');
     await page.select('[name="marketing_brief"]', String(briefId));
