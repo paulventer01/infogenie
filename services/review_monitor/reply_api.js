@@ -2,6 +2,7 @@ const express = require('express');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { MAX_OUTPUT_SCAN_CHARS } = require('../ai_governance/output_gate');
+const { createRateLimiter } = require('../security/rate_limit');
 const { normalizeChatParams } = require('../ai_compat');
 const {
   gateRouteText,
@@ -14,6 +15,11 @@ const {
 } = require('../ai_governance/content_schemas');
 
 const router = express.Router();
+const replyApproveLimiter = createRateLimiter({
+  name: 'review-reply-approve', windowMs: 60_000, max: 20, failClosed: true,
+  keyFn: req => req.tenant?.id != null && req.user?.id != null
+    ? `review-reply-approve|${req.tenant.id}|${req.user.id}` : null,
+});
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
@@ -173,7 +179,7 @@ router.get('/replies', async (req, res) => {
   res.json({ ok: true, drafts });
 });
 
-router.post('/replies/:id/approve', async (req, res) => {
+router.post('/replies/:id/approve', replyApproveLimiter, async (req, res) => {
   const tid = await _tid(req, 'reviews:approve-reply');
   if (!tid) return _err(res, 400, 'no_tenant');
 

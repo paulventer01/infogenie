@@ -9,11 +9,12 @@ test('review reply approval checks exact text and atomically transitions only ow
   const saved={pool:db.getPool,tid:ctx.resolveTenantId,gate:gate.gateRouteText};
   const path=require.resolve('../services/review_monitor/reply_api');
   t.after(()=>{db.getPool=saved.pool;ctx.resolveTenantId=saved.tid;gate.gateRouteText=saved.gate;delete require.cache[path];});
-  let row, scans=[], writes=0, mode='enforce', race;
+  let row, scans=[], writes=0, mode='enforce', race, dbCalls=0;
   function reset(text='Thanks for your feedback.') { row={ai_draft_reply:text,status:'pending'};scans=[];writes=0;mode='enforce';race=null; }
   reset();
   ctx.resolveTenantId=async req=>req.tenant.id;
   db.getPool=()=>({query:async (sql,args)=>{
+    dbCalls++;
     if (mode==='db-error') throw new Error('private database detail');
     assert.match(sql,/tenant_id=\$2/);
     if (sql.startsWith('SELECT')) return {rows:args[0]==='1'&&args[1]===11 ? [{...row}] : []};
@@ -29,7 +30,8 @@ test('review reply approval checks exact text and atomically transitions only ow
     return {ok:mode==='warning'||s.verdict!=='block',error:'content_safety_blocked',warnings:s.warnings};
   };
   delete require.cache[path];
-  const handler=require(path).stack.find(l=>l.route?.path==='/replies/:id/approve').route.stack[0].handle;
+  const router=require(path);
+  const handler=router.stack.find(l=>l.route?.path==='/replies/:id/approve').route.stack.at(-1).handle;
   async function approve(body={},tid=11,id='1') {
     let status=200,payload;const res={status(s){status=s;return this;},json(b){payload=b;return this;}};
     await handler({body,params:{id},tenant:{id:tid},user:{id:3}},res);return {status,body:payload};
@@ -50,4 +52,27 @@ test('review reply approval checks exact text and atomically transitions only ow
   reset();mode='warning';r=await approve({ai_draft_reply:'guaranteed returns'});assert.equal(r.status,200);assert.ok(r.body.content_safety_warnings.length);assert.deepEqual(row.warnings,r.body.content_safety_warnings);
   reset();assert.equal((await approve()).status,200);assert.equal(scans[0].text,'Thanks for your feedback.');
   reset();mode='db-error';r=await approve();assert.equal(r.status,503);assert.doesNotMatch(JSON.stringify(r.body),/private/);
+  // Exercise the real route middleware: IDs cannot create fresh rate buckets,
+  // missing identity fails closed, and a different tenant/user is independent.
+  const express=require('express'), app=express();
+  app.use(express.json());app.use((req,res,next)=>{
+    req.tenant={id:Number(req.headers['x-tenant']||11)};
+    req.user=req.headers['x-anonymous'] ? null : {id:Number(req.headers['x-user']||3)};next();
+  });app.use(router);
+  const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const url=`http://127.0.0.1:${server.address().port}`;
+  reset();
+  for(let n=0;n<20;n++) {
+    const response=await fetch(`${url}/replies/${n+10}/approve`,{method:'POST'});
+    assert.equal(response.status,404);await response.json();
+  }
+  const before=dbCalls;
+  const limited=await fetch(`${url}/replies/99/approve`,{method:'POST'});
+  assert.equal(limited.status,429);assert.ok(Number(limited.headers.get('Retry-After'))>0);
+  assert.equal((await limited.json()).error,'rate_limited');assert.equal(dbCalls,before);
+  const anonymous=await fetch(`${url}/replies/1/approve`,{method:'POST',headers:{'x-anonymous':'1'}});
+  assert.equal(anonymous.status,429);await anonymous.json();assert.equal(dbCalls,before);
+  const other=await fetch(`${url}/replies/99/approve`,{method:'POST',headers:{'x-tenant':'22'}});
+  assert.equal(other.status,404);await other.json();
 });

@@ -624,6 +624,7 @@ describe('PR10H.7 tenant isolation for persisted records', () => {
     const router = require('../services/review_monitor/reply_api');
     const app = express();
     app.use(express.json());
+    app.use((req, res, next) => { req.tenant={id:88}; req.user={id:1}; next(); });
     app.use('/api/review-monitor', router);
     const tmpServer = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
