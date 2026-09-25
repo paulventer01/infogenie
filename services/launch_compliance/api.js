@@ -2,6 +2,13 @@ const express = require('express');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { DEFAULT_ITEMS } = require('./schema');
+const { createRateLimiter } = require('../security/rate_limit');
+const { MAX_OUTPUT_SCAN_CHARS } = require('../ai_governance/output_gate');
+const createLimiter = createRateLimiter({
+  name: 'launch-checklist-create', windowMs: 60_000, max: 20, failClosed: true,
+  keyFn: req => req.tenant?.id != null && req.user?.id != null
+    ? `launch-checklist-create|${req.tenant.id}|${req.user.id}` : null,
+});
 const {
   gateRouteText,
   contentSafetyHttpBody,
@@ -72,32 +79,50 @@ router.get('/checklists', async (req, res) => {
 });
 
 // POST /api/launch-compliance/checklists
-router.post('/checklists', async (req, res) => {
+router.post('/checklists', createLimiter, async (req, res) => {
   const tid = await _tid(req, 'compliance:create');
   if (!tid) return _err(res, 400, 'no_tenant');
   const { campaign_name, platform, landing_page_url, ad_copy } = req.body || {};
-  if (!campaign_name) return _err(res, 400, 'campaign_name required');
+  if (typeof campaign_name !== 'string' || !campaign_name.trim() ||
+      [platform, landing_page_url, ad_copy].some(v => v != null && typeof v !== 'string')) {
+    return res.status(400).json({ ok: false, error: 'invalid_checklist', userMessage: 'Enter a campaign name and use text for checklist fields.' });
+  }
+  const values = [campaign_name, platform || 'general', landing_page_url || null, ad_copy || null];
+  const text = values.filter(v => v != null).join('\n');
+  if (text.length > MAX_OUTPUT_SCAN_CHARS) {
+    return res.status(403).json({ ok: false, error: 'content_safety_blocked', userMessage: 'Shorten the checklist text to 100,000 characters or fewer before saving.' });
+  }
+  let client;
   try {
-    const p = _db.getPool();
-    const { rows } = await p.query(
-      `INSERT INTO campaign_compliance_checklists (tenant_id,campaign_name,platform,landing_page_url,ad_copy)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [tid, campaign_name, platform||'general', landing_page_url||null, ad_copy||null]
+    const gated = await gateRouteText({ tenantId: tid, userId: req.user?.id || null,
+      surface: 'launch_compliance', action: 'generate_content', text, label: 'compliance:create' });
+    if (!gated.ok) return res.status(gated.error === 'content_safety_unavailable' ? 503 : 403).json(contentSafetyHttpBody(gated));
+    // Save the scanned snapshot and its default items atomically. Request-supplied
+    // tenant IDs, warnings and completion status never enter this transaction.
+    client = await _db.getPool().connect();
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `INSERT INTO campaign_compliance_checklists (tenant_id,campaign_name,platform,landing_page_url,ad_copy,content_safety_warnings)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb) RETURNING *`,
+      [tid, ...values, JSON.stringify(gated.warnings || [])]
     );
     const checklist = rows[0];
-    // Seed default checklist items — stamp the resolved tenant, never body.tenant_id.
     for (const item of DEFAULT_ITEMS) {
-      await p.query(
+      await client.query(
         'INSERT INTO compliance_checklist_items (tenant_id,checklist_id,category,item,order_idx) VALUES ($1,$2,$3,$4,$5)',
         [tid, checklist.id, item.category, item.item, item.order_idx]
       );
     }
-    const { rows: items } = await p.query(
+    const { rows: items } = await client.query(
       'SELECT * FROM compliance_checklist_items WHERE checklist_id=$1 AND tenant_id=$2 ORDER BY order_idx',
       [checklist.id, tid]
     );
-    res.json({ ok: true, checklist: { ...checklist, items } });
-  } catch (e) { _err(res, 500, e.message); }
+    await client.query('COMMIT');
+    res.json({ ok: true, checklist: { ..._attachChecklistWarnings(checklist), items } });
+  } catch (_) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    res.status(503).json({ ok: false, error: 'checklist_save_unavailable', userMessage: 'Could not confirm the save. Your text is still here; check the checklist list before retrying.' });
+  } finally { client?.release(); }
 });
 
 // GET /api/launch-compliance/checklists/:id

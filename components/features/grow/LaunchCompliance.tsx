@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
 
@@ -66,6 +66,8 @@ export default function LaunchCompliance() {
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [active, setActive]         = useState<Checklist | null>(null);
   const [loading, setLoading]       = useState(true);
+  const createPending = useRef(false);
+  const [createError, setCreateError] = useState("");
   const [saving, setSaving]         = useState(false);
   const [tab, setTab]               = useState<"list" | "detail">("list");
   const [catTab, setCatTab]         = useState("brand");
@@ -94,17 +96,29 @@ export default function LaunchCompliance() {
   }
 
   async function handleCreate() {
-    if (!form.campaign_name) { showToast("Campaign name is required."); return; }
+    if (createPending.current) return;
+    if (!form.campaign_name.trim()) { setCreateError("Campaign name is required."); return; }
+    createPending.current = true;
     setSaving(true);
-    const r = await apiPost<{ ok: boolean; error?: string; checklist?: Checklist }>("/api/launch-compliance/checklists", form);
-    if (r?.ok) {
+    setCreateError("");
+    try {
+      const r = await apiPost<{ ok: boolean; userMessage?: string; checklist?: Checklist }>("/api/launch-compliance/checklists", form);
+      if (!r?.ok || !r.checklist) {
+        setCreateError(r?.userMessage || "Could not confirm the save. Your text has been kept; check the checklist list before retrying.");
+        return;
+      }
       showToast("✅ Checklist created!");
       setForm({ campaign_name: "", platform: "general", landing_page_url: "", ad_copy: "" });
-      load();
-      setActive(r.checklist ?? null);
+      void load();
+      setActive(r.checklist);
+      setCatTab("brand");
       setTab("detail");
-    } else { showToast("Error creating checklist."); }
-    setSaving(false);
+    } catch {
+      setCreateError("Could not confirm the save. Your text has been kept; check the checklist list before retrying.");
+    } finally {
+      createPending.current = false;
+      setSaving(false);
+    }
   }
 
   async function handleItemUpdate(itemId: number, status: string, notes?: string) {
@@ -246,19 +260,20 @@ export default function LaunchCompliance() {
           <div style={card}>
             <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#0A1628", fontSize: "0.95rem", marginBottom: 14 }}>➕ New Checklist</div>
             <div style={{ display: "grid", gap: 11 }}>
-              <div><label style={lbl}>Campaign Name *</label><input style={input} placeholder="Q3 Meta Brand Campaign" value={form.campaign_name} onChange={e => setForm(f => ({ ...f, campaign_name: e.target.value }))} /></div>
+              <div><label style={lbl}>Campaign Name *</label><input disabled={saving} style={input} placeholder="Q3 Meta Brand Campaign" value={form.campaign_name} onChange={e => setForm(f => ({ ...f, campaign_name: e.target.value }))} /></div>
               <div>
                 <label style={lbl}>Platform</label>
-                <select style={input} value={form.platform} onChange={e => setForm(f => ({ ...f, platform: e.target.value }))}>
+                <select disabled={saving} style={input} value={form.platform} onChange={e => setForm(f => ({ ...f, platform: e.target.value }))}>
                   {PLATFORMS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
                 </select>
               </div>
-              <div><label style={lbl}>Landing Page URL</label><input style={input} placeholder="https://yourdomain.com/landing" value={form.landing_page_url} onChange={e => setForm(f => ({ ...f, landing_page_url: e.target.value }))} /></div>
+              <div><label style={lbl}>Landing Page URL</label><input disabled={saving} style={input} placeholder="https://yourdomain.com/landing" value={form.landing_page_url} onChange={e => setForm(f => ({ ...f, landing_page_url: e.target.value }))} /></div>
               <div>
                 <label style={lbl}>Ad Copy</label>
-                <textarea style={{ ...input, minHeight: 90, resize: "vertical" }} placeholder="Paste your ad headline and body copy here for AI proofreading…" value={form.ad_copy} onChange={e => setForm(f => ({ ...f, ad_copy: e.target.value }))} />
+                <textarea disabled={saving} style={{ ...input, minHeight: 90, resize: "vertical" }} placeholder="Paste your ad headline and body copy here for AI proofreading…" value={form.ad_copy} onChange={e => setForm(f => ({ ...f, ad_copy: e.target.value }))} />
               </div>
             </div>
+            {createError && <div role="alert" style={{ color: "#B91C1C", marginTop: 12 }}>{createError}</div>}
             <button onClick={handleCreate} disabled={saving} style={{ ...btnPri, marginTop: 14, width: "100%", opacity: saving ? 0.7 : 1 }}>{saving ? "Creating…" : "✅ Start Compliance Review"}</button>
           </div>
 
@@ -312,6 +327,7 @@ export default function LaunchCompliance() {
 
       {tab === "detail" && active && (
         <div>
+          <ContentSafetyWarnings warnings={active.content_safety_warnings} />
           {/* Header */}
           <div style={{ ...card, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
             <div>

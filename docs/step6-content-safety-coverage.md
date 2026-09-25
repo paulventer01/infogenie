@@ -16,19 +16,19 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Classification | Count | Meaning |
 |----------------|------:|---------|
-| **covered** | 39 | Gate before side effect; field scan complete |
+| **covered** | 40 | Gate before side effect; field scan complete |
 | **partial** | 12 | Gate present but incomplete scan, timing, status, or warning handling |
-| **gap** | 44 | In-scope lifecycle step with no Step 6 gate |
+| **gap** | 43 | In-scope lifecycle step with no Step 6 gate |
 | **out of scope** | 30 | Deferred with explicit justification (§5) |
 | **Total** | **125** | One row per `method + path` (CR-001–CR-124, CR-128) |
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **16** remaining after PR-8b covering all **56** gap/partial rows |
+| Implementation batches (§4) | **15** remaining after PR-4a covering all **55** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
-**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. CR-051 attack-plan warning persistence completes PR-8b in this change. The 16 remaining batches, including PR-8c, remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
+**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. CR-051 attack-plan warning persistence completed PR-8b; CR-015 checklist save safety completes PR-4a in this change. The 15 remaining batches, including PR-8c, remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
 
 ---
 
@@ -95,7 +95,7 @@ Routes using `JSON.stringify` for gate text without flattening are **`partial`**
 | CR-012 | POST | `/api/review-monitor/replies/generate` | gen | covered | `gateRouteText` + `reviewReplyGateText` | complete | — | pr10h7 |
 | CR-013 | POST | `/api/review-monitor/replies/:id/approve` | approve | covered | `_gateReply` before conditional approval update | complete | — | review-reply-approval-safety + governance browser |
 | CR-014 | POST | `/api/launch-compliance/checklists/:id/proofread` | gen | covered | `gateRouteText` + `proofreadGateText` | complete | — | pr10h5 |
-| CR-015 | POST | `/api/launch-compliance/checklists` | save | gap | none | n/a | PR-4a | — |
+| CR-015 | POST | `/api/launch-compliance/checklists` | save | covered | `gateRouteText` (retained checklist fields) | complete | — | PR-4a |
 | CR-016 | PUT | `/api/launch-compliance/items/:itemId` | save | out of scope | none | n/a | defer | — |
 | CR-017 | POST | `/api/launch-compliance/checklists/:id/brand-check` | gen | out of scope | `governSafe` audit | n/a | defer | pr10h5 |
 | CR-018 | POST | `/api/safe-agent/propose` | gen | partial | `gateRouteText` on `JSON.stringify` blob | partial:json-flatten | PR-8c | pr10h4 |
@@ -288,7 +288,7 @@ References **CR-###** from §2. No separate classifications here.
 
 ## 4. Implementation batches
 
-**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2, PR-3a and PR-3b are merged. **PR-8b is completed in this change** (CR-051; CR-023 previously completed), reconciled against main `8f129085` on 2026-09-25. **16** batches remain, covering **56** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
+**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2, PR-3a and PR-3b are merged. **PR-8b is complete. PR-4a is completed in this change** (CR-015), reconciled against main `c61052ba` on 2026-09-25. **15** batches remain, covering **55** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
 
 | Batch | Routes (IDs) | Est. size | Risk |
 |-------|----------------|----------:|------|
@@ -298,7 +298,7 @@ References **CR-###** from §2. No separate classifications here.
 | **PR-2** | — (merged) | — | High |
 | **PR-3a** | — (merged) | — | High |
 | **PR-3b** | — (merged) | — | High |
-| **PR-4a** | CR-015 | ~200 lines | Medium |
+| **PR-4a (complete)** | CR-015 | Checklist save gate + atomic persistence + browser acceptance | — |
 | **PR-4b** | CR-064,065 | ~300 lines | Medium |
 | **PR-5** | CR-029–035 (7) | ~700 lines | Medium |
 | **PR-5b** | CR-028 | ~300 lines | Medium |
