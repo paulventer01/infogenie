@@ -221,6 +221,9 @@ function _attackPlanReadBody(entry) {
   };
   if (entry.source !== undefined) body.source = entry.source;
   if (entry._fabricated !== undefined) body._fabricated = entry._fabricated;
+  if (Array.isArray(entry.content_safety_warnings) && entry.content_safety_warnings.length) {
+    body.content_safety_warnings = entry.content_safety_warnings;
+  }
   return body;
 }
 
@@ -321,6 +324,9 @@ module.exports = function register(app, ctx) {
     };
     if (fields.source !== undefined) entry.source = fields.source;
     if (fields._fabricated !== undefined) entry._fabricated = fields._fabricated;
+    if (Array.isArray(fields.content_safety_warnings) && fields.content_safety_warnings.length) {
+      entry.content_safety_warnings = fields.content_safety_warnings;
+    }
     let packed;
     try { packed = JSON.stringify(entry); } catch { return; }
     if (Buffer.byteLength(packed, 'utf8') > ATTACK_PLAN_ENTRY_MAX) {
@@ -362,6 +368,7 @@ module.exports = function register(app, ctx) {
         sources: response.sources,
         source: response.source,
         _fabricated: response._fabricated,
+        content_safety_warnings: gated.warnings,
       });
     }
     return res.json(response);

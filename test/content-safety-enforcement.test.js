@@ -6,6 +6,8 @@ require('./wordpress-publish-safety.test');
 require('./review-reply-approval-safety.test');
 require('./marketing-brief-safety.test');
 require('./marketing-brief-delivery.test');
+require('./attack-plan-warning-persistence.test');
+require('./attack-plan-client.test');
 
 const {
   PLATFORM_CONTENT_SAFETY_MODE,

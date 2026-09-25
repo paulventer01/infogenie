@@ -16,19 +16,19 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Classification | Count | Meaning |
 |----------------|------:|---------|
-| **covered** | 38 | Gate before side effect; field scan complete |
-| **partial** | 13 | Gate present but incomplete scan, timing, status, or warning handling |
+| **covered** | 39 | Gate before side effect; field scan complete |
+| **partial** | 12 | Gate present but incomplete scan, timing, status, or warning handling |
 | **gap** | 44 | In-scope lifecycle step with no Step 6 gate |
 | **out of scope** | 30 | Deferred with explicit justification (§5) |
 | **Total** | **125** | One row per `method + path` (CR-001–CR-124, CR-128) |
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **17** remaining after PR-3b covering all **57** gap/partial rows |
+| Implementation batches (§4) | **16** remaining after PR-8b covering all **56** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
-**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. PR-8b remains partial for CR-051 attack-plan warning persistence. The 17 remaining batches, including PR-8b and PR-8c, remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
+**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. CR-051 attack-plan warning persistence completes PR-8b in this change. The 16 remaining batches, including PR-8c, remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
 
 ---
 
@@ -141,7 +141,7 @@ Routes using `JSON.stringify` for gate text without flattening are **`partial`**
 | CR-048 | POST | `/api/generate-article-topics` | gen | partial | `_respondGatedJson` (`JSON.stringify`) | partial:json-flatten | PR-8c | — |
 | CR-049 | POST | `/api/backlink-opportunities` | gen | partial | `_respondGatedJson` (`JSON.stringify`) | partial:json-flatten | PR-8c | — |
 | CR-050 | POST | `/api/keyword-research` | gen | partial | `_respondGatedJson` (`JSON.stringify`) | partial:json-flatten | PR-8c | — |
-| CR-051 | POST | `/api/ai-attack-plan` | gen | partial | `_gateRoutePayload` before persist | partial:warnings-not-persisted | PR-8b | — |
+| CR-051 | POST | `/api/ai-attack-plan` | gen | covered | `_gateRoutePayload` before persist; warnings saved/read/rendered | complete (existing plan JSON scan unchanged) | — | attack-plan-warning-persistence, attack-plan-client; hosted browser pending |
 | CR-052 | POST | `/api/landing-page` | gen | partial | `_respondGatedJson` (`html` only) | partial:metadata-echo | PR-8d | — |
 | CR-053 | POST | `/api/generate-seo-article` | gen | partial | `_respondGatedJson` (`content` only) | partial:title-echo | PR-8d | — |
 | CR-054 | POST | `/api/publish-to-wordpress` | publish | partial | `gateRouteText` on `content` only | partial:title-unscanned; 403-not-503; no success warnings | PR-8a | — |
@@ -288,7 +288,7 @@ References **CR-###** from §2. No separate classifications here.
 
 ## 4. Implementation batches
 
-**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2 and PR-3a are merged. **PR-3b is implemented in this change** (CR-019), reconciled against main `70fc6f51` on 2026-09-25. **17** batches remain, covering **57** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
+**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2, PR-3a and PR-3b are merged. **PR-8b is completed in this change** (CR-051; CR-023 previously completed), reconciled against main `8f129085` on 2026-09-25. **16** batches remain, covering **56** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
 
 | Batch | Routes (IDs) | Est. size | Risk |
 |-------|----------------|----------:|------|
@@ -297,7 +297,7 @@ References **CR-###** from §2. No separate classifications here.
 | **PR-1c** | — (merged) | — | High |
 | **PR-2** | — (merged) | — | High |
 | **PR-3a** | — (merged) | — | High |
-| **PR-3b** | CR-019 (this change) | — | High |
+| **PR-3b** | — (merged) | — | High |
 | **PR-4a** | CR-015 | ~200 lines | Medium |
 | **PR-4b** | CR-064,065 | ~300 lines | Medium |
 | **PR-5** | CR-029–035 (7) | ~700 lines | Medium |
@@ -312,7 +312,7 @@ References **CR-###** from §2. No separate classifications here.
 | **PR-7d** | CR-082,083,084 | ~400 lines | Medium |
 | **PR-7e** | CR-074,075,076,077,078 | ~550 lines | Low |
 | **PR-8a** | CR-054 | ~250 lines | Medium |
-| **PR-8b** (partial) | CR-051 (CR-023 complete) | ~350 lines | Low |
+| **PR-8b** | CR-051 (this change; CR-023 complete) | — | Low |
 | **PR-8c** (partial) | CR-018,027,045–050 (8) | ~800 lines | Medium |
 | **PR-8d** | CR-052,053 | ~300 lines | Low |
 
@@ -329,7 +329,7 @@ References **CR-###** from §2. No separate classifications here.
 | PR-6a–6d | Email Designer, Site Builder, LinkedIn, RCS lifecycles gated + module tests + UI warnings where applicable |
 | PR-7a–7e | Tier-2 `/generate` routes gated before return/persist |
 | PR-8a | `publish-to-wordpress` scans title+content; 503 unavailable; success warnings |
-| PR-8b | Remaining: attack-plan warnings persisted; delivery safety errors. CR-022 completed separately. |
+| PR-8b | Implemented: attack-plan gate warnings persist in tenant entries and render after generation/reopen/reload; CR-023 delivery safety completed separately. Hosted verification pending. |
 | PR-8c | Remaining JSON gate-text flattening (CR-020/021 completed separately); regression tests for escaped `\n`/`\t` and key-boundary splits |
 | PR-8d | `landing-page` / `generate-seo-article` scan all echoed publishable fields |
 
@@ -379,7 +379,7 @@ Aligned with §2 **Field scan** column. `complete` ↔ `covered`; `partial:*` �
 | `_respondGatedJson` text routes (CR-039–044) | route-specific primary text | n/a | complete |
 | `JSON.stringify` routes (CR-018,027,045–050) | whole payload | JSON | **partial:json-flatten** → PR-8c |
 | CR-028 | AI `posts` subset only | — | **partial:subset-fields** → PR-5b |
-| CR-051 | plan JSON | JSON | **partial:warnings-not-persisted** → PR-8b |
+| CR-051 | plan JSON | JSON | Gate warnings persist and render on immediate/reopened plans. Existing scan/refusal semantics unchanged; broader JSON flattening remains deferred. |
 | CR-052 | `html` only | n/a | **partial:metadata-echo** → PR-8d |
 | CR-053 | `content` only | n/a | **partial:title-echo** → PR-8d |
 | CR-054 | `content` only | n/a | **partial:title-unscanned; 403-not-503** → PR-8a |
@@ -396,6 +396,8 @@ Aligned with §2 **Field scan** column. `complete` ↔ `covered`; `partial:*` �
 | `test/pr10h4-content-safety-approval.test.js` | CR-018,019 |
 | `test/pr10h5-step6-content-gates.test.js` | CR-001,014,024–028; **documents partial Step 6** |
 | `test/pr10h5-content-schemas.test.js` | CR-001,024 normalizers |
+| `test/attack-plan-warning-persistence.test.js`, `test/attack-plan-client.test.js` | CR-051 warning persistence/read/render, legacy entries, isolation/refusals; included by existing enforcement entry |
+| `test/helpers/attack-plan-warning-browser.js` | CR-051 real login/API/PG/reload/isolation/refusals; synthetic provider transport, hosted execution pending |
 | `test/pr10h1a-social-draft-save-safety.test.js` | CR-055,056,057 |
 | `test/pr10h1a-social-draft-save-safety-ui.test.js` | CR-055,057 UI |
 | `test/pr10h1b-social-draft-approval-publish-safety.test.js` | CR-058–061 |

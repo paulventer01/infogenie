@@ -5612,6 +5612,7 @@ function _unwrapAttackPlanPayload(payload) {
       source: source || (fabricated ? 'template' : ''),
       fabricated,
       sources,
+      warnings: Array.isArray(payload.content_safety_warnings) ? payload.content_safety_warnings.filter(w => typeof w === 'string') : [],
     };
   }
   if (payload.plan == null && ('plan' in payload || payload.ok === true)) {
@@ -5637,6 +5638,7 @@ function _unwrapAttackPlanPayload(payload) {
       source: source || (fabricated ? 'template' : ''),
       fabricated,
       sources,
+      warnings: Array.isArray(payload.content_safety_warnings) ? payload.content_safety_warnings.filter(w => typeof w === 'string') : [],
     };
   }
   return {
@@ -5648,6 +5650,14 @@ function _unwrapAttackPlanPayload(payload) {
     fabricated: false,
     sources: [],
   };
+}
+
+function _apSafetyWarningsHtml(meta) {
+  const warnings = meta && Array.isArray(meta.warnings) ? meta.warnings.filter(w => typeof w === 'string') : [];
+  if (!warnings.length) return '';
+  return '<div data-ap-safety-warnings="1" role="status" style="padding:12px 24px;background:#FFFBEB;color:#92400E;max-height:120px;overflow:auto">'
+    + '<strong>Content safety warnings</strong><ul style="margin:6px 0 0;padding-left:20px">'
+    + warnings.map(w => '<li>' + _escapeHtml(w) + '</li>').join('') + '</ul></div>';
 }
 
 function _apHonestyBadgeHtml(meta) {
@@ -5703,6 +5713,7 @@ function _applyAttackPlanResponse(payload, competitorName) {
     source: unwrapped.source,
     fabricated: unwrapped.fabricated,
     sources: unwrapped.sources,
+    warnings: unwrapped.warnings,
   };
   renderAttackPlan(unwrapped.plan, competitorName);
   showToast('✅ Attack plan ready vs ' + competitorName);
@@ -5776,6 +5787,7 @@ function renderAttackPlan(plan, competitor) {
     + (honestyBadge ? ' ' + honestyBadge : '')
     + '</div></div>'
     + '<button type="button" onclick="window._apCloseModal && window._apCloseModal()" style="background:rgba(255,255,255,.2);border:none;width:32px;height:32px;border-radius:8px;color:white;font-size:1rem;cursor:pointer">✕</button></div>'
+    + _apSafetyWarningsHtml(window._apPlanMeta)
     + '<div id="apTabBar" style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid #E2E8F0">'
     + ['overview','weekly','keywords','wins'].map((t, i) =>
       '<button type="button" data-tab="' + t + '" class="' + (i === 0 ? 'active' : '') + '" data-active="' + (i === 0 ? 'true' : 'false') + '" onclick="window._apSwitchTab && window._apSwitchTab(\'' + t + '\')" style="padding:8px 14px;border-radius:8px;border:1px solid transparent;font-size:0.78rem;font-weight:700;cursor:pointer">'
@@ -5812,6 +5824,7 @@ window.openSavedAttackPlan = function(payload, competitorName) {
     source: unwrapped.source,
     fabricated: unwrapped.fabricated,
     sources: unwrapped.sources,
+    warnings: unwrapped.warnings,
   };
   const name = competitorName || (payload && payload.competitor) || 'Competitor';
   renderAttackPlan(unwrapped.plan, name);

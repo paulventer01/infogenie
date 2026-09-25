@@ -483,13 +483,19 @@ test('renderAttackPlan applies open grace on the dialog inner panel', async () =
     + bpSafeBlock
     + '\nfunction _apSwitchTab() {}\n'
     + '\nfunction _apHonestyBadgeHtml() { return ""; }\n'
+    + sliceBetween(SRC, 'function _apSafetyWarningsHtml(meta)', 'function _apHonestyBadgeHtml(meta)')
+    + '\nfunction _escapeHtml(s) { const el = document.createElement("div"); el.textContent = s; return el.innerHTML; }\n'
     + renderBlock
     + '\nwindow.renderAttackPlan = renderAttackPlan;\n',
   );
   rwin._apCloseModal = () => {};
+  const warning = '<img src=x onerror=alert(1)> Review this claim & revise.';
+  rwin._apPlanMeta = { warnings: [warning] };
   rwin.renderAttackPlan(livePlan, 'Rival');
   const modal = rwin.document.getElementById('attackPlanModal');
   assert.ok(modal, 'modal mounted');
+  assert.strictEqual(modal.querySelector('[data-ap-safety-warnings] li').textContent, warning);
+  assert.strictEqual(modal.querySelector('[data-ap-safety-warnings] img'), null, 'warnings are escaped');
   const inner = modal.firstElementChild;
   assert.ok(inner);
   assert.strictEqual(modal.dataset.apGrace, '1');
@@ -497,4 +503,19 @@ test('renderAttackPlan applies open grace on the dialog inner panel', async () =
   await new Promise((r) => setTimeout(r, 450));
   assert.strictEqual(modal.dataset.apGrace, undefined);
   assert.strictEqual(inner.style.pointerEvents, '');
+});
+
+
+test('generation and saved-plan reopening carry warnings and clear stale warnings for legacy entries', () => {
+  win.eval(savedOpenBlock);
+  const warnings = ['Review this generated claim.'];
+  const payload = { ok: true, plan: livePlan, sources: ['GPT-4o'], content_safety_warnings: warnings };
+  assert.strictEqual(win._applyAttackPlanResponse(payload, 'Rival'), true);
+  assert.deepStrictEqual(Array.from(win._apPlanMeta.warnings), warnings);
+  assert.strictEqual(win.openSavedAttackPlan(payload, 'Rival'), true);
+  assert.deepStrictEqual(Array.from(win._apPlanMeta.warnings), warnings);
+  assert.strictEqual(win.openSavedAttackPlan({ ok: true, plan: livePlan }, 'Legacy'), true);
+  assert.deepStrictEqual(Array.from(win._apPlanMeta.warnings), []);
+  assert.strictEqual(win._apSafetyWarningsHtml(win._apPlanMeta), '');
+  assert.strictEqual(win._apSafetyWarningsHtml({ warnings: [null, {}, 5] }), '');
 });
