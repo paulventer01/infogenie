@@ -3,6 +3,13 @@ const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const OpenAI = require('openai');
+const { createRateLimiter } = require('../security/rate_limit');
+const { approvalText } = require('./approval_text');
+const approveLimiter = createRateLimiter({
+  name: 'safe-agent-approve', windowMs: 60_000, max: 20, failClosed: true,
+  keyFn: req => req.tenant?.id != null && req.user?.id != null
+    ? `safe-agent-approve|${req.tenant.id}|${req.user.id}` : null,
+});
 
 
 // Propose a new action (phase 1: AI drafts + simulates)
@@ -119,32 +126,59 @@ Return strict JSON:
 });
 
 // Approve and execute
-router.post('/approve/:id', async (req, res) => {
+router.post('/approve/:id', approveLimiter, async (req, res) => {
+  let client;
+  try {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'safe-agent:approve' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const p = await _db.getPool();
   const row = await p.query(`SELECT * FROM safe_agent_proposals WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   if (!row.rows.length) return res.status(404).json({ ok:false, error:'not found' });
   const prop = row.rows[0];
-  if (prop.status !== 'pending_approval') return res.status(400).json({ ok:false, error:'not pending approval' });
-  await p.query(
-    `UPDATE safe_agent_proposals SET status='executing', approved_by=$1, approved_at=NOW() WHERE id=$2`,
-    [req.user?.id||null, prop.id]
+  if (prop.status !== 'pending_approval') return res.status(409).json({ ok:false, error:'not_pending_approval' });
+  let text;
+  try { text = approvalText(prop); } catch (_) {
+    return res.status(400).json({ ok:false, error:'invalid_proposal_content', userMessage:'This proposal is too large or invalid for safety review. Create a new proposal.' });
+  }
+  const { gateRouteText, contentSafetyHttpBody, contentSafetyUnavailableBody } = require('../ai_governance/route_gate');
+  let gated;
+  try {
+    gated = await gateRouteText({ tenantId:tid, userId:req.user.id, surface:'safe_agent', action:'generate_content', text });
+  } catch (_) { return res.status(503).json(contentSafetyUnavailableBody()); }
+  if (!gated.ok) return res.status(gated.error === 'content_safety_unavailable' ? 503 : 403).json(contentSafetyHttpBody(gated));
+  const warnings = gated.content_safety_warnings || gated.warnings || [];
+  client = await p.connect();
+  await client.query('BEGIN');
+  // Bind approval to the exact stored values scanned above. PostgreSQL rechecks
+  // this predicate after waiting for a concurrent writer's row lock.
+  const claimed = await client.query(
+    `UPDATE safe_agent_proposals SET status='executing', approved_by=$1, approved_at=NOW(), content_safety_warnings=$4
+     WHERE id=$2 AND tenant_id=$3 AND status='pending_approval'
+       AND title=$5 AND proposal=$6::jsonb AND simulation=$7::jsonb
+       AND budget_guardrail IS NOT DISTINCT FROM $8::numeric RETURNING id`,
+    [req.user.id, prop.id, tid, JSON.stringify(warnings), prop.title, JSON.stringify(prop.proposal), JSON.stringify(prop.simulation), prop.budget_guardrail]
   );
-  await p.query(
+  if (!claimed.rows.length) {
+    await client.query('ROLLBACK');
+    return res.status(409).json({ ok:false, error:'proposal_changed', userMessage:'This proposal changed or was already handled. Reload and review it again.' });
+  }
+  await client.query(
     `INSERT INTO safe_agent_audit_log(tenant_id,proposal_id,event,actor_id,detail) VALUES($1,$2,'approved',$3,$4)`,
     [tid, prop.id, req.user?.id||null, JSON.stringify({ approved_at: new Date().toISOString() })]
   );
   // Simulate execution (in production this would call real ad platform APIs)
   const outcome = { executed_actions: prop.proposal?.actions?.length||0, note:'Execution logged. Connect ad platform credentials to enable live execution.', executed_at: new Date().toISOString() };
-  await p.query(
-    `UPDATE safe_agent_proposals SET status='executed', executed_at=NOW(), outcome=$1 WHERE id=$2`,
-    [JSON.stringify(outcome), prop.id]
+  await client.query(
+    `UPDATE safe_agent_proposals SET status='executed', executed_at=NOW(), outcome=$1 WHERE id=$2 AND tenant_id=$3`,
+    [JSON.stringify(outcome), prop.id, tid]
   );
-  await p.query(
+  await client.query(
     `INSERT INTO safe_agent_audit_log(tenant_id,proposal_id,event,actor_id,detail) VALUES($1,$2,'executed',$3,$4)`,
     [tid, prop.id, req.user?.id||null, JSON.stringify(outcome)]
   );
+  await client.query('COMMIT');
+  client.release();
+  client = null;
   // Merge into AI Governance audit stream (no new approval step — already human-approved).
   try {
     const { governSafe } = require('../ai_governance/hooks');
@@ -163,7 +197,11 @@ router.post('/approve/:id', async (req, res) => {
   } catch (e) {
     console.warn('[safe-agent] governance audit merge failed open:', e.message);
   }
-  res.json({ ok:true, status:'executed', outcome });
+  res.json({ ok:true, status:'executed', outcome, content_safety_warnings:warnings });
+  } catch (_) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    res.status(503).json({ ok:false, error:'approval_unavailable', userMessage:'Approval is temporarily unavailable. Reload the proposal before retrying.' });
+  } finally { if (client) client.release(); }
 });
 
 // Rollback

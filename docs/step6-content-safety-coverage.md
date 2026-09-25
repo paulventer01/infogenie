@@ -16,15 +16,15 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Classification | Count | Meaning |
 |----------------|------:|---------|
-| **covered** | 33 | Gate before side effect; field scan complete |
+| **covered** | 34 | Gate before side effect; field scan complete |
 | **partial** | 16 | Gate present but incomplete scan, timing, status, or warning handling |
-| **gap** | 46 | In-scope lifecycle step with no Step 6 gate |
+| **gap** | 45 | In-scope lifecycle step with no Step 6 gate |
 | **out of scope** | 30 | Deferred with explicit justification (§5) |
 | **Total** | **125** | One row per `method + path` (CR-001–CR-124, CR-128) |
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **18** remaining after PR-3a covering all **62** gap/partial rows |
+| Implementation batches (§4) | **17** remaining after PR-3b covering all **61** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
@@ -99,7 +99,7 @@ Routes using `JSON.stringify` for gate text without flattening are **`partial`**
 | CR-016 | PUT | `/api/launch-compliance/items/:itemId` | save | out of scope | none | n/a | defer | — |
 | CR-017 | POST | `/api/launch-compliance/checklists/:id/brand-check` | gen | out of scope | `governSafe` audit | n/a | defer | pr10h5 |
 | CR-018 | POST | `/api/safe-agent/propose` | gen | partial | `gateRouteText` on `JSON.stringify` blob | partial:json-flatten | PR-8c | pr10h4 |
-| CR-019 | POST | `/api/safe-agent/approve/:id` | approve | gap | none (`governSafe` after) | n/a | PR-3b | pr10h4 |
+| CR-019 | POST | `/api/safe-agent/approve/:id` | approve | covered | `gateRouteText` on stored leaf text before atomic approval | complete | — | safe-agent-approval-safety + governance browser |
 | CR-020 | GET | `/api/marketing-brief/today` | gen, regen | partial | `gateGeneratedContent` in `generateBrief` | partial:json-flatten | PR-8c | content-safety-enforcement |
 | CR-021 | POST | `/api/marketing-brief/generate` | gen, regen | partial | same | partial:json-flatten | PR-8c | content-safety-enforcement |
 | CR-022 | GET | `/api/marketing-brief/merged` | regen | partial | indirect via `generateBrief`; errors swallowed | partial:stale-on-block | PR-8b | — |
@@ -288,7 +288,7 @@ References **CR-###** from §2. No separate classifications here.
 
 ## 4. Implementation batches
 
-**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c and PR-2 are merged. **PR-3a is implemented in this change** (CR-013), reconciled against main `3c061373` on 2026-09-25. **18** batches remain, covering **62** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
+**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2 and PR-3a are merged. **PR-3b is implemented in this change** (CR-019), reconciled against main `70fc6f51` on 2026-09-25. **17** batches remain, covering **61** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
 
 | Batch | Routes (IDs) | Est. size | Risk |
 |-------|----------------|----------:|------|
@@ -296,8 +296,8 @@ References **CR-###** from §2. No separate classifications here.
 | **PR-1b** | — (merged) | — | High |
 | **PR-1c** | — (merged) | — | High |
 | **PR-2** | — (merged) | — | High |
-| **PR-3a** | CR-013 (this change) | — | High |
-| **PR-3b** | CR-019 | ~200 lines | High |
+| **PR-3a** | — (merged) | — | High |
+| **PR-3b** | CR-019 (this change) | — | High |
 | **PR-4a** | CR-015 | ~200 lines | Medium |
 | **PR-4b** | CR-064,065 | ~300 lines | Medium |
 | **PR-5** | CR-029–035 (7) | ~700 lines | Medium |

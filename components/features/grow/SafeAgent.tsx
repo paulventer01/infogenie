@@ -101,6 +101,9 @@ export default function SafeAgent() {
   const [proposing, setProposing] = useState(false);
   const [detail, setDetail] = useState<ProposalDetail | null>(null);
   const [proposals, setProposals] = useState<ProposalListItem[]>([]);
+  const approvingRef = useRef<number | null>(null);
+  const [approving, setApproving] = useState<number | null>(null);
+  const [approvalError, setApprovalError] = useState("");
 
   const loadProposals = useCallback(async () => {
     const d = await apiGet<ProposalsResponse>("/api/safe-agent/proposals");
@@ -143,14 +146,25 @@ export default function SafeAgent() {
   };
 
   const approve = async (id: number) => {
+    if (approvingRef.current !== null) return;
     if (!window.confirm("Approve this proposal for execution?")) return;
-    const d = await apiPost(`/api/safe-agent/approve/${id}`);
-    if (!d.ok) {
-      window.alert(d.error || "Error");
-      return;
+    approvingRef.current = id;
+    setApproving(id);
+    setApprovalError("");
+    try {
+      const d = await apiPost<{ok?: boolean; error?: string; userMessage?: string; content_safety_warnings?: string[]}>(`/api/safe-agent/approve/${id}`);
+      if (!d.ok) {
+        setApprovalError(d.userMessage || d.error || "Approval failed. Reload and review the proposal.");
+        return;
+      }
+      setDetail(current => current?.id === id ? { ...current, status: "executed", content_safety_warnings: d.content_safety_warnings || [] } : current);
+      await loadProposals();
+    } catch {
+      setApprovalError("Approval is temporarily unavailable. Reload the proposal before retrying.");
+    } finally {
+      approvingRef.current = null;
+      setApproving(null);
     }
-    window.alert("✅ Approved and executed. Check the audit log for details.");
-    loadProposals();
   };
   const reject = async (id: number) => {
     const reason = window.prompt("Reason for rejection (optional):") || undefined;
@@ -192,6 +206,7 @@ export default function SafeAgent() {
     const recCol = REC_COL[p._recommendation || ""] || "#6b7280";
     return (
       <div className="ig-card" style={{ borderTop: `3px solid ${recCol}`, marginBottom: 16 }}>
+        {approvalError && <div role="alert">{approvalError}</div>}
         {renderContentSafetyWarnings(detail.content_safety_warnings)}
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
           <div>
@@ -201,10 +216,10 @@ export default function SafeAgent() {
               <span style={{ background: `${recCol}20`, color: recCol, borderRadius: 4, padding: "2px 8px", fontSize: "0.75rem", fontWeight: 700 }}>AI: {p._recommendation || ""}</span>
             </div>
           </div>
-          {id && (
+          {id && (!detail.status || detail.status === "pending_approval") && (
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-primary" onClick={() => approve(id)}>✅ Approve &amp; Execute</button>
-              <button className="btn btn-outline" style={{ color: "#ef4444" }} onClick={() => reject(id)}>✕ Reject</button>
+              <button disabled={approving !== null} className="btn btn-primary" onClick={() => approve(id)}>{approving === id ? "Checking safety…" : "✅ Approve & Execute"}</button>
+              <button disabled={approving !== null} className="btn btn-outline" style={{ color: "#ef4444" }} onClick={() => reject(id)}>✕ Reject</button>
             </div>
           )}
         </div>
