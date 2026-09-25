@@ -24,7 +24,8 @@ module.exports = async function previewCampaignIsolation(pool, foreign, origin) 
   await pool.query(`INSERT INTO orchestrator_workflows (id,tenant_id,name,objective,landing_page_url,selected_platforms,advertising_budget,currency)
     VALUES ($1,$2,'DEMO isolated workflow','traffic','https://example.com','["meta"]',0,'USD')`, [workflowId,tenant.id]);
   const brief = (await pool.query(`INSERT INTO marketing_briefs (tenant_id,brand,headline,greeting,generated_by)
-    VALUES ($1,'DEMO isolation','DEMO isolation brief','Synthetic isolation control.','test') RETURNING id`, [tenant.id])).rows[0];
+    VALUES ($1,'DEMO isolation','DEMO isolation brief','Synthetic isolation control.','test') RETURNING *`, [tenant.id])).rows[0];
+  const ownBrief = require('../../services/agent_orchestrator/campaign_briefs').publicBrief(brief);
   let ownDraft;
   return async function verify(browser, phase) {
     const context = await browser.createBrowserContext();
@@ -51,7 +52,8 @@ module.exports = async function previewCampaignIsolation(pool, foreign, origin) 
       if (!ownDraft) {
         // An unvalidated synthetic draft is sufficient for the positive edit control.
         // Its creative reference is deliberately unresolved; no approval or provider call.
-        const contract = {...foreign.draft.contract, provenance:{workflow_id:workflowId,marketing_brief_id:brief.id},
+        const contract = {...foreign.draft.contract, provenance:{workflow_id:workflowId,
+          marketing_brief_id:ownBrief.id,marketing_brief_hash:ownBrief.content_hash},
           creatives:foreign.draft.contract.creatives.map(c=>({...c,asset_id:'unresolved-'+suffix}))};
         const created = await request('campaign-drafts','POST', {
           workflow_id:workflowId, idempotency_key:'isolation-'+suffix,
