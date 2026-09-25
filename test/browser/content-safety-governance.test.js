@@ -80,6 +80,8 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
     const text = msg.text();
     if (msg.location().url.startsWith(baseUrl + '/api/safe-agent/approve/') &&
         /^Failed to load resource:.*\b(400|403|404|409|503)\b/.test(text)) return;
+    if (msg.location().url.startsWith(baseUrl + '/api/marketing-brief/') &&
+        /^Failed to load resource:.*\b(403|404|503)\b/.test(text)) return;
     if (text.includes('ERR_BLOCKED_BY_CLIENT.Inspector')) return;
     if (msg.location().url === baseUrl + '/api/wordpress/publish' &&
         /^Failed to load resource:.*\b(403|404|503)\b/.test(text)) return;
@@ -112,6 +114,8 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   await require('../helpers/wordpress-safety-browser')({page,baseUrl,actors,db});
   await require('../helpers/review-reply-approval-browser')({page,baseUrl,actors,db});
   await require('../helpers/safe-agent-approval-browser')({page,baseUrl,actors,db});
+
+  await require('../helpers/marketing-brief-safety-browser')({page,baseUrl,actors,db});
 
   await context.close();
 });

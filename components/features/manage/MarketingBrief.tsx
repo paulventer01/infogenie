@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiPut } from '@/lib/api';
+import { apiGet, apiPut } from '@/lib/api';
 import { showToast } from '@/hooks/useToast';
 import { goToView } from '@/lib/nav';
 
@@ -806,25 +806,44 @@ export default function MarketingBrief() {
     };
   }, [router]);
 
-  const load = useCallback(async (force = false) => {
+  const requestVersion = useRef(0);
+  const requests = useRef<Promise<void>>(Promise.resolve());
+  const mounted = useRef(false);
+  const load = useCallback((force = false) => {
+    const version = ++requestVersion.current;
     force ? setRefreshing(true) : setLoading(true);
-    setError('');
-    try {
-      const url = `/api/marketing-brief/merged${force ? '?force=1' : ''}`;
-      const res = await fetch(url);
-      const d: MergedPayload = await res.json();
-      if (!d.ok) throw new Error((d as any).error || 'Failed');
-      setData(d);
-      setCadence(d.cadence || 'daily');
-    } catch (e: any) {
-      setError(e.message || 'Failed to load brief');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    // Serialize generation: cancelling fetch cannot cancel a server-side INSERT.
+    // Only the newest requested result may change the panel.
+    requests.current = requests.current.catch(() => {}).then(async () => {
+      if (!mounted.current || version !== requestVersion.current) return;
+      try {
+        const d = await apiGet<MergedPayload & {
+          error?: string; userMessage?: string; stale?: boolean; previous_data?: MergedPayload;
+        }>(`/api/marketing-brief/merged${force ? '?force=1' : ''}`);
+        if (!mounted.current || version !== requestVersion.current) return;
+        if (!d.ok) {
+          if (d.stale && d.previous_data?.brief) setData(d.previous_data);
+          setError(d.userMessage || 'Could not refresh the marketing brief. Please retry.');
+          return;
+        }
+        setData(d);
+        setCadence(d.cadence || 'daily');
+        setError('');
+      } finally {
+        if (mounted.current && version === requestVersion.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    });
+    return requests.current;
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => { mounted.current = false; ++requestVersion.current; };
+  }, [load]);
 
   // Auto-refresh when a fresh analysis completes so the brief reflects new data
   useEffect(() => {
@@ -896,7 +915,7 @@ export default function MarketingBrief() {
 
   const formattedDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  if (loading) return (
+  if (loading && !data) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 360, gap: 16, color: '#64748B' }}>
       <div style={{ width: 40, height: 40, border: '3px solid #E2E8F0', borderTopColor: '#6366F1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
       <span style={{ fontSize: '0.88rem' }}>Assembling your morning brief…</span>
@@ -904,7 +923,7 @@ export default function MarketingBrief() {
     </div>
   );
 
-  if (error) return (
+  if (error && !data) return (
     <div style={{ padding: 32, textAlign: 'center' }}>
       <div style={{ fontSize: '2rem', marginBottom: 8 }}>⚠️</div>
       <div style={{ fontWeight: 600, color: '#EF4444', marginBottom: 6 }}>Could not load brief</div>
@@ -915,6 +934,15 @@ export default function MarketingBrief() {
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '20px 14px 52px', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
+
+      {error && (
+        <div role="alert" style={{ padding: 14, marginBottom: 16, border: '1px solid #F59E0B', borderRadius: 8, background: '#FFFBEB', color: '#92400E' }}>
+          <strong>Refresh failed — showing previously saved content</strong>
+          <p style={{ margin: '6px 0' }}>{error}</p>
+          <p style={{ margin: '6px 0' }}>This brief and its supporting data have not been refreshed. Last brief saved: {data?.brief?.created_at ? new Date(data.brief.created_at).toLocaleString() : 'unknown'}.</p>
+          <button onClick={() => void load(true)} disabled={refreshing}>Retry refresh</button>
+        </div>
+      )}
 
       {/* ── Hero header ───────────────────────────────────────────────────── */}
       <div
@@ -937,7 +965,7 @@ export default function MarketingBrief() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#0f766e', marginBottom: 6 }}>
-              📋 Today&apos;s Marketing Brief · {formattedDate}
+              📋 {error ? 'Previously saved Marketing Brief' : 'Today’s Marketing Brief'} · {formattedDate}
             </div>
             <h1 style={{ margin: 0, fontSize: '1.22rem', fontWeight: 800, lineHeight: 1.3, color: '#0f172a' }}>
               {brief?.headline || 'Your AI Marketing Director'}

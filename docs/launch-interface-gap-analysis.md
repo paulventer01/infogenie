@@ -172,3 +172,12 @@ the proposal-generation flattening gap remains in PR-8c. Step 6 remains Partial.
 One feature branch/PR at a time, maximum 1,500 changed lines. Human merges only.
 Keep status evidence explicit; an item above is not complete merely because it
 has a plan, route, deployment badge or test fixture.
+
+Marketing Brief safety and honest refresh addresses CR-020–022: generation scans
+bounded decoded display text (including brand and retained signals) before saving;
+blocked/unavailable generations return safe 403/503 responses. The panel preserves
+previously saved data with an explicit stale banner until a successful retry,
+serializes generation requests, and retains persisted warnings after reload.
+Focused deterministic tests pass; real login/Postgres/Chromium coverage is added
+to the existing content-safety browser gate and still requires hosted verification.
+Marketing Brief delivery (CR-023) remains deferred. PR-8b/PR-8c and Step 6 remain partial.
