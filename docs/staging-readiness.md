@@ -134,6 +134,18 @@ no research, proposal or creative approval rows are seeded for this extension.
 Final-head hosted verification must be recorded in the acceptance PR. This is not live-provider or rendered-media
 acceptance, and does not provision an operator-accessible owner account.
 
+The fixture-media extension continues that UI-created proposal after the saved
+campaign check. It verifies explicit image/video confirmations, separate video
+approval preserving the image approval, real job submission and UI polling of
+completed synthetic outputs. The test explicitly drains the existing workers for
+its synthetic tenant with fixture adapters; scheduling stays disabled. The image
+must decode as a labelled 1×1 PNG, while video remains labelled metadata with no
+video player. Reload must preserve exact job/output, approval and campaign records
+through authenticated reads without writes or credit changes, and reset generation
+confirmations. This does not claim completed media cards restore automatically,
+background workers run in preview, or a finished video exists. Final-head hosted
+verification remains required; no production or persistent hosting action is implied.
+
 The runtime isolation acceptance uses a test-only IPC observer in the actual
 preview launcher before and after restart, and again after the campaign journey.
 It requires the real server to have loaded, jobs/background flags to remain off,

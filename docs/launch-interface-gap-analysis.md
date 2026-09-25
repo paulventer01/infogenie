@@ -107,6 +107,19 @@ are seeded for this extension; its research/proposal/creative approval are not.
 Record final-head hosted verification in the acceptance PR. It does not certify live
 providers, image/video rendering, persistent hosting or production acceptance.
 
+PR #222 was human-merged on 2026-09-25; its research-to-approved-brief-to-saved
+campaign UI acceptance is implemented. Railway deployment is pending according
+to the operator, not required to start this isolated test extension. The next
+bounded acceptance exercises fixture image/video job submission through that
+same UI-created proposal, separate exact approvals and explicit confirmations.
+With preview scheduling still disabled, the test explicitly drains the existing
+workers for only its synthetic tenant using fixture adapters. It verifies a
+labelled 1×1 PNG, labelled video metadata with no finished video, and unchanged
+job/output, proposal and saved campaign records after read-only reload. This does
+not certify background scheduling, completed media-card UI restoration, rendered
+video, live providers, persistent hosting or production acceptance. Record the
+exact-head hosted result in the PR before treating this acceptance as verified.
+
 ## Deferred
 
 - New marketing channels and taxonomy expansion from docs/gap-priority-roadmap.md.
