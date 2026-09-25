@@ -283,7 +283,12 @@ module.exports = async function campaignJourney(page, account, origin, restartAn
     assert.equal(beforeRestart.snapshot.published,false);
     assert.ok(beforeRestart.snapshot.draft.approval_id);
     assert.ok(beforeRestart.approvals.some(a=>!a.revoked_at&&a.contract_hash===approved.body.draft.contract_hash));
+    const verifyTenantIsolation=await require('./preview-campaign-isolation')(pool,{
+      tenantId:tid,workflowId:wf,briefId:brief.id,draft:approved.body.draft,
+    },origin);
+    await verifyTenantIsolation(page.browser(),'before-restart');
     page=await restartAndLogin();
+    await verifyTenantIsolation(page.browser(),'after-restart');
     const restartMutations=[];
     const observe=request=>{
       if(request.method()!=='GET'&&new URL(request.url()).pathname.startsWith('/api/agent-orchestrator/'))restartMutations.push(request.method()+' '+new URL(request.url()).pathname);
