@@ -6,6 +6,19 @@ const { generateBrief } = require('./generator');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error:msg }); }
+// Do not expose provider/database details or return a stale brief as a success.
+function _generationError(res, error, previousData) {
+  const unavailable = error.code === 'content_safety_unavailable';
+  const blocked = error.code === 'content_safety_blocked';
+  const { USER_MESSAGES } = require('../ai_governance/output_gate');
+  return res.status(blocked ? 403 : unavailable ? 503 : 500).json({
+    ok: false,
+    error: blocked || unavailable ? error.code : 'brief_generation_failed',
+    userMessage: blocked ? USER_MESSAGES.blocked : unavailable ? USER_MESSAGES.unavailable
+      : 'Could not refresh the marketing brief. Please retry.',
+    ...(previousData ? { stale: true, previous_data: previousData } : {}),
+  });
+}
 function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
 
 // Valid cadences and their human labels
@@ -68,7 +81,13 @@ router.get('/merged', async (req, res) => {
 
     // Auto-generate brief if missing or stale (respects cadence)
     if (!brief || (forceNew || _shouldGenerate(brief, storedCadence))) {
-      try { brief = await generateBrief('your brand', tid); } catch { /* keep stale */ }
+      try { brief = await generateBrief('your brand', tid); }
+      catch (error) {
+        return _generationError(res, error, brief ? {
+          ok: true, cadence: storedCadence, brief,
+          digest: digestRow.rows[0] || null, recommendations,
+        } : undefined);
+      }
     }
 
     // If priorities are generic (no named entities), regenerate grounded Decision Engine recs
@@ -99,7 +118,7 @@ router.get('/merged', async (req, res) => {
       digest: digestRow.rows[0] || null,
       recommendations,
     });
-  } catch (e) { _err(res, 500, e.message); }
+  } catch (e) { _generationError(res, e); }
 });
 
 // GET /api/marketing-brief/settings — read cadence for this tenant
@@ -159,7 +178,7 @@ router.get('/today', async (req, res) => {
 
     const brief = await generateBrief(brand || 'your brand', tid);
     res.json({ ok:true, brief, fresh:true, cadence });
-  } catch (e) { _err(res, 500, e.message); }
+  } catch (e) { _generationError(res, e); }
 });
 
 // POST /api/marketing-brief/generate — force regenerate
@@ -171,7 +190,7 @@ router.post('/generate', async (req, res) => {
   try {
     const brief = await generateBrief(brand || 'your brand', tid);
     res.json({ ok:true, brief, fresh:true });
-  } catch (e) { _err(res, 500, e.message); }
+  } catch (e) { _generationError(res, e); }
 });
 
 // GET /api/marketing-brief/history

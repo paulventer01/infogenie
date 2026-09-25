@@ -492,20 +492,21 @@ async function generateBrief(brand, tenantId) {
 
   const { headline, greeting, sections, actions } = body;
 
-  const briefText = JSON.stringify({ headline, greeting, sections, actions });
   let contentSafetyWarnings = [];
   try {
+    const { briefText } = require('./brief_text');
     const { gateGeneratedContent } = require('../ai_governance/hooks');
     const gated = await gateGeneratedContent({
       tenantId,
       surface: 'marketing_brief',
       action: 'generate_brief',
-      text: briefText,
+      text: briefText({ brand: b, headline, greeting, sections, actions, signals, activePillars }),
       hasContext: signals.length > 0,
     });
     if (!gated.ok) {
       const err = new Error(gated.userMessage || 'content_safety_blocked');
-      err.code = 'content_safety_blocked';
+      err.code = gated.error === 'content_safety_unavailable'
+        ? 'content_safety_unavailable' : 'content_safety_blocked';
       throw err;
     }
     contentSafetyWarnings = gated.content_safety_warnings || gated.warnings || [];
