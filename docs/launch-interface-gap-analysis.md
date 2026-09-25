@@ -97,6 +97,16 @@ service; see the exact boundaries in the staging readiness plan.
 | Hosted review workspace | Railway production is running; disposable Codespaces preview exists. The [staging readiness plan](staging-readiness.md) records the separate database/account requirements, current preview limits and acceptance evidence. A persistent staging service has not been provisioned or verified. | Review the plan, implement only missing isolation/acceptance in a scoped build, and obtain authorization for a concrete hosting setup after verification. |
 | Visual acceptance | CI covers responsive behavior; operator review of the combined home and campaign screens remains outstanding. | Review desktop/mobile navigation, missing prerequisites, loading/error states, saved data and approval states. |
 
+PR #221 was human-merged on 2026-09-25. Actual-launcher provider/job isolation
+acceptance is implemented; production deployment and functional acceptance are
+separate. The next acceptance extension exercises fixture research, proposal
+generation and exact image-brief approval through the real isolated owner UI,
+then hands that creative to Campaign Journey and restores the saved draft after
+reload. Only account, marketing brief and bounded synthetic credit prerequisites
+are seeded for this extension; its research/proposal/creative approval are not.
+Hosted verification of this extension is pending. It does not certify live
+providers, image/video rendering, persistent hosting or production acceptance.
+
 ## Deferred
 
 - New marketing channels and taxonomy expansion from docs/gap-priority-roadmap.md.
