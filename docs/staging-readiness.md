@@ -130,7 +130,7 @@ restores it after reload. Proposal and campaign restoration must issue no writes
 or credit changes, and no publishing request may exist. Prerequisites are the
 synthetic account, marketing brief and a bounded 100,000-micro test grant/limits;
 no research, proposal or creative approval rows are seeded for this extension.
-Hosted verification is pending. This is not live-provider or rendered-media
+Final-head hosted verification must be recorded in the acceptance PR. This is not live-provider or rendered-media
 acceptance, and does not provision an operator-accessible owner account.
 
 The runtime isolation acceptance uses a test-only IPC observer in the actual
