@@ -10,6 +10,8 @@ module.exports = async function creativeHandoff(browser, pool, origin, fixture) 
   assert.equal(origin, 'http://127.0.0.1:5000');
   const {tenantId, ownerId, ownerEmail, ownerPassword, briefId} = fixture;
   const credits = require('../../services/agent_orchestrator/credits');
+  await require('../../services/agent_orchestrator/research_store').ensureResearchLimits(pool, tenantId,
+    {records:50, bytes:1048576});
   await require('../../services/agent_orchestrator/limits').updateLimits(pool, tenantId, {
     credit_ceiling_micros: 100000, daily_ai_cost_micros: 100000,
     monthly_ai_cost_micros: 100000, per_workflow_cost_micros: 100000,

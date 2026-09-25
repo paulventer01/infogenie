@@ -128,7 +128,8 @@ brief through UI controls. The video brief must remain unapproved. Campaign
 Journey selects that image brief and saves its exact ID/version/hash, then
 restores it after reload. Proposal and campaign restoration must issue no writes
 or credit changes, and no publishing request may exist. Prerequisites are the
-synthetic account, marketing brief and a bounded 100,000-micro test grant/limits;
+synthetic account, marketing brief, a bounded 100,000-micro test grant/limits,
+and a 50-record/1-MiB research evidence quota;
 no research, proposal or creative approval rows are seeded for this extension.
 Final-head hosted verification must be recorded in the acceptance PR. This is not live-provider or rendered-media
 acceptance, and does not provision an operator-accessible owner account.
