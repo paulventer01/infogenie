@@ -60,7 +60,9 @@ module.exports = async function attackPlanWarnings({page, baseUrl, actors, db, f
       if (unavailable) scanner.scanOutput = () => { throw new Error('synthetic scanner outage'); };
       const refused = await api('', {competitor:'DEMO refused rival', content_safety_warnings:[]});
       assert.equal(refused.status,403,'existing attack-plan refusal contract');
-      assert.equal(refused.body.error, unavailable ? 'content_safety_unavailable' : 'content_safety_blocked');
+      // The real orchestrator supplies content_safety_block; the route helper's
+      // content_safety_blocked fallback is used only when no reason is supplied.
+      assert.equal(refused.body.error, unavailable ? 'content_safety_unavailable' : 'content_safety_block');
       assert.equal(refused.body.plan,null); assert.equal(refused.body.ok,false);
       assert.deepEqual(await rows(),before);
     }
