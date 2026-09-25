@@ -142,6 +142,17 @@ not certify background scheduling, completed media-card UI restoration, rendered
 video, live providers, persistent hosting or production acceptance. Record the
 exact-head hosted result in the PR before treating this acceptance as verified.
 
+PR-3b / CR-019 adds a stored-content safety check before Safe Agent approval.
+Title, proposal and simulation leaf text are scanned without JSON escaping or
+truncation; over-limit content is refused even in warning-only mode. Enforced
+blocks return 403 and unavailable checks 503 before approval mutations. Approval
+compares the scanned snapshot, tenant and pending status, and commits warnings,
+the existing simulated outcome and both audit events atomically. Concurrent
+changes or duplicate approval return 409. The UI preserves refused proposals and
+shows safety errors and successful warnings. Required final-head test/review
+evidence belongs in the PR. No live execution or production acceptance is implied;
+the proposal-generation flattening gap remains in PR-8c. Step 6 remains Partial.
+
 ## Deferred
 
 - New marketing channels and taxonomy expansion from docs/gap-priority-roadmap.md.

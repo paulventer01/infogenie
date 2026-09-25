@@ -9,6 +9,7 @@ module.exports = async function wordpressSafety({page, baseUrl, actors, db}) {
   const provider=require('./wordpress-provider-fixture')();
   const scanner=require('../../services/ai_governance/output_gate'), originalScan=scanner.scanOutput;
   const sites=[];
+  const dismissDialog=dialog=>void dialog.dismiss();
   try {
     for (const tid of tids) sites.push((await pool.query(`INSERT INTO wordpress_sites
       (tenant_id,name,site_url,username,app_password) VALUES ($1,'DEMO WordPress','https://wordpress.example.test','fixture','synthetic-only') RETURNING id`,[tid])).rows[0].id);
@@ -22,7 +23,7 @@ module.exports = async function wordpressSafety({page, baseUrl, actors, db}) {
           !['/api/auth/me','/api/wordpress/sites'].includes(url.pathname)) return void request.respond({status:200,contentType:'application/json',body:'{"ok":false}'});
       void request.continue();
     });
-    page.on('dialog', dialog=>dialog.dismiss());
+    page.on('dialog', dismissDialog);
     async function click(text) {
       await page.waitForFunction(text=>[...document.querySelectorAll('button')].some(b=>b.textContent.trim()===text&&!b.disabled),{},text);
       await page.evaluate(text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text&&!b.disabled).click(),text);
@@ -74,6 +75,7 @@ module.exports = async function wordpressSafety({page, baseUrl, actors, db}) {
     await click('✍️ Generate Article');
     await page.waitForFunction(()=>!document.body.innerText.includes('CONTENT SAFETY WARNINGS'));
   } finally {
+    page.off('dialog', dismissDialog);
     scanner.scanOutput=originalScan; provider.restore();
     // These real gate events reference the synthetic users removed by the harness.
     await pool.query('DELETE FROM ai_governance_events WHERE tenant_id=ANY($1::int[])',[tids]);
