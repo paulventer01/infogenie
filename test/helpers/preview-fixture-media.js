@@ -28,7 +28,7 @@ module.exports = async function fixtureMedia({page, pool, origin, tenantId, wf, 
   const imageJob = (await action('Generate static image', api + '/static-images')).job;
   assert.equal(imageJob.workflow_id, wf); assert.equal(imageJob.proposal_id, proposal.id);
   assert.equal(imageJob.proposal_version, proposal.version);
-  assert.equal(imageJob.provider, 'fixture');
+  assert.equal(imageJob.provider, 'placeholder');
   const binding = (await pool.query('SELECT approval_id, approval_hash FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2',
     [tenantId,imageJob.id])).rows[0];
   assert.equal(String(binding.approval_id), String(approvedImage.approval_id));
