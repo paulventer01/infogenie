@@ -3,6 +3,7 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 // Include delivery-boundary acceptance in the existing content-safety gate.
 require('./wordpress-publish-safety.test');
+require('./review-reply-approval-safety.test');
 
 const {
   PLATFORM_CONTENT_SAFETY_MODE,

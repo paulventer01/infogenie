@@ -1,6 +1,8 @@
 const express = require('express');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { MAX_OUTPUT_SCAN_CHARS } = require('../ai_governance/output_gate');
+const { createRateLimiter } = require('../security/rate_limit');
 const { normalizeChatParams } = require('../ai_compat');
 const {
   gateRouteText,
@@ -13,6 +15,11 @@ const {
 } = require('../ai_governance/content_schemas');
 
 const router = express.Router();
+const replyApproveLimiter = createRateLimiter({
+  name: 'review-reply-approve', windowMs: 60_000, max: 20, failClosed: true,
+  keyFn: req => req.tenant?.id != null && req.user?.id != null
+    ? `review-reply-approve|${req.tenant.id}|${req.user.id}` : null,
+});
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
@@ -172,16 +179,45 @@ router.get('/replies', async (req, res) => {
   res.json({ ok: true, drafts });
 });
 
-router.post('/replies/:id/approve', async (req, res) => {
+router.post('/replies/:id/approve', replyApproveLimiter, async (req, res) => {
   const tid = await _tid(req, 'reviews:approve-reply');
   if (!tid) return _err(res, 400, 'no_tenant');
 
-  const p = await _db.getPool();
-  await p.query(
-    `UPDATE review_reply_drafts SET status = 'approved' WHERE id = $1 AND tenant_id = $2`,
-    [req.params.id, tid]
-  );
-  res.json({ ok: true });
+  try {
+    const p = await _db.getPool();
+    const found = await p.query(
+      `SELECT ai_draft_reply, status FROM review_reply_drafts WHERE id=$1 AND tenant_id=$2`,
+      [req.params.id, tid]);
+    const draft = found.rows[0];
+    if (!draft) return _err(res, 404, 'draft not found');
+    if (draft.status !== 'pending') return _err(res, 409, 'Reply is no longer pending. Refresh the list.');
+    // Older clients approve the stored copy; the editor submits its exact text.
+    const reply = req.body?.ai_draft_reply === undefined ? draft.ai_draft_reply : req.body.ai_draft_reply;
+    if (typeof reply !== 'string' || !reply.trim()) return _err(res, 400, 'Reply text is required.');
+    if (reply.length > MAX_OUTPUT_SCAN_CHARS) {
+      return res.status(403).json(contentSafetyHttpBody({error:'content_safety_blocked',
+        userMessage:'This reply exceeds the safety scan limit. Shorten it before approval.'}));
+    }
+    const gated = await _gateReply(req, tid, reply, 'reviews:approve-reply');
+    if (!gated.ok) {
+      const unavailable = gated.error === 'content_safety_unavailable';
+      return res.status(unavailable ? 503 : 403).json(contentSafetyHttpBody({...gated,
+        userMessage: unavailable ? 'Content safety checks are temporarily unavailable. The reply was not approved. Try again.'
+          : 'This reply did not pass content safety checks. Revise the reply before approval.'}));
+    }
+    const warnings = gated.warnings || gated.content_safety_warnings || [];
+    // Compare-and-set prevents a concurrent dismissal/edit/approval from being
+    // overwritten while the safety policy and scanner are running.
+    const updated = await p.query(
+      `UPDATE review_reply_drafts SET status='approved', ai_draft_reply=$3, content_safety_warnings=$4
+       WHERE id=$1 AND tenant_id=$2 AND status='pending' AND ai_draft_reply IS NOT DISTINCT FROM $5
+       RETURNING id`, [req.params.id, tid, reply, JSON.stringify(warnings), draft.ai_draft_reply]);
+    if (!updated.rows.length) return _err(res, 409, 'Reply changed during approval. Refresh and review it again.');
+    return res.json(attachContentSafetyWarnings({ok:true}, warnings));
+  } catch (_) {
+    return res.status(503).json({ok:false,error:'approval_unavailable',
+      userMessage:'Reply approval is temporarily unavailable. Refresh the list before trying again.'});
+  }
 });
 
 router.post('/replies/:id/dismiss', async (req, res) => {
