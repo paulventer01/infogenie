@@ -143,6 +143,10 @@ module.exports = async function creativeHandoff(browser, pool, origin, fixture) 
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM orchestrator_campaign_publish_requests WHERE tenant_id=$1 AND draft_id=$2', [tenantId,saved.id])).rows[0].n, 0);
     assert.deepEqual(errors, []);
     await page.screenshot({path:'/tmp/preview-artifacts/creative-handoff-restored.png',fullPage:true});
+    stage = 'fixture media acceptance';
+    await require('./preview-fixture-media')({page, pool, origin, tenantId, wf, proposal, approvedImage,
+      saved, credits, mutations, action, read});
+    assert.deepEqual(errors, []);
   } catch (error) {
     await page.screenshot({path:'/tmp/preview-artifacts/creative-handoff-failure.png',fullPage:true}).catch(() => {});
     error.message = 'Creative handoff (' + stage + '): ' + error.message;
