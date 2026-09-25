@@ -31,16 +31,16 @@ module.exports = async function marketingBrief({page,baseUrl,actors,db}) {
       void r.continue();
     });
     await page.goto(baseUrl+'/manage/marketing-brief',{waitUntil:'networkidle2'});
-    await page.waitForFunction(()=>document.body.innerText.includes('DEMO saved brief'));
+    await page.waitForFunction(()=>document.body.innerText.toLowerCase().includes('demo saved brief'));
     const before=await rows();
     assert.equal((await refresh()).status,403);
     await page.waitForFunction(()=>document.querySelector('[role="alert"]')?.textContent.includes('showing previously saved content'));
-    assert.match(await page.evaluate(()=>document.body.innerText),/Previously saved Marketing Brief/);
+    assert.match(await page.evaluate(()=>document.body.innerText),/Previously saved Marketing Brief/i);
     assert.deepEqual(await rows(),before);
     for(const path of ['today?force=1','generate']) assert.equal((await request(path)).status,403);
     assert.equal((await request(String(foreign))).status,404);
     assert.doesNotMatch(JSON.stringify((await request('history')).body),/PRIVATE foreign/);
-    assert.doesNotMatch(await page.evaluate(()=>document.body.innerText),/PRIVATE foreign/);
+    assert.doesNotMatch(await page.evaluate(()=>document.body.innerText),/PRIVATE foreign/i);
     scanner.scanOutput=()=>{throw new Error('synthetic private scanner error');};
     assert.equal((await refresh('Retry refresh')).status,503);
     await page.waitForFunction(()=>document.querySelector('[role="alert"]')?.textContent.includes('temporarily unavailable'));
@@ -50,16 +50,16 @@ module.exports = async function marketingBrief({page,baseUrl,actors,db}) {
     await pool.query("UPDATE marketing_briefs SET created_at=NOW()-INTERVAL '2 days' WHERE tenant_id=$1",[tid]);
     await page.reload({waitUntil:'networkidle2'});
     await page.waitForFunction(()=>document.querySelector('[role="alert"]')?.textContent.includes('showing previously saved content'));
-    assert.match(await page.evaluate(()=>document.body.innerText),/DEMO saved brief/);
+    assert.match(await page.evaluate(()=>document.body.innerText),/DEMO saved brief/i);
     scanner.scanOutput=scan;
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='warning_only' WHERE tenant_id=$1",[tid]);
     const allowed=await refresh('Retry refresh');assert.equal(allowed.status,200);
     assert.ok(allowed.body.brief.content_safety_warnings.length);
-    await page.waitForFunction(()=>document.body.innerText.includes('Content safety warnings')&&!document.querySelector('[role="alert"]'));
+    await page.waitForFunction(()=>document.body.innerText.toLowerCase().includes('content safety warnings')&&!document.querySelector('[role="alert"]'));
     const saved=await rows();assert.equal(saved.length,before.length+1);
     assert.deepEqual(saved.at(-1).content_safety_warnings,allowed.body.brief.content_safety_warnings);
     await page.reload({waitUntil:'networkidle2'});
-    await page.waitForFunction(()=>document.body.innerText.includes('Content safety warnings'));
+    await page.waitForFunction(()=>document.body.innerText.toLowerCase().includes('content safety warnings'));
     // Hold the real provider, fire multiple refresh events, then release. No overlapping
     // generation request may arrive and the superseded response must not render.
     let release, started, calls=0;
@@ -72,23 +72,23 @@ module.exports = async function marketingBrief({page,baseUrl,actors,db}) {
       document.dispatchEvent(new Event('ig:analysis-updated'));
       window.__briefSawSuperseded=false;
       window.__briefObserver=new MutationObserver(()=>{
-        if(document.body.innerText.includes('DEMO superseded result')) window.__briefSawSuperseded=true;
+        if(document.body.innerText.toLowerCase().includes('demo superseded result')) window.__briefSawSuperseded=true;
       });
       window.__briefObserver.observe(document.body,{subtree:true,childList:true,characterData:true});
     });
     assert.equal(calls,1);release();
-    await page.waitForFunction(()=>document.body.innerText.includes('DEMO newest result'));
+    await page.waitForFunction(()=>document.body.innerText.toLowerCase().includes('demo newest result'));
     assert.equal(calls,2,'queued refreshes coalesce and run after the first completes');
     assert.equal(await page.evaluate(()=>{window.__briefObserver.disconnect();return window.__briefSawSuperseded;}),false);
     // No saved brief: refusal is an error state, not an empty successful dashboard.
     await pool.query('DELETE FROM marketing_briefs WHERE tenant_id=$1',[tid]);
     scanner.scanOutput=()=>{throw new Error('synthetic outage');};
     await page.reload({waitUntil:'networkidle2'});
-    await page.waitForFunction(()=>document.body.innerText.includes('Could not load brief'));
+    await page.waitForFunction(()=>document.body.innerText.toLowerCase().includes('could not load brief'));
     assert.equal((await rows()).length,0);
     scanner.scanOutput=scan;provider=()=>({...body,headline:'DEMO retry recovered'});
     assert.equal((await refresh('Retry')).status,200);
-    await page.waitForFunction(()=>document.body.innerText.includes('DEMO retry recovered'));
+    await page.waitForFunction(()=>document.body.innerText.toLowerCase().includes('demo retry recovered'));
   } finally {
     restore();scanner.scanOutput=scan;
     await pool.query('DELETE FROM marketing_briefs WHERE tenant_id=ANY($1::int[])',[tenants]);
