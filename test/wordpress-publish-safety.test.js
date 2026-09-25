@@ -42,6 +42,7 @@ test('WordPress publish safety gates retained fields before provider and log wri
     const r=await publish({status,[field]:field==='tags'?[prohibited]:prohibited});
     assert.equal(r.status,403,field+' '+status); assert.equal(r.body.ok,false);
     assert.ok(r.body.userMessage); assert.equal(JSON.stringify(r.body).includes(prohibited),false);
+    if (field==='tags') assert.match(r.body.userMessage,/tags/);
     assert.equal(provider.calls.length,before); assert.equal(logs.length,writes);
   }
   for (const content of ['guaran<b>teed</b> ret&#117;rns','<p>guaranteed</p><p>returns</p>','x'.repeat(8100)+' guaranteed returns']) {
@@ -53,6 +54,11 @@ test('WordPress publish safety gates retained fields before provider and log wri
   for (const tag of ['iframe','noscript','xmp','plaintext']) {
     assert.equal((await publish({content:`<${tag}>guaran<b>teed</b> returns</${tag}>`})).status,403,tag);
   }
+  for (const tag of ['blockquote','pre','address','figure','header']) {
+    assert.equal((await publish({content:`<${tag}>guaranteed</${tag}><${tag}>returns</${tag}>`})).status,403,tag);
+  }
+  assert.equal((await publish({content:'<blockquote>guaran<b>teed</b></blockquote><blockquote title=">">returns</blockquote>'})).status,403);
+  assert.equal((await publish({content:'<iframe>guaran<b title=">">teed</b> returns</iframe>'})).status,403);
   for (mode of ['unavailable','throw']) {
     const r=await publish(); assert.equal(r.status,503); assert.equal(r.body.error,'content_safety_unavailable');
     assert.equal(JSON.stringify(r.body).includes('private scanner failure'),false);

@@ -75,6 +75,8 @@ module.exports = async function wordpressSafety({page, baseUrl, actors, db}) {
     await page.waitForFunction(()=>!document.body.innerText.includes('CONTENT SAFETY WARNINGS'));
   } finally {
     scanner.scanOutput=originalScan; provider.restore();
+    // These real gate events reference the synthetic users removed by the harness.
+    await pool.query('DELETE FROM ai_governance_events WHERE tenant_id=ANY($1::int[])',[tids]);
     await pool.query('DELETE FROM wordpress_publish_log WHERE site_id=ANY($1::int[])',[sites]);
     await pool.query('DELETE FROM wordpress_sites WHERE id=ANY($1::int[])',[sites]);
   }
