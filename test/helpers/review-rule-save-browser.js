@@ -53,9 +53,10 @@ module.exports=async function reviewRules({page,baseUrl,actors,db,fx}) {
     const foreign=(await pool.query("INSERT INTO review_request_rules (tenant_id,name,trigger_type,channel,message_template) VALUES ($1,'PRIVATE foreign rule','manual','email','PRIVATE foreign copy') RETURNING id",[otherTid])).rows[0].id;
     assert.equal((await api('PUT','/'+foreign,{active:false})).status,404);
     const {login,request}=require('./index');const viewer=await login(baseUrl,actors.viewer.email,actors.viewer.password);assert.equal(viewer.status,200);
-    assert.equal((await request(baseUrl,'POST','/api/review-monitor/request-rules',{cookie:viewer.cookie,body:{name:'Forbidden'}})).status,403);
+    assert.equal((await request(baseUrl,'POST','/api/review-monitor/request-rules',{cookie:viewer.cookie,headers:{Origin:baseUrl},body:{name:'Forbidden'}})).status,403);
     const otherOwner=await fx.seedUser({tenantId:otherTid,owner:true}),other=await login(baseUrl,otherOwner.email,otherOwner.password);assert.equal(other.status,200);
-    assert.equal((await request(baseUrl,'PUT','/api/review-monitor/request-rules/'+rule.id,{cookie:other.cookie,body:{active:true}})).status,404);
+    const denied=await request(baseUrl,'PUT','/api/review-monitor/request-rules/'+rule.id,{cookie:other.cookie,headers:{Origin:baseUrl},body:{active:true}});
+    assert.equal(denied.status,404);assert.equal(denied.json.error,'rule_not_found');
     assert.equal((await request(baseUrl,'POST','/api/review-monitor/request-rules',{body:{name:'Anonymous'}})).status,401);
     // A row lock forces a real concurrent edit between select/scan and CAS update.
     const lock=await pool.connect();let pending;
