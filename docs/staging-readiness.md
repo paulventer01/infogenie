@@ -195,3 +195,17 @@ final-head hosted acceptance remains required. The inventory is 39 covered, 12 p
 44 gap and 30 out of scope: 56 rows in 16 remaining paused batches. Broader Step 6,
 including PR-8c JSON flattening, remains deferred. No new channel, retry engine,
 autonomous execution, CI configuration, production, billing or hosting change is added.
+
+
+Launch Checklist Save Safety completes CR-015/PR-4a: the existing create route gates
+all retained text before writing, enforces the 100,000-character aggregate ceiling
+even in warning-only mode, and atomically saves tenant-owned checklist/default items
+with server-derived warnings. The shared tenant/user limiter fails closed. Refusals
+return actionable errors and preserve form text; warnings remain visible after reload.
+Focused tests cover blocking, outages, validation, rollback and limiting; the existing
+hosted browser chain adds real login/API/PostgreSQL refusal, warning persistence and
+tenant/permission acceptance. Final-head hosted verification is required; local
+PostgreSQL is unavailable. Inventory: 40 covered, 12 partial, 43 gap, 30 out of scope;
+55 remaining rows in 15 paused batches. This does not certify launch readiness,
+proofreading accuracy, live providers or production acceptance. No CI, production,
+billing, hosting or deployment changes.

@@ -8,6 +8,7 @@ require('./marketing-brief-safety.test');
 require('./marketing-brief-delivery.test');
 require('./attack-plan-warning-persistence.test');
 require('./attack-plan-client.test');
+require('./launch-checklist-save-safety.test');
 
 const {
   PLATFORM_CONTENT_SAFETY_MODE,
