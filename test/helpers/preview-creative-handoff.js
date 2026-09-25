@@ -73,6 +73,7 @@ module.exports = async function creativeHandoff(browser, pool, origin, fixture) 
     const wf = created.workflow.id;
     await action('Request approval', api + '/workflows/' + wf + '/request-approval');
     await action('Approve', api + '/workflows/' + wf + '/approve');
+    await page.waitForSelector('input[name="metaMode"]');
     assert.equal(await page.$eval('input[name="metaMode"]', el => el.checked), true);
     const research = await action('Start Meta research', api + '/research/runs');
     const run = research.run.id;
