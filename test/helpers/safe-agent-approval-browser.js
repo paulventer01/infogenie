@@ -78,6 +78,7 @@ module.exports = async function safeApproval({page,baseUrl,actors,db}) {
     assert.deepEqual(events,['approved','executed']);
   } finally {
     scanner.scanOutput=scan;page.off('dialog',dialog);
+    await pool.query('DELETE FROM ai_governance_events WHERE tenant_id=ANY($1::int[])',[[tid,actors.other.tid]]);
     await pool.query('DELETE FROM safe_agent_audit_log WHERE proposal_id=ANY($1::int[])',[ids]);
     await pool.query('DELETE FROM safe_agent_proposals WHERE id=ANY($1::int[])',[ids]);
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='enforce' WHERE tenant_id=$1",[tid]);
