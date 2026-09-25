@@ -267,7 +267,9 @@ router.post('/:id/deliver', deliverLimiter, async (req, res) => {
       const { gateGeneratedContent } = require('../ai_governance/hooks');
       // Scan all retained display leaves, then the exact transformed outgoing text.
       // No webhook, brief write, or mutable re-read occurs between these and send.
-      contentHash = require('node:crypto').createHash('sha256').update(stored).update('\0').update(outgoing.body).digest('hex');
+      contentHash = require('node:crypto').createHash('sha256').update(JSON.stringify([
+        stored, outgoing.body, outgoing.hostname, outgoing.path,
+      ])).digest('hex');
       const previous = (brief.delivered_to || []).filter(d => d.channel === 'slack' && d.ok === true && d.content_hash === contentHash);
       if (previous.length) return res.json({ ok: true, already_delivered: true, delivered: previous,
         content_safety_warnings: brief.content_safety_warnings || [] });

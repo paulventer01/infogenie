@@ -189,4 +189,4 @@ Provider acceptance followed by a database failure remains an explicitly reporte
 outcome; this is not a durable outbox or an exactly-once guarantee. Hosted browser coverage
 intercepts the HTTPS boundary and sends nothing to a real destination; final-head hosted
 verification is still required. CR-051 attack-plan warning persistence remains in PR-8b;
-PR-8b/PR-8c and Step 6 remain partial. All other 17 batches stay paused.
+PR-8b/PR-8c and Step 6 remain partial. All 17 remaining batches stay paused.

@@ -16,19 +16,19 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Classification | Count | Meaning |
 |----------------|------:|---------|
-| **covered** | 37 | Gate before side effect; field scan complete |
+| **covered** | 38 | Gate before side effect; field scan complete |
 | **partial** | 13 | Gate present but incomplete scan, timing, status, or warning handling |
-| **gap** | 45 | In-scope lifecycle step with no Step 6 gate |
+| **gap** | 44 | In-scope lifecycle step with no Step 6 gate |
 | **out of scope** | 30 | Deferred with explicit justification (§5) |
 | **Total** | **125** | One row per `method + path` (CR-001–CR-124, CR-128) |
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **17** remaining after PR-3b covering all **58** gap/partial rows |
+| Implementation batches (§4) | **17** remaining after PR-3b covering all **57** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
-**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. PR-8b remains partial for CR-051 attack-plan warning persistence; PR-8c and the other 17 batches remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
+**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. PR-8b remains partial for CR-051 attack-plan warning persistence. The 17 remaining batches, including PR-8b and PR-8c, remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
 
 ---
 
@@ -288,7 +288,7 @@ References **CR-###** from §2. No separate classifications here.
 
 ## 4. Implementation batches
 
-**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2 and PR-3a are merged. **PR-3b is implemented in this change** (CR-019), reconciled against main `70fc6f51` on 2026-09-25. **17** batches remain, covering **58** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
+**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2 and PR-3a are merged. **PR-3b is implemented in this change** (CR-019), reconciled against main `70fc6f51` on 2026-09-25. **17** batches remain, covering **57** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
 
 | Batch | Routes (IDs) | Est. size | Risk |
 |-------|----------------|----------:|------|

@@ -184,5 +184,5 @@ send suppression. Row locking holds the scanned snapshot through the bounded req
 success records deduplicate identical content. A provider-accepted request whose
 database record fails remains ambiguous and requires destination inspection before
 retry, not an exactly-once guarantee. Final-head hosted verification is required.
-This closes CR-023 only; CR-051 remains partial in PR-8b and other 17 batches stay
+This closes CR-023 only; CR-051 remains partial in PR-8b and the 17 remaining batches stay
 paused. No new channel, retry engine, autonomous execution or hosting change is added.

@@ -4,7 +4,9 @@ const assert = require('node:assert/strict');
 module.exports = async function briefDelivery({page,db,actors,baseUrl}) {
   const pool=db.getPool(), tid=actors.owner.tid;
   const scanner=require('../../services/ai_governance/output_gate'), scan=scanner.scanOutput;
-  let provider=()=>200, sends=[], scanned=[];
+  const hooks=require('../../services/ai_governance/hooks'), gate=hooks.gateGeneratedContent;
+  let provider=()=>200, sends=[], scanned=[], gatedTexts=[];
+  hooks.gateGeneratedContent=async opts=>{gatedTexts.push(opts.text);return gate(opts);};
   const restore=require('./marketing-brief-delivery-provider')((body,options)=>{
     sends.push({body,options});return provider();
   });
@@ -50,7 +52,7 @@ module.exports = async function briefDelivery({page,db,actors,baseUrl}) {
     let started,release;const start=new Promise(r=>{started=r;});
     provider=()=>{started();return new Promise(r=>{release=()=>r(200);});};
     let requests=0;const observe=r=>{if(r.method()==='POST'&&r.url().endsWith(`/${id}/deliver`))requests++;};
-    page.on('request',observe);scanned=[];
+    page.on('request',observe);scanned=[];gatedTexts=[];
     const response=page.waitForResponse(r=>r.url().endsWith(`/${id}/deliver`)&&r.status()===200);
     await click();await start;
     await page.evaluate(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Sending'));
@@ -63,12 +65,13 @@ module.exports = async function briefDelivery({page,db,actors,baseUrl}) {
     page.off('request',observe);
     const saved=(await rows()).find(row=>row.id===id);
     assert.deepEqual(saved.content_safety_warnings,success.content_safety_warnings);assert.equal(saved.delivered_to.length,1);
-    assert.equal(scanned.at(-1),sends.at(-1).body.text,'exact text at HTTPS boundary was scanned');
+    assert.equal(gatedTexts.at(-1),sends.at(-1).body.text,'exact text at HTTPS boundary entered the safety gate');
+    assert.equal(scanned.at(-1),sends.at(-1).body.text.trim(),'scanner receives the gate-normalized text');
     assert.equal((await post(id)).body.already_delivered,true);assert.equal(sends.length,2);
     await page.reload({waitUntil:'networkidle2'});
     await page.waitForFunction(()=>document.body.innerText.includes('Content safety warnings'));
     assert.equal((await send()).body.already_delivered,true);assert.equal(sends.length,2);
     await page.waitForFunction(()=>document.body.innerText.includes('✓ Sent'));
     assert.deepEqual((await rows()).find(row=>row.id===id),saved,'deduped send does not rewrite');
-  } finally {restore();scanner.scanOutput=scan;}
+  } finally {restore();scanner.scanOutput=scan;hooks.gateGeneratedContent=gate;}
 };

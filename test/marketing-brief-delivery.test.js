@@ -91,6 +91,18 @@ test('brief delivery gates the locked tenant snapshot and exact payload; refuses
   assert.equal((await deliver()).status,200);
   assert.equal(scans.at(-1).text,sends.at(-1).body.content);
   assert.equal(sends.at(-1).body.content.length,1900);
+  // Identical content must be delivered once to each newly configured destination.
+  const sentBeforeDestinationChange=sends.length;
+  process.env.SLACK_WEBHOOK_URL='https://hooks.slack.com/services/synthetic-destination-one';
+  assert.equal((await deliver()).status,200);
+  assert.equal((await deliver()).body.already_delivered,true);
+  process.env.SLACK_WEBHOOK_URL='https://hooks.slack.com/services/synthetic-destination-two';
+  assert.equal((await deliver()).status,200);
+  assert.equal((await deliver()).body.already_delivered,true);
+  assert.equal(sends.length,sentBeforeDestinationChange+2);
+  assert.equal(sends.at(-2).options.path,'/services/synthetic-destination-one');
+  assert.equal(sends.at(-1).options.path,'/services/synthetic-destination-two');
+  assert.doesNotMatch(JSON.stringify(brief.delivered_to),/synthetic-destination/);
   brief.headline='Record failure snapshot';failUpdate=true;
   const previousRecords=structuredClone(brief.delivered_to);
   const ambiguous=await deliver();
