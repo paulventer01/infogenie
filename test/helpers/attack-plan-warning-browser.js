@@ -72,7 +72,9 @@ module.exports = async function attackPlanWarnings({page, baseUrl, actors, db, f
     await page.waitForFunction(() => typeof window.openFullAttackPlanModal === 'function');
     await page.evaluate(() => {
       window.analysisData = {url:'demo.example.test', industry:{name:'DEMO marketing'}, competitors:[{name:'DEMO warning rival'}]};
-      document.dispatchEvent(new Event('ig:analysis-ready'));
+      // This fixture restores analysis; a live analysis-ready event deliberately
+      // routes AppShell to Marketing Brief instead of keeping the Battle Plan.
+      document.dispatchEvent(new CustomEvent('ig:analysis-ready', {detail:{restored:true}}));
     });
     const [response] = await Promise.all([
       page.waitForResponse(r => new URL(r.url()).pathname === '/api/ai-attack-plan' && r.request().method() === 'POST'),
@@ -107,7 +109,9 @@ module.exports = async function attackPlanWarnings({page, baseUrl, actors, db, f
     assert.equal((await request(baseUrl,'POST','/api/ai-attack-plan',{cookie:viewer.cookie,body:{competitor:'Forbidden'}})).status,403);
     assert.equal(calls,3,'permission refusal cannot reach the provider');
     assert.equal((await request(baseUrl,'GET','/api/ai-attack-plan/'+saved.id)).status,401);
+    assert.equal(new URL(page.url()).pathname,'/analyse/battleplan','reload must exercise the saved-plan page');
     await page.reload({waitUntil:'networkidle2'});
+    assert.equal(new URL(page.url()).pathname,'/analyse/battleplan');
     await click('View plan');
     await warningsVisible(warnings);
     assert.match(await page.$eval('#attackPlanModalBody',el => el.textContent),/DEMO provider fixture/);
