@@ -82,6 +82,11 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
         /^Failed to load resource:.*\b(400|403|404|409|503)\b/.test(text)) return;
     if (msg.location().url.startsWith(baseUrl + '/api/marketing-brief/') &&
         /^Failed to load resource:.*\b(403|404|503)\b/.test(text)) return;
+    // Delivery fixtures assert provider rejection (502) and concurrent-send refusal (409).
+    // Allow only their exact delivery route; other resource and runtime errors remain failures.
+    if (msg.location().url.startsWith(baseUrl) &&
+        /^\/api\/marketing-brief\/[1-9]\d*\/deliver$/.test(msg.location().url.slice(baseUrl.length)) &&
+        /^Failed to load resource:.*\b(409|502)\b/.test(text)) return;
     if (text.includes('ERR_BLOCKED_BY_CLIENT.Inspector')) return;
     if (msg.location().url === baseUrl + '/api/wordpress/publish' &&
         /^Failed to load resource:.*\b(403|404|503)\b/.test(text)) return;
