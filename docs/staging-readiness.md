@@ -184,5 +184,14 @@ send suppression. Row locking holds the scanned snapshot through the bounded req
 success records deduplicate identical content. A provider-accepted request whose
 database record fails remains ambiguous and requires destination inspection before
 retry, not an exactly-once guarantee. Final-head hosted verification is required.
-This closes CR-023 only; CR-051 remains partial in PR-8b and the 17 remaining batches stay
-paused. No new channel, retry engine, autonomous execution or hosting change is added.
+CR-023 is complete. The CR-051 attack-plan extension now completes PR-8b warning
+persistence through tenant KV, latest/by-ID reads and the immediate/reopened dialog.
+The existing browser chain includes real login/API/PostgreSQL checks for warning
+persistence, reload, warningless legacy entries, tenant isolation and no writes on
+blocked/unavailable generations; only upstream provider transport is intercepted.
+Read/reload assertions also prevent accidental regeneration. Existing scan/refusal,
+honesty and permission behavior is unchanged. Local PostgreSQL is unavailable and
+final-head hosted acceptance remains required. The inventory is 39 covered, 12 partial,
+44 gap and 30 out of scope: 56 rows in 16 remaining paused batches. Broader Step 6,
+including PR-8c JSON flattening, remains deferred. No new channel, retry engine,
+autonomous execution, CI configuration, production, billing or hosting change is added.

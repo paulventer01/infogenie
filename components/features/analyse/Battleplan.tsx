@@ -93,6 +93,7 @@ interface AttackPlanDetailResult {
   _fabricated?: boolean;
   data_unavailable?: boolean;
   message?: string;
+  content_safety_warnings?: string[];
 }
 
 interface UnwrappedAttackPlanList {
@@ -189,9 +190,10 @@ function openSavedPlanBridge(payload: AttackPlanDetailResult, competitor?: strin
       source?: string;
       fabricated?: boolean;
       sources?: string[];
+      warnings?: string[];
     };
     _apShowUnavailable?: (message?: string) => void;
-    _apPlanMeta?: { source?: string; fabricated?: boolean; sources?: string[] };
+    _apPlanMeta?: { source?: string; fabricated?: boolean; sources?: string[]; warnings?: string[] };
     showToast?: (m: string) => void;
   };
   if (typeof w.openSavedAttackPlan === "function") {
@@ -212,6 +214,7 @@ function openSavedPlanBridge(payload: AttackPlanDetailResult, competitor?: strin
       source: unwrapped.source,
       fabricated: unwrapped.fabricated,
       sources: unwrapped.sources,
+      warnings: unwrapped.warnings,
     };
     if (typeof w.renderAttackPlan === "function") {
       w.renderAttackPlan(unwrapped.plan, competitor || payload.competitor || "Competitor");
@@ -224,7 +227,8 @@ function openSavedPlanBridge(payload: AttackPlanDetailResult, competitor?: strin
   }
   const sources = Array.isArray(payload.sources) ? payload.sources : [];
   const fabricated = !!(payload._fabricated || payload.source === "template" || sources.includes("template"));
-  w._apPlanMeta = { source: payload.source, fabricated, sources };
+  w._apPlanMeta = { source: payload.source, fabricated, sources,
+    warnings: Array.isArray(payload.content_safety_warnings) ? payload.content_safety_warnings : [] };
   if (typeof w.renderAttackPlan === "function") {
     w.renderAttackPlan(payload.plan, competitor || payload.competitor || "Competitor");
     return true;

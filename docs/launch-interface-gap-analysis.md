@@ -188,5 +188,15 @@ sends and content-hash records deduplicate successful delivery of the same snaps
 Provider acceptance followed by a database failure remains an explicitly reported ambiguous
 outcome; this is not a durable outbox or an exactly-once guarantee. Hosted browser coverage
 intercepts the HTTPS boundary and sends nothing to a real destination; final-head hosted
-verification is still required. CR-051 attack-plan warning persistence remains in PR-8b;
-PR-8b/PR-8c and Step 6 remain partial. All 17 remaining batches stay paused.
+verification is still required.
+
+Attack Plan Safety Warning Persistence completes CR-051/PR-8b: gate-provided warnings
+are saved with tenant-owned attack plans, returned by latest/by-ID reads, and displayed
+in the existing dialog immediately and after reopening/reload. Warningless legacy plans
+remain readable. Existing plan scanning, refusals, honesty withholding and permissions
+are preserved; JSON flattening and provider/regeneration work remain deferred. Hosted
+acceptance uses real login/API/PostgreSQL with a synthetic intercepted provider, checks
+cross-tenant isolation and no persistence on refusals, and proves reads do not regenerate.
+Local PostgreSQL is unavailable; final-head hosted execution remains required. Inventory:
+39 covered, 12 partial, 44 gap, 30 out of scope; 56 remaining rows in 16 paused batches.
+PR-8c and broader Step 6 remain incomplete. No CI, production, billing or hosting changes.
