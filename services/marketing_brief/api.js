@@ -225,56 +225,114 @@ router.get('/:id', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
-// POST /api/marketing-brief/:id/deliver — send to Slack / email
-router.post('/:id/deliver', async (req, res) => {
+// Existing explicit delivery only: serialize across processes using the tenant row.
+const deliverLimiter = require('../security/rate_limit').createRateLimiter({
+  name: 'marketing-brief-deliver', windowMs: 60_000, max: 30, failClosed: true,
+  keyFn: req => req.tenant?.id != null && req.user?.id != null
+    ? `brief-deliver|${req.tenant.id}|${req.user.id}` : null,
+});
+function _deliveryError(res, status, error, userMessage) {
+  return res.status(status).json({ ok: false, error, userMessage });
+}
+
+router.post('/:id/deliver', deliverLimiter, async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const id = Number(req.params.id);
-  if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
+  if (!Number.isSafeInteger(id) || id <= 0) return _err(res, 400, 'bad id');
   const tid = await _tid(req, 'brief:deliver');
   if (!tid) return _err(res, 400, 'no_tenant');
-  const channels = Array.isArray(req.body?.channels) ? req.body.channels : ['slack'];
+  const channels = req.body?.channels ?? ['slack'];
+  if (!Array.isArray(channels) || channels.length !== 1 || channels[0] !== 'slack')
+    return _deliveryError(res, 400, 'unsupported_channel', 'Choose Slack to send this brief.');
+  let client, sent = false;
   try {
-    const pool = _db.getPool();
-    const q = await pool.query(
-      `SELECT * FROM marketing_briefs WHERE id=$1 AND tenant_id=$2`, [id, tid]);
+    client = await _db.getPool().connect();
+    await client.query('BEGIN');
+    const q = await client.query(
+      `SELECT * FROM marketing_briefs WHERE id=$1 AND tenant_id=$2 FOR UPDATE NOWAIT`, [id, tid]);
     const brief = q.rows[0];
     if (!brief) return _err(res, 404, 'not found');
-    const delivered = [];
-
-    if (channels.includes('slack') && process.env.SLACK_WEBHOOK_URL) {
-      try {
-        const actions = (brief.actions || []).slice(0, 5)
-          .map((a, i) => `${i+1}. *${a.label}* — ${a.rationale}`)
-          .join('\n');
-        const text = `*📋 Today's Marketing Brief*\n*${brief.headline}*\n\n${(brief.sections || []).slice(0,3).map(s =>
-          `*${s.title}*\n${(s.items||[]).slice(0,3).map(item=>`• ${item}`).join('\n')}`).join('\n\n')}\n\n*Recommended Actions*\n${actions}`;
-        await _slackPost(text);
-        delivered.push({ channel:'slack', at:new Date().toISOString(), ok:true });
-      } catch (e) { delivered.push({ channel:'slack', ok:false, error:e.message }); }
+    let stored;
+    try {
+      stored = require('./brief_text').briefText({ brand: brief.brand, headline: brief.headline, greeting: brief.greeting,
+        sections: brief.sections, actions: brief.actions, signals: brief.signals, active_pillars: brief.active_pillars });
+    } catch {
+      return _deliveryError(res, 503, 'content_safety_unavailable', 'Content safety checks are temporarily unavailable. This brief was not sent.');
     }
-
-    await pool.query(
-      `UPDATE marketing_briefs SET delivered_to = delivered_to || $1::jsonb WHERE id=$2 AND tenant_id=$3`,
-      [JSON.stringify(delivered), id, tid]);
-    res.json({ ok:true, delivered });
-  } catch (e) { _err(res, 500, e.message); }
+    let outgoing;
+    try { outgoing = _slackPayload(brief); }
+    catch { return _deliveryError(res, 503, 'delivery_not_configured', 'Slack delivery is not configured correctly. Ask an administrator to check it.'); }
+    let warnings = [], contentHash;
+    try {
+      const { gateGeneratedContent } = require('../ai_governance/hooks');
+      // Scan all retained display leaves, then the exact transformed outgoing text.
+      // No webhook, brief write, or mutable re-read occurs between these and send.
+      contentHash = require('node:crypto').createHash('sha256').update(stored).update('\0').update(outgoing.body).digest('hex');
+      const previous = (brief.delivered_to || []).filter(d => d.channel === 'slack' && d.ok === true && d.content_hash === contentHash);
+      if (previous.length) return res.json({ ok: true, already_delivered: true, delivered: previous,
+        content_safety_warnings: brief.content_safety_warnings || [] });
+      for (const text of [stored, outgoing.text]) {
+        const gated = await gateGeneratedContent({ tenantId: tid, userId: req.user.id,
+          surface: 'marketing_brief', action: 'deliver_brief', text, hasContext: true });
+        if (!gated.ok) {
+          const blocked = gated.error !== 'content_safety_unavailable';
+          return _deliveryError(res, blocked ? 403 : 503,
+            blocked ? 'content_safety_blocked' : 'content_safety_unavailable',
+            blocked ? 'This brief did not pass content safety checks and was not sent. Request human review.'
+              : 'Content safety checks are temporarily unavailable. This brief was not sent.');
+        }
+        warnings.push(...(gated.content_safety_warnings || gated.warnings || []));
+      }
+    } catch {
+      return _deliveryError(res, 503, 'content_safety_unavailable', 'Content safety checks are temporarily unavailable. This brief was not sent.');
+    }
+    warnings = [...new Set([...(brief.content_safety_warnings || []), ...warnings])];
+    try { await _slackPost(outgoing); sent = true; }
+    catch { return _deliveryError(res, 502, 'delivery_failed', 'Slack did not confirm delivery. Check the destination before trying again.'); }
+    const delivered = [{ channel: 'slack', content_hash: contentHash, at: new Date().toISOString(), ok: true }];
+    await client.query(
+      `UPDATE marketing_briefs SET delivered_to = delivered_to || $1::jsonb,
+       content_safety_warnings=$4::jsonb WHERE id=$2 AND tenant_id=$3`,
+      [JSON.stringify(delivered), id, tid, JSON.stringify(warnings)]);
+    await client.query('COMMIT');
+    res.json({ ok: true, delivered, content_safety_warnings: warnings });
+  } catch (error) {
+    if (error.code === '55P03') return _deliveryError(res, 409, 'delivery_in_progress', 'This brief is already being sent. Wait before trying again.');
+    _deliveryError(res, 503, sent ? 'delivery_record_failed' : 'delivery_unavailable', sent
+      ? 'Slack confirmed delivery, but its record could not be saved. Check the destination before trying again.'
+      : 'Delivery is temporarily unavailable. Please try again later.');
+  } finally {
+    if (client) {
+      // Also release the row on every refusal; ROLLBACK after COMMIT is harmless.
+      try { await client.query('ROLLBACK'); } catch { /* connection may have failed */ }
+      finally { client.release(); }
+    }
+  }
 });
 
-function _slackPost(text) {
+function _slackPayload(brief) {
   const u = new URL(process.env.SLACK_WEBHOOK_URL);
-  if (u.protocol !== 'https:') throw new Error('slack url not https');
-  if (!['hooks.slack.com','discord.com','discordapp.com'].includes(u.hostname))
-    throw new Error('slack host not allowed');
+  if (u.protocol !== 'https:' || !['hooks.slack.com','discord.com','discordapp.com'].includes(u.hostname))
+    throw new Error('invalid delivery configuration');
+  const actions = (brief.actions || []).slice(0, 5)
+    .map((a, i) => `${i+1}. *${a.label}* — ${a.rationale}`).join('\n');
+  let text = `*📋 Today's Marketing Brief*\n*${brief.headline}*\n\n${(brief.sections || []).slice(0,3).map(s =>
+    `*${s.title}*\n${(s.items||[]).slice(0,3).map(item=>`• ${item}`).join('\n')}`).join('\n\n')}\n\n*Recommended Actions*\n${actions}`;
   const isDiscord = u.hostname.includes('discord');
-  const body = JSON.stringify(isDiscord ? { content:text.slice(0,1900) } : { text });
+  if (isDiscord) text = text.slice(0,1900);
+  return { hostname: u.hostname, path: u.pathname+u.search, text,
+    body: JSON.stringify(isDiscord ? { content: text } : { text }) };
+}
+
+function _slackPost({ hostname, path, body }) {
   return new Promise((resolve, reject) => {
-    const r = _https.request({
-      hostname:u.hostname, path:u.pathname+u.search, method:'POST',
+    const r = _https.request({ hostname, path, method:'POST',
       headers:{ 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body) },
-    }, resp => { resp.on('data', ()=>{}); resp.on('end', () =>
-      resp.statusCode < 300 ? resolve() : reject(new Error('slack '+resp.statusCode))); });
+    }, resp => { resp.on('error', reject); resp.on('aborted', () => reject(new Error('delivery aborted')));
+      resp.on('data', ()=>{}); resp.on('end', () =>
+        resp.statusCode >= 200 && resp.statusCode < 300 ? resolve() : reject(new Error('delivery rejected'))); });
     r.on('error', reject);
-    r.setTimeout(8000, () => r.destroy(new Error('slack timeout')));
+    r.setTimeout(8000, () => r.destroy(new Error('delivery timeout')));
     r.write(body); r.end();
   });
 }

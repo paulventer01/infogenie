@@ -80,6 +80,7 @@ module.exports = async function marketingBrief({page,baseUrl,actors,db}) {
     await page.waitForFunction(()=>document.body.innerText.toLowerCase().includes('demo newest result'));
     assert.equal(calls,2,'queued refreshes coalesce and run after the first completes');
     assert.equal(await page.evaluate(()=>{window.__briefObserver.disconnect();return window.__briefSawSuperseded;}),false);
+    await require('./marketing-brief-delivery-browser')({page,baseUrl,actors,db});
     // No saved brief: refusal is an error state, not an empty successful dashboard.
     await pool.query('DELETE FROM marketing_briefs WHERE tenant_id=$1',[tid]);
     scanner.scanOutput=()=>{throw new Error('synthetic outage');};

@@ -28,7 +28,7 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
-**Step 6 is not complete.** Marketing Brief safety and honest refresh completes CR-020–022 only. PR-8b and PR-8c remain partial; delivery (CR-023) is deferred. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
+**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. PR-8b remains partial for CR-051 attack-plan warning persistence; PR-8c and the other 17 batches remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
 
 ---
 
@@ -103,7 +103,7 @@ Routes using `JSON.stringify` for gate text without flattening are **`partial`**
 | CR-020 | GET | `/api/marketing-brief/today` | gen, regen | covered | `gateGeneratedContent` in `generateBrief` before INSERT | complete: bounded decoded leaves, brand and signals; 403/503 | — | marketing-brief-safety; content-safety browser |
 | CR-021 | POST | `/api/marketing-brief/generate` | gen, regen | covered | same | complete; warnings persisted | — | marketing-brief-safety; content-safety browser |
 | CR-022 | GET | `/api/marketing-brief/merged` | regen | covered | `generateBrief`; failures propagate as 403/503 | complete; previous data explicitly stale; serialized UI refresh | — | marketing-brief-safety; content-safety browser |
-| CR-023 | POST | `/api/marketing-brief/:id/deliver` | publish | gap | none | n/a | PR-8b | — |
+| CR-023 | POST | `/api/marketing-brief/:id/deliver` | publish | covered | tenant-owned retained text + exact outgoing text gates before webhook | complete: bounded scans; safe refusals; warnings saved on delivery; truthful UI | — | marketing-brief-delivery; content-safety browser |
 
 ### 2.3 Market signals
 
@@ -312,7 +312,7 @@ References **CR-###** from §2. No separate classifications here.
 | **PR-7d** | CR-082,083,084 | ~400 lines | Medium |
 | **PR-7e** | CR-074,075,076,077,078 | ~550 lines | Low |
 | **PR-8a** | CR-054 | ~250 lines | Medium |
-| **PR-8b** (partial) | CR-023,051 | ~350 lines | Low |
+| **PR-8b** (partial) | CR-051 (CR-023 complete) | ~350 lines | Low |
 | **PR-8c** (partial) | CR-018,027,045–050 (8) | ~800 lines | Medium |
 | **PR-8d** | CR-052,053 | ~300 lines | Low |
 
@@ -391,8 +391,8 @@ Aligned with §2 **Field scan** column. `complete` ↔ `covered`; `partial:*` �
 
 | File | Canonical IDs |
 |------|----------------|
-| `test/content-safety-enforcement.test.js` | CR-020–022 (includes marketing-brief-safety),128 |
-| `test/helpers/marketing-brief-safety-browser.js` via content-safety-governance | CR-020–022; real login/Postgres/Chromium, provider transport fixtures, stale/refusal/retry/warnings/isolation/sequencing |
+| `test/content-safety-enforcement.test.js` | CR-020–023 (includes marketing-brief-safety/delivery),128 |
+| `test/helpers/marketing-brief-safety-browser.js` via content-safety-governance | CR-020–023; real login/Postgres/Chromium, generation/webhook transport fixtures, stale/refusal/retry/warnings/isolation/sequencing; concurrent delivery and truthful UI |
 | `test/pr10h4-content-safety-approval.test.js` | CR-018,019 |
 | `test/pr10h5-step6-content-gates.test.js` | CR-001,014,024–028; **documents partial Step 6** |
 | `test/pr10h5-content-schemas.test.js` | CR-001,024 normalizers |
