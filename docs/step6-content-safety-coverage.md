@@ -16,19 +16,19 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Classification | Count | Meaning |
 |----------------|------:|---------|
-| **covered** | 40 | Gate before side effect; field scan complete |
+| **covered** | 42 | Gate before side effect; field scan complete |
 | **partial** | 12 | Gate present but incomplete scan, timing, status, or warning handling |
-| **gap** | 43 | In-scope lifecycle step with no Step 6 gate |
+| **gap** | 41 | In-scope lifecycle step with no Step 6 gate |
 | **out of scope** | 30 | Deferred with explicit justification (§5) |
 | **Total** | **125** | One row per `method + path` (CR-001–CR-124, CR-128) |
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **15** remaining after PR-4a covering all **55** gap/partial rows |
+| Implementation batches (§4) | **14** remaining after PR-4b covering all **53** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
-**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. CR-051 attack-plan warning persistence completed PR-8b; CR-015 checklist save safety completes PR-4a in this change. The 15 remaining batches, including PR-8c, remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
+**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. CR-051 attack-plan warning persistence completed PR-8b; CR-015 checklist save safety completed PR-4a; CR-064/065 request-rule save safety completes PR-4b in this change. The 14 remaining batches, including PR-8c, remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
 
 ---
 
@@ -164,8 +164,8 @@ Routes using `JSON.stringify` for gate text without flattening are **`partial`**
 | ID | Method | Path | Lifecycle | Class | Gate | Field scan | Batch | Tests |
 |----|--------|------|-----------|-------|------|------------|-------|-------|
 | CR-063 | POST | `/api/wordpress/publish` | publish | covered | `gateRouteText` before provider/log | complete | — | wordpress-publish-safety, content-safety-governance browser |
-| CR-064 | POST | `/api/review-monitor/request-rules` | save | gap | none | n/a | PR-4b | — |
-| CR-065 | PUT | `/api/review-monitor/request-rules/:id` | save | gap | none | n/a | PR-4b | — |
+| CR-064 | POST | `/api/review-monitor/request-rules` | save | covered | `gateRouteText` (retained rule fields) | complete | — | PR-4b |
+| CR-065 | PUT | `/api/review-monitor/request-rules/:id` | save | covered | `gateRouteText` (retained rule fields) | complete | — | PR-4b |
 | CR-066 | POST | `/api/reengage/generate` | gen | gap | none | n/a | PR-7c | — |
 | CR-067 | POST | `/api/wireframe/generate` | gen | gap | none | n/a | PR-7b | — |
 | CR-068 | POST | `/api/content-brief/generate` | gen | gap | none | n/a | PR-7a | — |
@@ -288,7 +288,7 @@ References **CR-###** from §2. No separate classifications here.
 
 ## 4. Implementation batches
 
-**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2, PR-3a and PR-3b are merged. **PR-8b is complete. PR-4a is completed in this change** (CR-015), reconciled against main `c61052ba` on 2026-09-25. **15** batches remain, covering **55** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
+**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2, PR-3a and PR-3b are merged. **PR-8b and PR-4a are complete. PR-4b is completed in this change** (CR-064/065), reconciled against main `1f8bd10d` on 2026-09-25. **14** batches remain, covering **53** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
 
 | Batch | Routes (IDs) | Est. size | Risk |
 |-------|----------------|----------:|------|
@@ -299,7 +299,7 @@ References **CR-###** from §2. No separate classifications here.
 | **PR-3a** | — (merged) | — | High |
 | **PR-3b** | — (merged) | — | High |
 | **PR-4a (complete)** | CR-015 | Checklist save gate + atomic persistence + browser acceptance | — |
-| **PR-4b** | CR-064,065 | ~300 lines | Medium |
+| **PR-4b (complete)** | CR-064,065 | Rule save gates + warnings + browser acceptance | — |
 | **PR-5** | CR-029–035 (7) | ~700 lines | Medium |
 | **PR-5b** | CR-028 | ~300 lines | Medium |
 | **PR-6a** | CR-089–094 (6) | ~700 lines | High |
@@ -312,7 +312,7 @@ References **CR-###** from §2. No separate classifications here.
 | **PR-7d** | CR-082,083,084 | ~400 lines | Medium |
 | **PR-7e** | CR-074,075,076,077,078 | ~550 lines | Low |
 | **PR-8a** | CR-054 | ~250 lines | Medium |
-| **PR-8b** | CR-051 (this change; CR-023 complete) | — | Low |
+| **PR-8b (complete)** | CR-051,023 | — | Low |
 | **PR-8c** (partial) | CR-018,027,045–050 (8) | ~800 lines | Medium |
 | **PR-8d** | CR-052,053 | ~300 lines | Low |
 
@@ -391,7 +391,7 @@ Aligned with §2 **Field scan** column. `complete` ↔ `covered`; `partial:*` �
 
 | File | Canonical IDs |
 |------|----------------|
-| `test/content-safety-enforcement.test.js` | CR-020–023 (includes marketing-brief-safety/delivery),128 |
+| `test/content-safety-enforcement.test.js` | CR-020–023,015,064,065,128; includes checklist and request-rule save acceptance |
 | `test/helpers/marketing-brief-safety-browser.js` via content-safety-governance | CR-020–023; real login/Postgres/Chromium, generation/webhook transport fixtures, stale/refusal/retry/warnings/isolation/sequencing; concurrent delivery and truthful UI |
 | `test/pr10h4-content-safety-approval.test.js` | CR-018,019 |
 | `test/pr10h5-step6-content-gates.test.js` | CR-001,014,024–028; **documents partial Step 6** |

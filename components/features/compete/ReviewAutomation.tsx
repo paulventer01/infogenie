@@ -19,6 +19,7 @@ interface ReviewReplyDraft {
 }
 
 interface ReviewRequestRule {
+  content_safety_warnings?: string[];
   id: number;
   tenant_id: number;
   name: string;
@@ -64,6 +65,19 @@ export default function ReviewAutomation() {
       activeDrafts.current.delete(id);
       setBusyDrafts([...activeDrafts.current]);
     }
+  };
+
+  const activeRules = useRef(new Set<number>());
+  const [busyRules, setBusyRules] = useState<number[]>([]);
+  const [ruleErrors, setRuleErrors] = useState<Record<number, string>>({});
+  const runRuleAction = async (id: number, action: () => Promise<void>) => {
+    if (activeRules.current.has(id)) return;
+    activeRules.current.add(id);
+    setBusyRules([...activeRules.current]);
+    setRuleErrors(prev => ({ ...prev, [id]: '' }));
+    try { await action(); }
+    catch { setRuleErrors(prev => ({ ...prev, [id]: 'Could not confirm the save. Refresh the rules before retrying.' })); }
+    finally { activeRules.current.delete(id); setBusyRules([...activeRules.current]); }
   };
 
   // Form states for new rule
@@ -157,10 +171,10 @@ export default function ReviewAutomation() {
     );
   });
 
-  const handleCreateRule = async () => {
-    const res = await apiPost<{ ok: boolean, rule: ReviewRequestRule }>("/api/review-monitor/request-rules", newRule);
+  const handleCreateRule = () => runRuleAction(0, async () => {
+    const res = await apiPost<{ ok: boolean; userMessage?: string; rule: ReviewRequestRule }>("/api/review-monitor/request-rules", newRule);
     if (res.ok) {
-      setRules([res.rule, ...rules]);
+      setRules(current => [res.rule, ...current]);
       setShowRuleForm(false);
       setNewRule({
         name: '',
@@ -171,21 +185,17 @@ export default function ReviewAutomation() {
         target_platform_url: '',
         active: true
       });
-    }
-  };
+    } else setRuleErrors(prev => ({ ...prev, 0: res.userMessage || 'Save was not confirmed. Your text has been kept; refresh before retrying.' }));
+  });
 
-  const handleToggleRule = async (rule: ReviewRequestRule) => {
-    const res = await apiPut<{ ok: boolean }>(`/api/review-monitor/request-rules/${rule.id}`, {
-      ...rule,
-      active: !rule.active
-    });
-    if (res.ok) {
-      setRules(rules.map(r => r.id === rule.id ? { ...r, active: !r.active } : r));
-    }
-  };
+  const handleToggleRule = (rule: ReviewRequestRule) => runRuleAction(rule.id, async () => {
+    const res = await apiPut<{ ok: boolean; userMessage?: string; rule: ReviewRequestRule }>(`/api/review-monitor/request-rules/${rule.id}`, { active: !rule.active });
+    if (res.ok) setRules(current => current.map(r => r.id === rule.id ? res.rule : r));
+    else setRuleErrors(prev => ({ ...prev, [rule.id]: res.userMessage || 'Rule update was not confirmed. Refresh before retrying.' }));
+  });
 
   const handleDeleteRule = async (id: number) => {
-    if (!confirm("Are you sure?")) return;
+    if (activeRules.current.has(id) || !confirm("Are you sure?")) return;
     const res = await apiDelete<{ ok: boolean }>(`/api/review-monitor/request-rules/${id}`);
     if (res.ok) setRules(rules.filter(r => r.id !== id));
   };
@@ -317,13 +327,13 @@ export default function ReviewAutomation() {
         <div className="rules-section">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h3>Automation Rules</h3>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowRuleForm(!showRuleForm)}>
+            <button className="btn btn-primary btn-sm" disabled={busyRules.includes(0)} onClick={() => setShowRuleForm(!showRuleForm)}>
               {showRuleForm ? 'Cancel' : '+ Create Rule'}
             </button>
           </div>
 
           {showRuleForm && (
-            <div className="ig-card" style={{ marginBottom: '24px', background: '#f0f4ff' }}>
+            <fieldset disabled={busyRules.includes(0)} style={{ border: 0, padding: 0, margin: 0 }}><div className="ig-card" style={{ marginBottom: '24px', background: '#f0f4ff' }}>
               <h4>New Review Request Rule</h4>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div className="form-group">
@@ -386,13 +396,16 @@ export default function ReviewAutomation() {
                   placeholder="https://g.page/your-business/review"
                 />
               </div>
-              <button className="btn btn-primary" onClick={handleCreateRule}>Save Rule</button>
-            </div>
+              <button className="btn btn-primary" disabled={busyRules.includes(0)} onClick={handleCreateRule}>Save Rule</button>
+              {ruleErrors[0] && <div role="alert">{ruleErrors[0]}</div>}
+            </div></fieldset>
           )}
 
           <div style={{ display: 'grid', gap: '16px', marginBottom: '32px' }}>
             {rules.map(rule => (
-              <div key={rule.id} className="ig-card" style={{ opacity: rule.active ? 1 : 0.6 }}>
+              <div key={rule.id} data-rule-id={rule.id} className="ig-card" style={{ opacity: rule.active ? 1 : 0.6 }}>
+                <ContentSafetyWarnings warnings={rule.content_safety_warnings} />
+                {ruleErrors[rule.id] && <div role="alert">{ruleErrors[rule.id]}</div>}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <h4 style={{ margin: '0 0 4px 0' }}>{rule.name}</h4>
@@ -401,11 +414,11 @@ export default function ReviewAutomation() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="btn btn-outline btn-sm" onClick={() => handleTestRule(rule.id)}>Test Send</button>
-                    <button className="btn btn-outline btn-sm" onClick={() => handleToggleRule(rule)}>
+                    <button className="btn btn-outline btn-sm" disabled={busyRules.includes(rule.id)} onClick={() => handleTestRule(rule.id)}>Test Send</button>
+                    <button className="btn btn-outline btn-sm" disabled={busyRules.includes(rule.id)} onClick={() => handleToggleRule(rule)}>
                       {rule.active ? 'Disable' : 'Enable'}
                     </button>
-                    <button className="btn btn-outline btn-sm" style={{ color: '#ef4444' }} onClick={() => handleDeleteRule(rule.id)}>Delete</button>
+                    <button className="btn btn-outline btn-sm" style={{ color: '#ef4444' }} disabled={busyRules.includes(rule.id)} onClick={() => handleDeleteRule(rule.id)}>Delete</button>
                   </div>
                 </div>
               </div>

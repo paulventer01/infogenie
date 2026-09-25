@@ -214,3 +214,20 @@ PostgreSQL is unavailable. Inventory: 40 covered, 12 partial, 43 gap, 30 out of 
 55 remaining rows in 15 paused batches. This does not certify launch readiness,
 proofreading accuracy, live providers or production acceptance. No CI, production,
 billing, hosting or deployment changes.
+
+
+Review Request Template Save Safety completes CR-064/065 / PR-4b. Create and
+update scan all retained rule text before writing, with a 100,000-character
+aggregate ceiling even under warning-only policy. Partial updates scan the stored
+template; foreign IDs are refused before scanning. Warnings persist on the rule
+and render after reload. PostgreSQL row-version comparison refuses concurrent
+edits during scanning. Disable-only writes preserve copy/warnings and remain
+available during scanner outages; enabling and text changes must pass the gate.
+A shared tenant/user fail-closed limiter bounds saves. The UI retains refused
+input and reports unconfirmed saves honestly. Existing hosted browser coverage
+adds real login/API/PostgreSQL refusal, outage, warnings/reload, tenant/permission
+and row-lock race acceptance; no request is triggered or sent. Local PostgreSQL
+is unavailable; final-head hosted verification remains required. Trigger/delivery
+behavior and its provider simulation are outside this save-only build and are not
+certified. Inventory: 42 covered, 12 partial, 41 gap, 30 out of scope; 53 rows in
+14 paused batches. Step 6 and production acceptance remain incomplete.
