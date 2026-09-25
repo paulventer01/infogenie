@@ -34,6 +34,7 @@ module.exports = async function wordpressSafety({page, baseUrl, actors, db}) {
     await page.goto(baseUrl+'/create/content-modes',{waitUntil:'networkidle2'});
     await page.locator('input[placeholder="e.g. best running shoes 2026"]').fill('DEMO guide');
     await click('✍️ Generate Article'); await click('📤 Publish to WP');
+    await page.waitForFunction(()=>[...document.querySelectorAll('label')].some(l=>l.textContent==='POST TITLE'));
     // The modal is the only fixed overlay with its title input.
     const title=await page.evaluateHandle(()=>[...document.querySelectorAll('label')]
       .find(l=>l.textContent==='POST TITLE').parentElement.querySelector('input'));
@@ -70,6 +71,8 @@ module.exports = async function wordpressSafety({page, baseUrl, actors, db}) {
     const logs=(await pool.query('SELECT tenant_id,site_id,title,status FROM wordpress_publish_log WHERE tenant_id=ANY($1::int[])',[tids])).rows;
     assert.deepEqual(logs,[{tenant_id:tids[0],site_id:sites[0],title:'guaranteed returns',status:'draft'}]);
     await title.dispose();
+    await click('✍️ Generate Article');
+    await page.waitForFunction(()=>!document.body.innerText.includes('CONTENT SAFETY WARNINGS'));
   } finally {
     scanner.scanOutput=originalScan; provider.restore();
     await pool.query('DELETE FROM wordpress_publish_log WHERE site_id=ANY($1::int[])',[sites]);

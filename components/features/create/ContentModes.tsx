@@ -204,6 +204,7 @@ export default function ContentModes() {
       return;
     }
     setResult(r);
+    setWpWarnings([]);
     if (r.article) setLast(buildLast(r.article));
     setView("article");
   }
@@ -236,6 +237,7 @@ export default function ContentModes() {
       source: r.run.source,
     };
     setResult(res);
+    setWpWarnings([]);
     setLast(buildLast(r.run.result));
     setView("article");
     setAudioStatus("idle");

@@ -182,16 +182,33 @@ router.post('/publish', async (req, res) => {
   // split a prohibited phrase; retain raw text to cover attributes as well.
   let gated;
   try {
-    const raw = [title, content, excerpt, ...tags].join('\n');
+    const fields = [title, content, excerpt, ...tags];
+    const raw = fields.join('\n');
     if (raw.length > MAX_OUTPUT_SCAN_CHARS) {
       return res.status(403).json(contentSafetyHttpBody({ error: 'content_safety_blocked',
         userMessage: 'This post exceeds the supported content safety scan limit. Shorten it before publishing.' }));
     }
-    const fragment = require('jsdom').JSDOM.fragment(raw);
-    for (const element of fragment.querySelectorAll('p,div,br,li,h1,h2,h3,h4,h5,h6,section,article,tr,td')) {
-      element.before(' '); element.after(' ');
-    }
-    const decoded = fragment.textContent;
+    const {JSDOM} = require('jsdom');
+    const blocks = new Set(['P','DIV','BR','LI','H1','H2','H3','H4','H5','H6','SECTION','ARTICLE','TR','TD']);
+    const decoded = fields.map(field => {
+      const text = [], attributes = [];
+      function visit(node) {
+        if (node.nodeType === 3) { text.push(node.nodeValue); return; }
+        if (blocks.has(node.tagName)) text.push(' ');
+        for (const attr of node.attributes || []) attributes.push(attr.value);
+        // Template content may become visible after WordPress sanitization.
+        for (const child of (node.content || node).childNodes || []) visit(child);
+        if (blocks.has(node.tagName)) text.push(' ');
+      }
+      // Parse fields separately: an unclosed tag in a title must not hide body text.
+      visit(JSDOM.fragment(field));
+      // Also scan tag-flattened text: a downstream sanitizer can remove raw-text
+      // containers (iframe/xmp/etc.) and expose their inner formatted copy.
+      const flattened = field.replace(/<\/?(?:p|div|br|li|h[1-6]|section|article|tr|td)\b[^>]*>/gi, ' ')
+        .replace(/<[^>]*>/g, '');
+      const plain = JSDOM.fragment(flattened).textContent;
+      return text.join('') + '\n' + attributes.join('\n') + '\n' + plain;
+    }).join('\n');
     if (raw.length + decoded.length + 1 > MAX_OUTPUT_SCAN_CHARS) {
       return res.status(403).json(contentSafetyHttpBody({ error: 'content_safety_blocked',
         userMessage: 'This post exceeds the supported content safety scan limit. Shorten it before publishing.' }));

@@ -47,6 +47,12 @@ test('WordPress publish safety gates retained fields before provider and log wri
   for (const content of ['guaran<b>teed</b> ret&#117;rns','<p>guaranteed</p><p>returns</p>','x'.repeat(8100)+' guaranteed returns']) {
     assert.equal((await publish({content})).status,403);
   }
+  assert.equal((await publish({title:'<template>',content:'guaran<b>teed</b> returns'})).status,403);
+  assert.equal((await publish({content:'<template><template>guaran<b>teed</b> returns</template></template>'})).status,403);
+  assert.equal((await publish({content:'<img alt="guaranteed ret&#117;rns">'})).status,403);
+  for (const tag of ['iframe','noscript','xmp','plaintext']) {
+    assert.equal((await publish({content:`<${tag}>guaran<b>teed</b> returns</${tag}>`})).status,403,tag);
+  }
   for (mode of ['unavailable','throw']) {
     const r=await publish(); assert.equal(r.status,503); assert.equal(r.body.error,'content_safety_unavailable');
     assert.equal(JSON.stringify(r.body).includes('private scanner failure'),false);
