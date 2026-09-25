@@ -121,6 +121,19 @@ synthetic creative reference are not provisioned into operator previews or produ
 
 ## Release decision and rollback
 
+The runtime isolation acceptance uses a test-only IPC observer in the actual
+preview launcher before and after restart, and again after the campaign journey.
+It requires the real server to have loaded, jobs/background flags to remain off,
+no shared scheduler start, no application register-time timers/listeners and no
+application-owned recurring intervals during the observed journey. The observer
+delegates to the real implementations; it does not suppress jobs or connections.
+Actual fetch/socket probes must fail with the preview guard's refusal, while an
+internal Express connection succeeds. A separate local sentinel receives zero
+connections on a forbidden port; reserved `.invalid` probes use no live provider.
+This covers the launcher process, not arbitrary native subprocesses, host-level
+egress, every future adapter or indefinite idle execution. Existing browser CSP
+and child preload controls remain separate. Persistent hosting is still unproven.
+
 First review this plan and the missing evidence against current main. Any staging
 implementation must preserve the isolation contract, pass applicable PostgreSQL
 and browser tests with zero skips, and receive independent read-only Security/QA
