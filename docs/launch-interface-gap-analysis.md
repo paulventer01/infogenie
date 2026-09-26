@@ -280,3 +280,22 @@ scope; 50 rows in 12 paused batches. Step 6 and production acceptance remain par
 This does not certify HTML sanitization, live-provider output quality, persistent
 article/warning restoration or production acceptance. No CI, hosting, billing,
 credential or deployment changes.
+
+
+Safe Agent Proposal Generation Safety completes CR-018, one bounded PR-8c row.
+The existing propose route scans decoded title/proposal/simulation text, including
+unknown retained keys and values, before proposal or audit writes. A separate leaf
+stream detects phrases split across fields; JSON escaping cannot hide newlines or
+tabs. Combined text, node and depth ceilings refuse oversized/complex proposals
+without truncation, including under warning-only policy. Blocked/unavailable
+checks return 403/503 without proposal content. The UI retains objective/context,
+shows the server's actionable refusal, and existing saved warnings survive reload.
+Focused and hosted real-login/API/PostgreSQL/browser acceptance cover no writes on
+refusal/outage, exact saved warnings, pending-approval status, reload without new
+generation and authenticated tenant-policy isolation. The provider SDK transport
+is synthetic; tests do not approve, execute or call live providers. Final-head
+hosted evidence is required before readiness. Existing approval/spend boundaries
+and provider fallback behavior are unchanged. Inventory: 46 covered, 8 partial,
+41 gap, 30 out of scope; 49 rows in 12 paused batches. Seven PR-8c rows remain;
+Step 6 and production acceptance are still incomplete. No CI, hosting, credential,
+billing or production change.

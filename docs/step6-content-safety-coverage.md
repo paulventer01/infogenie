@@ -16,19 +16,19 @@ Step 6 (PR10H) runs deterministic brand/compliance + PII checks (`gateRouteText`
 
 | Classification | Count | Meaning |
 |----------------|------:|---------|
-| **covered** | 45 | Gate before side effect; field scan complete |
-| **partial** | 9 | Gate present but incomplete scan, timing, status, or warning handling |
+| **covered** | 46 | Gate before side effect; field scan complete |
+| **partial** | 8 | Gate present but incomplete scan, timing, status, or warning handling |
 | **gap** | 41 | In-scope lifecycle step with no Step 6 gate |
 | **out of scope** | 30 | Deferred with explicit justification (§5) |
 | **Total** | **125** | One row per `method + path` (CR-001–CR-124, CR-128) |
 
 | Work queue | Count |
 |------------|------:|
-| Implementation batches (§4) | **12** remaining after PR-8d covering all **50** gap/partial rows |
+| Implementation batches (§4) | **12** remaining after PR-8d covering all **49** gap/partial rows |
 | Explicit deferrals (§5) | **30** out-of-scope rows (no batch) |
 | Covered field-scan deferral | **1** row (CR-007 image pixels — see §5) |
 
-**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. CR-051 attack-plan warning persistence completed PR-8b; CR-015 checklist save safety completed PR-4a; CR-064/065 request-rule save safety completed PR-4b; CR-054 WordPress page publishing safety completed PR-8a; CR-052/053 generated metadata safety completes PR-8d in this change. The 12 remaining batches, including PR-8c, remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
+**Step 6 is not complete.** Marketing Brief safety covers CR-020–023, including the existing explicit delivery action. CR-051 attack-plan warning persistence completed PR-8b; CR-015 checklist save safety completed PR-4a; CR-064/065 request-rule save safety completed PR-4b; CR-054 WordPress page publishing safety completed PR-8a; CR-052/053 generated metadata safety completed PR-8d; CR-018 Safe Agent proposal generation completes one PR-8c row in this change. The 12 remaining batches, including PR-8c, remain paused. Browser acceptance is added to the existing hosted gate; local execution requires its dedicated PostgreSQL/TLS database.
 
 ---
 
@@ -98,7 +98,7 @@ Routes using `JSON.stringify` for gate text without flattening are **`partial`**
 | CR-015 | POST | `/api/launch-compliance/checklists` | save | covered | `gateRouteText` (retained checklist fields) | complete | — | PR-4a |
 | CR-016 | PUT | `/api/launch-compliance/items/:itemId` | save | out of scope | none | n/a | defer | — |
 | CR-017 | POST | `/api/launch-compliance/checklists/:id/brand-check` | gen | out of scope | `governSafe` audit | n/a | defer | pr10h5 |
-| CR-018 | POST | `/api/safe-agent/propose` | gen | partial | `gateRouteText` on `JSON.stringify` blob | partial:json-flatten | PR-8c | pr10h4 |
+| CR-018 | POST | `/api/safe-agent/propose` | gen | covered | `gateRouteText` on bounded decoded keys + leaf values | complete | — | safe-agent-generation-safety + governance browser |
 | CR-019 | POST | `/api/safe-agent/approve/:id` | approve | covered | `gateRouteText` on stored leaf text before atomic approval | complete | — | safe-agent-approval-safety + governance browser |
 | CR-020 | GET | `/api/marketing-brief/today` | gen, regen | covered | `gateGeneratedContent` in `generateBrief` before INSERT | complete: bounded decoded leaves, brand and signals; 403/503 | — | marketing-brief-safety; content-safety browser |
 | CR-021 | POST | `/api/marketing-brief/generate` | gen, regen | covered | same | complete; warnings persisted | — | marketing-brief-safety; content-safety browser |
@@ -288,7 +288,7 @@ References **CR-###** from §2. No separate classifications here.
 
 ## 4. Implementation batches
 
-**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2, PR-3a and PR-3b are merged. **PR-8b, PR-4a, PR-4b and PR-8a are complete. PR-8d is completed in this change** (CR-052/053), reconciled against main `04899132` on 2026-09-26. **12** batches remain, covering **50** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
+**23 original batches** covering every gap/partial row (each row maps to exactly one batch in §4). PR-1a, PR-1b, PR-1c, PR-2, PR-3a and PR-3b are merged. **PR-8b, PR-4a, PR-4b, PR-8a and PR-8d are complete. This change completes CR-018 from PR-8c**, reconciled against main `9c7fb51f` on 2026-09-26. **12** batches remain, covering **49** gap/partial rows. Batch **size targets are estimates** (~200–800 lines each based on route count and test surface); they are **not guaranteed** to stay within any line budget — split further at implementation time if a batch grows.
 
 | Batch | Routes (IDs) | Est. size | Risk |
 |-------|----------------|----------:|------|
@@ -313,7 +313,7 @@ References **CR-###** from §2. No separate classifications here.
 | **PR-7e** | CR-074,075,076,077,078 | ~550 lines | Low |
 | **PR-8a (complete)** | CR-054 | Page publishing gate + honest UI + browser acceptance | — |
 | **PR-8b (complete)** | CR-051,023 | — | Low |
-| **PR-8c** (partial) | CR-018,027,045–050 (8) | ~800 lines | Medium |
+| **PR-8c** (partial) | CR-027,045–050 (7) | ~800 lines | Medium |
 | **PR-8d (complete)** | CR-052,053 | Complete echoed-field scan + warning UI + browser acceptance | — |
 
 ### Batch acceptance criteria (summary)
@@ -330,7 +330,7 @@ References **CR-###** from §2. No separate classifications here.
 | PR-7a–7e | Tier-2 `/generate` routes gated before return/persist |
 | PR-8a | `publish-to-wordpress` scans title+content; 503 unavailable; success warnings |
 | PR-8b | Implemented: attack-plan gate warnings persist in tenant entries and render after generation/reopen/reload; CR-023 delivery safety completed separately. Hosted verification pending. |
-| PR-8c | Remaining JSON gate-text flattening (CR-020/021 completed separately); regression tests for escaped `\n`/`\t` and key-boundary splits |
+| PR-8c | Remaining JSON gate-text flattening (CR-018/020/021 completed separately); regression tests for escaped `\n`/`\t` and key-boundary splits |
 | PR-8d | `landing-page` / `generate-seo-article` scan all echoed publishable fields |
 
 ---
@@ -377,7 +377,8 @@ Aligned with §2 **Field scan** column. `complete` ↔ `covered`; `partial:*` �
 | `socialPublisherGateText` (CR-062) | text, caption, copy, captions, media alt | `\n` | Tested: secondary captions, alt_text, full suffix |
 | `ad_creative/generate` prompt (CR-007) | all input copy fields in prompt | space-joined | Image defer CR-007 |
 | `_respondGatedJson` text routes (CR-039–044) | route-specific primary text | n/a | complete |
-| `JSON.stringify` routes (CR-018,027,045–050) | whole payload | JSON | **partial:json-flatten** → PR-8c |
+| Safe Agent generation (CR-018) | title, proposal, simulation including unknown keys/leaves | decoded newlines plus key-free leaf stream | Complete; combined scan ceiling |
+| `JSON.stringify` routes (CR-027,045–050) | whole payload | JSON | **partial:json-flatten** → PR-8c |
 | CR-028 | AI `posts` subset only | — | **partial:subset-fields** → PR-5b |
 | CR-051 | plan JSON | JSON | Gate warnings persist and render on immediate/reopened plans. Existing scan/refusal semantics unchanged; broader JSON flattening remains deferred. |
 | CR-052 | `html`, `campName`, `domain` raw + decoded | n/a | Complete; bounded aggregate scan |
