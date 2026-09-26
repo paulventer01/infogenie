@@ -2016,8 +2016,19 @@ Return a JSON object with a "topics" array of ${count} objects. Return ONLY vali
     });
     const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
     const topics = parsed.topics || [];
+    if (!Array.isArray(topics) || topics.some(topic => !topic || typeof topic.title !== 'string' ||
+        typeof topic.keyword !== 'string' || (topic.intent != null && typeof topic.intent !== 'string'))) {
+      return res.status(502).json({ok:false,error:'invalid_generated_topics',
+        userMessage:'The provider returned invalid topics. Your existing topics have not been replaced. Try again.'});
+    }
     const payload = { topics };
-    return await _respondGatedJson(res, req, JSON.stringify(payload), payload, { label: 'generate-article-topics' });
+    const text = require('./services/ai_governance/json_text').jsonGateText(payload);
+    if (text === null) return res.status(403).json(contentSafetyHttpBody({
+      error: 'content_safety_blocked', userMessage: 'Generated topics are too large or complex to check safely. Request fewer topics and try again.',
+    }));
+    const tenantId = await _tenantForGate(req, 'generate-article-topics');
+    if (tenantId == null) return res.status(503).json(contentSafetyUnavailableBody());
+    return await _respondGatedJson(res, req, text, payload, { label: 'generate-article-topics', tenantId });
   } catch(err) {
     if (isContentSafetyError(err)) {
       return res.status(403).json({ error: err.code, userMessage: err.message });

@@ -163,6 +163,8 @@ interface SocialPost {
 // API response shapes (legacy endpoints return raw JSON, not always {ok}).
 interface TopicsResp {
   ok?: boolean;
+  userMessage?: string;
+  content_safety_warnings?: string[];
   topics?: { title: string; keyword: string; intent?: string }[];
 }
 interface ArticleResp {
@@ -273,6 +275,7 @@ export default function Autoseo() {
   const publishingRef = useRef(false);
   const [publishing, setPublishing] = useState(false);
   const [publishMessage, setPublishMessage] = useState("");
+  const [topicsError, setTopicsError] = useState("");
   const [tab, setTab] = useState("calendar");
   const [articles, setArticles] = useState<Article[] | null>(null);
   const [keywords, setKeywords] = useState<Keyword[] | null>(null);
@@ -379,6 +382,7 @@ export default function Autoseo() {
       return;
     }
     setGenLoading(true);
+    setTopicsError("");
     setGenTimer(0);
     const start = Date.now();
     timerRef.current = setInterval(() => setGenTimer(Math.floor((Date.now() - start) / 1000)), 1000);
@@ -398,11 +402,12 @@ export default function Autoseo() {
           intent: t.intent,
           status: "pending" as ArticleStatus,
           generatedHtml: null,
+          content_safety_warnings: data.content_safety_warnings || [],
         })),
       );
       toast(`✅ ${data.topics.length} article topics generated in ${Math.floor((Date.now() - start) / 1000)}s!`);
     } else {
-      toast("⚠️ Could not generate topics — try again");
+      setTopicsError(data.userMessage || "Could not generate topics. Your existing topics have not been replaced. Try again.");
     }
     setGenLoading(false);
   }
@@ -421,7 +426,7 @@ export default function Autoseo() {
       tone: schedule.tone,
     });
     if (data.content) {
-      updateArticle(idx, { generatedHtml: data.content, status: "generated", wordCount: data.wordCount, content_safety_warnings: data.content_safety_warnings || [] });
+      updateArticle(idx, { generatedHtml: data.content, status: "generated", wordCount: data.wordCount, content_safety_warnings: [...new Set([...(art.content_safety_warnings || []), ...(data.content_safety_warnings || [])])] });
       toast(`✅ Article written: "${art.title.substring(0, 40)}…"`);
     } else {
       updateArticle(idx, { status: "pending" });
@@ -445,7 +450,7 @@ export default function Autoseo() {
     });
     if (data.ok && data.success && data.pageId && data.status === "draft") {
       updateArticle(idx, { status: "published", wpUrl: data.pageUrl,
-        content_safety_warnings: data.content_safety_warnings || [] });
+        content_safety_warnings: [...new Set([...(art.content_safety_warnings || []), ...(data.content_safety_warnings || [])])] });
       setPublishMessage("WordPress confirmed the draft. Review it in WordPress before making it live.");
       return true;
     }
@@ -774,6 +779,7 @@ ${ctx.domain || "yourdomain.com"}`;
 
   return (
     <div className="view" id="view-autoseo">
+      {topicsError && <div role="alert" style={{padding: 12}}>{topicsError}</div>}
       {publishMessage && <div role="status" style={{padding: 12}}>{publishMessage}</div>}
       <fieldset disabled={publishing} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
       <style dangerouslySetInnerHTML={{ __html: SPIN_CSS }} />
