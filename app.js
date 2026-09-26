@@ -974,6 +974,10 @@ function generateLandingPageForCamp(camp) {
   document.getElementById('lp-download-btn').style.display = 'none';
   document.getElementById('lp-copy-btn').style.display     = 'none';
   document.getElementById('lp-subtitle').textContent = 'GPT-4o — generating your campaign landing page…';
+  const oldWarnings = document.getElementById('lp-safety-warnings');
+  if (oldWarnings) oldWarnings.remove();
+  const priorWpButton = document.getElementById('lp-wp-btn');
+  if (priorWpButton) priorWpButton.style.display = 'none';
   window._currentLandingPageHTML = null;
   window._currentLandingPageCamp = camp;
 
@@ -999,7 +1003,14 @@ function generateLandingPageForCamp(camp) {
   })
   .then(r => r.json())
   .then(data => {
-    if (!data.html) throw new Error(data.error || 'No HTML returned');
+    if (!data.html) throw new Error(data.userMessage || data.error || 'No HTML returned');
+    if (Array.isArray(data.content_safety_warnings) && data.content_safety_warnings.length) {
+      const warnings = document.createElement('div');
+      warnings.id = 'lp-safety-warnings';
+      warnings.setAttribute('role', 'status');
+      warnings.textContent = 'Content safety warnings: ' + data.content_safety_warnings.join(' · ');
+      document.getElementById('lp-subtitle').after(warnings);
+    }
     window._currentLandingPageHTML = data.html;
 
     const frame = document.getElementById('lp-preview-frame');

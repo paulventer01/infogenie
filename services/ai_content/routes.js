@@ -274,6 +274,23 @@ module.exports = function register(app, ctx) {
     return res.status(opts.status || 200).json(attachContentSafetyWarnings(payload, gated.warnings));
   }
 
+  // Scan every returned copy field, including metadata omitted by the provider.
+  // Reuse the bounded, non-executing raw/decoded HTML scan used at publishing.
+  async function _respondGeneratedCopy(res, req, payload, fields, label) {
+    let text;
+    try {
+      text = require('./services/ai_governance/wordpress_text').wordpressGateText(fields);
+    } catch (_) {
+      return res.status(503).json(contentSafetyUnavailableBody());
+    }
+    if (text === null) return res.status(403).json(contentSafetyHttpBody({
+      error: 'content_safety_blocked', userMessage: 'Generated content is too long to check safely. Shorten it and try again.',
+    }));
+    const tenantId = await _tenantForGate(req, label);
+    if (tenantId == null) return res.status(503).json(contentSafetyUnavailableBody());
+    return _respondGatedJson(res, req, text, payload, { label, tenantId });
+  }
+
   // Hermetic mounts that only inject read/write still serialize in-process
   // with the same promise-chain shape as server.js `_tkvMutate`.
   const _localMutateChain = new Map();
@@ -1851,6 +1868,10 @@ app.post('/api/landing-page', async (req, res) => {
       compName = '', brandColor = '#0066FF'
     } = req.body;
 
+    if (typeof campName !== 'string' || typeof domain !== 'string') {
+      return res.status(400).json({ok:false,error:'invalid_input',userMessage:'Campaign name and domain must be text.'});
+    }
+
     const h1 = headlines[0] || campName;
     const h2 = headlines[1] || `The smarter choice in ${industry}`;
     const h3 = headlines[2] || 'Start for free — results in 7 days';
@@ -1909,7 +1930,7 @@ Return ONLY the complete HTML — no markdown, no explanation, just the raw HTML
     html = html.replace(/action=["']#["']/g, `action="${domainUrl}"`);
     html = html.replace(/action=["']["']/g, `action="${domainUrl}"`);
 
-    return await _respondGatedJson(res, req, html, { html, campName, domain }, { label: 'landing-page' });
+    return await _respondGeneratedCopy(res, req, { html, campName, domain }, [html, campName, domain], 'landing-page');
   } catch (err) {
     if (isContentSafetyError(err)) {
       return res.status(403).json({ error: err.code, userMessage: err.message });
@@ -1923,6 +1944,9 @@ Return ONLY the complete HTML — no markdown, no explanation, just the raw HTML
 app.post('/api/generate-seo-article', async (req, res) => {
   try {
     const { title, keyword, domain, industry, competitors = [], wordCount = 1200, tone = 'professional' } = req.body;
+    if (typeof title !== 'string' || typeof keyword !== 'string') {
+      return res.status(400).json({ok:false,error:'invalid_input',userMessage:'Article title and keyword must be text.'});
+    }
     const compNames = competitors.slice(0, 3).join(', ') || 'leading competitors';
     const prompt = `You are an expert SEO content writer. Write a ${wordCount}-word, ${tone} SEO-optimized article.
 
@@ -1955,7 +1979,7 @@ Return ONLY the article HTML content, no markdown, no explanation.`;
     content = content.replace(/^```html\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'').trim();
     const wordCountActual = content.replace(/<[^>]+>/g,'').trim().split(/\s+/).length;
     const payload = { content, title, keyword, wordCount: wordCountActual };
-    return await _respondGatedJson(res, req, content, payload, { label: 'generate-seo-article' });
+    return await _respondGeneratedCopy(res, req, payload, [content, title, keyword], 'generate-seo-article');
   } catch(err) {
     if (isContentSafetyError(err)) {
       return res.status(403).json({ error: err.code, userMessage: err.message });
