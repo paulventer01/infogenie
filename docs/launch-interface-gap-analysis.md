@@ -299,3 +299,24 @@ and provider fallback behavior are unchanged. Inventory: 46 covered, 8 partial,
 41 gap, 30 out of scope; 49 rows in 12 paused batches. Seven PR-8c rows remain;
 Step 6 and production acceptance are still incomplete. No CI, hosting, credential,
 billing or production change.
+
+
+AutoSEO Article Topic Safety completes CR-048, one bounded PR-8c row. The
+existing topic-generation route scans decoded keys and leaves plus a key-free
+value stream, so JSON escapes and intervening field names cannot conceal unsafe
+phrases. Combined text, node and depth limits refuse oversized output even under
+warning-only policy. Invalid topic shapes return an actionable provider error;
+blocked/unavailable checks return 403/503 without topic content. Authenticated
+tenant policy remains authoritative. AutoSEO shows generation refusals without
+replacing previous topics; aggregate topic warnings are attached conservatively
+to every topic and retained alongside subsequent article/publishing warnings.
+A successful new topic set replaces the previous set and its warnings.
+Focused tests and the existing hosted real-login/API/PostgreSQL/Chromium chain
+cover refusal, outage, split fields, warning retention through article generation,
+clean replacement and tenant/permission isolation, using synthetic SDK transport.
+Final-head hosted evidence is required before readiness. Topics/articles remain
+in memory; durable reload restoration, live-provider quality, sanitization and
+production acceptance are not claimed. No publishing action is added or exercised
+by the new acceptance. Inventory: 47 covered, 7 partial, 41 gap, 30 out of scope;
+48 rows in 12 paused batches, with six PR-8c rows remaining. Step 6 remains partial.
+No CI, credentials, billing, hosting or production changes.
