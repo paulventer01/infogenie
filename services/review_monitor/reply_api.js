@@ -21,6 +21,12 @@ const replyApproveLimiter = createRateLimiter({
     ? `review-reply-approve|${req.tenant.id}|${req.user.id}` : null,
 });
 
+const ruleSaveLimiter = createRateLimiter({
+  name: 'review-rule-save', windowMs: 60_000, max: 20, failClosed: true,
+  keyFn: req => req.tenant?.id != null && req.user?.id != null
+    ? `review-rule-save|${req.tenant.id}|${req.user.id}` : null,
+});
+
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
 
@@ -246,35 +252,64 @@ router.get('/request-rules', async (req, res) => {
   res.json({ ok: true, rules: rows.rows });
 });
 
-router.post('/request-rules', async (req, res) => {
-  const tid = await _tid(req, 'reviews:create-rule');
+// Gate the entire retained save snapshot, including partial updates to older rules.
+async function saveRequestRule(req, res) {
+  const tid = await _tid(req, 'reviews:save-rule');
   if (!tid) return _err(res, 400, 'no_tenant');
-
-  const { name, trigger_type, channel, delay_hours, message_template, target_platform_url } = req.body || {};
-  const p = await _db.getPool();
-  const ins = await p.query(
-    `INSERT INTO review_request_rules (tenant_id, name, trigger_type, channel, delay_hours, message_template, target_platform_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING *`,
-    [tid, name, trigger_type, channel, delay_hours, message_template, target_platform_url]
-  );
-  res.json({ ok: true, rule: ins.rows[0] });
-});
-
-router.put('/request-rules/:id', async (req, res) => {
-  const tid = await _tid(req, 'reviews:update-rule');
-  if (!tid) return _err(res, 400, 'no_tenant');
-
-  const { name, trigger_type, channel, delay_hours, message_template, target_platform_url, active } = req.body || {};
-  const p = await _db.getPool();
-  await p.query(
-    `UPDATE review_request_rules 
-     SET name=$1, trigger_type=$2, channel=$3, delay_hours=$4, message_template=$5, target_platform_url=$6, active=$7
-     WHERE id=$8 AND tenant_id=$9`,
-    [name, trigger_type, channel, delay_hours, message_template, target_platform_url, active, req.params.id, tid]
-  );
-  res.json({ ok: true });
-});
+  try {
+    const p = await _db.getPool();
+    let current = null;
+    if (req.params.id) {
+      const selected = await p.query('SELECT *, xmin::text AS save_version FROM review_request_rules WHERE id=$1 AND tenant_id=$2', [req.params.id, tid]);
+      if (!selected.rows.length) return _err(res, 404, 'rule_not_found');
+      current = selected.rows[0];
+      // Disabling alone must remain available during safety outages. It cannot
+      // change copy, enable delivery, or erase the stored safety warnings.
+      if (req.body?.active === false && Object.keys(req.body).length === 1) {
+        const disabled = await p.query('UPDATE review_request_rules SET active=false WHERE id=$1 AND tenant_id=$2 RETURNING *', [req.params.id, tid]);
+        if (!disabled.rows.length) return _err(res, 404, 'rule_not_found');
+        return res.json({ ok: true, rule: disabled.rows[0] });
+      }
+    }
+    const fields = ['name', 'trigger_type', 'channel', 'delay_hours', 'message_template', 'target_platform_url', 'active'];
+    const defaults = { delay_hours: 24, message_template: '', target_platform_url: '', active: true };
+    const snapshot = Object.fromEntries(fields.map(k => [k, Object.hasOwn(req.body || {}, k) ? req.body[k] : (current ? current[k] : defaults[k])]));
+    if (['name', 'trigger_type', 'channel'].some(k => typeof snapshot[k] !== 'string' || !snapshot[k].trim()) ||
+        ['message_template', 'target_platform_url'].some(k => snapshot[k] != null && typeof snapshot[k] !== 'string') ||
+        !Number.isInteger(snapshot.delay_hours) || snapshot.delay_hours < 0 || snapshot.delay_hours > 2147483647 ||
+        typeof snapshot.active !== 'boolean') {
+      return res.status(400).json({ ok: false, error: 'invalid_rule', userMessage: 'Enter a rule name, trigger, channel, text template and a valid non-negative delay.' });
+    }
+    const text = ['name', 'trigger_type', 'channel', 'message_template', 'target_platform_url'].map(k => snapshot[k] || '').join('\n');
+    if (text.length > MAX_OUTPUT_SCAN_CHARS) {
+      return res.status(403).json({ ok: false, error: 'content_safety_blocked', userMessage: 'Shorten the rule text to 100,000 characters or fewer before saving.' });
+    }
+    const gated = await gateRouteText({ tenantId: tid, userId: req.user?.id || null,
+      surface: 'review_monitor', action: 'generate_content', text, label: 'reviews:save-rule' });
+    if (!gated.ok) return res.status(gated.error === 'content_safety_unavailable' ? 503 : 403).json(contentSafetyHttpBody(gated));
+    const values = fields.map(k => snapshot[k]);
+    const warnings = JSON.stringify(gated.warnings || []);
+    let saved;
+    if (current) {
+      // PostgreSQL row version prevents a concurrent edit/delete from being
+      // overwritten while the selected snapshot is being checked.
+      saved = await p.query(`UPDATE review_request_rules
+        SET name=$1,trigger_type=$2,channel=$3,delay_hours=$4,message_template=$5,target_platform_url=$6,active=$7,content_safety_warnings=$8::jsonb
+        WHERE id=$9 AND tenant_id=$10 AND xmin::text=$11 RETURNING *`,
+      [...values, warnings, req.params.id, tid, current.save_version]);
+      if (!saved.rows.length) return res.status(409).json({ ok: false, error: 'rule_changed', userMessage: 'This rule changed while saving. Refresh the rules and review it before retrying.' });
+    } else {
+      saved = await p.query(`INSERT INTO review_request_rules
+        (name,trigger_type,channel,delay_hours,message_template,target_platform_url,active,content_safety_warnings,tenant_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9) RETURNING *`, [...values, warnings, tid]);
+    }
+    res.json({ ok: true, rule: saved.rows[0] });
+  } catch (_) {
+    res.status(503).json({ ok: false, error: 'rule_save_unavailable', userMessage: 'Could not confirm the save. Your text has been kept; refresh the rules before retrying.' });
+  }
+}
+router.post('/request-rules', ruleSaveLimiter, saveRequestRule);
+router.put('/request-rules/:id', ruleSaveLimiter, saveRequestRule);
 
 router.delete('/request-rules/:id', async (req, res) => {
   const tid = await _tid(req, 'reviews:delete-rule');

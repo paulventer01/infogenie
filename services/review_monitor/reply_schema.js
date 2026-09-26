@@ -45,6 +45,8 @@ async function ensureReviewReplySchema() {
     CREATE INDEX IF NOT EXISTS idx_rev_req_log_tenant ON review_request_log(tenant_id, rule_id);
   `);
   await pool.query(`
+    ALTER TABLE review_request_rules
+      ADD COLUMN IF NOT EXISTS content_safety_warnings JSONB NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE review_reply_drafts
       ADD COLUMN IF NOT EXISTS content_safety_warnings JSONB NOT NULL DEFAULT '[]'::jsonb
   `);
