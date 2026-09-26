@@ -320,3 +320,11 @@ production acceptance are not claimed. No publishing action is added or exercise
 by the new acceptance. Inventory: 47 covered, 7 partial, 41 gap, 30 out of scope;
 48 rows in 12 paused batches, with six PR-8c rows remaining. Step 6 remains partial.
 No CI, credentials, billing, hosting or production changes.
+
+CR-048 post-merge correction: flattened topic scan text now normalizes whitespace
+so existing dot-based compliance rules match across fields and decoded line breaks.
+The original text/node/depth ceilings still apply before normalization. Focused
+regressions cover crypto blocking and urgency warnings; the hosted topic journey
+checks both through the real interface/API/policy chain. This corrects PR #236's
+confirmed review finding, adds no coverage row and leaves launch counts unchanged.
+No live-provider, production reload or deployment acceptance is claimed.

@@ -40,11 +40,18 @@ module.exports=async function articleTopicSafety({page,baseUrl,actors,db,fx}) {
     scanner.scanOutput=()=>{throw Error('synthetic scanner outage');};
     assert.equal((await generate()).status,503);scanner.scanOutput=scan;
     output={topics:[{title:'guaranteed',keyword:'returns'}]};assert.equal((await generate()).status,403);
+    output={topics:[{title:'crypto',keyword:'guaranteed safe investment'}]};
+    const crypto=await generate();assert.equal(crypto.status,403);assert.equal(crypto.body.topics,undefined);
+    output={topics:[{title:'crypto\nsafe investment',keyword:'demo'}]};assert.equal((await generate()).status,403);
+    output={topics:[{title:'act now',keyword:'free offer'}]};
+    const urgency=await generate();assert.equal(urgency.status,200);assert.ok(urgency.body.content_safety_warnings.length);
+    await page.waitForFunction(()=>document.querySelector('#view-autoseo')?.textContent.includes('CONTENT SAFETY WARNINGS'));
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='warning_only' WHERE tenant_id=$1",[tid]);
     // Warning comes from an extra retained topic field; article generation itself is clean.
     output={topics:[{title:'DEMO retained topic',keyword:'marketing',extra:'guaranteed returns'}]};
-    const warned=await generate();assert.equal(warned.status,200);assert.deepEqual(warned.body.topics,output.topics);assert.ok(warned.body.content_safety_warnings.length);
+    const warned=await generate('✨ Regenerate Topics');assert.equal(warned.status,200);assert.deepEqual(warned.body.topics,output.topics);assert.ok(warned.body.content_safety_warnings.length);
     await page.waitForFunction(()=>document.querySelector('#view-autoseo')?.textContent.includes('CONTENT SAFETY WARNINGS'));
+    await page.waitForFunction(()=>document.querySelector('#view-autoseo')?.textContent.includes('DEMO retained topic'));
     const warningsBefore=await page.$eval('#view-autoseo',el=>el.textContent);
     assert.ok(warningsBefore.includes('DEMO retained topic'));
     output='<p>DEMO useful article.</p>';

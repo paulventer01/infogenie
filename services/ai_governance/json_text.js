@@ -23,7 +23,9 @@ function jsonGateText(value) {
       append(keyed,String(item));append(leaves,String(item));
     }
   }
-  try {visit(value);return [...keyed,...leaves].join('\n');}
+  // Dot-based compliance rules must also match across fields and decoded line breaks.
+  // Bound the original text first; normalization never makes oversized output admissible.
+  try {visit(value);return [...keyed,...leaves].join(' ').replace(/\s+/g,' ');}
   catch (_) {return null;}
 }
 module.exports={jsonGateText};
