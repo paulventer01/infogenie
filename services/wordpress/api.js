@@ -5,7 +5,6 @@ const _db     = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { gateRouteText, contentSafetyHttpBody, contentSafetyUnavailableBody,
   attachContentSafetyWarnings } = require('../ai_governance/route_gate');
-const { MAX_OUTPUT_SCAN_CHARS } = require('../ai_governance/output_gate');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
@@ -182,46 +181,13 @@ router.post('/publish', async (req, res) => {
   // split a prohibited phrase; retain raw text to cover attributes as well.
   let gated;
   try {
-    const fields = [title, content, excerpt, ...tags];
-    const raw = fields.join('\n');
-    if (raw.length > MAX_OUTPUT_SCAN_CHARS) {
-      return res.status(403).json(contentSafetyHttpBody({ error: 'content_safety_blocked',
-        userMessage: 'This post exceeds the supported content safety scan limit. Shorten it before publishing.' }));
-    }
-    const {JSDOM} = require('jsdom');
-    const blocks = new Set(['P','DIV','BR','LI','H1','H2','H3','H4','H5','H6','SECTION','ARTICLE','TR','TD',
-      'BLOCKQUOTE','PRE','ADDRESS','FIGURE','FIGCAPTION','HEADER','FOOTER','MAIN','NAV','ASIDE',
-      'UL','OL','DL','DT','DD','TABLE','TH','HR','FORM','FIELDSET','DETAILS','SUMMARY']);
-    const rawText = new Set(['IFRAME','XMP','NOEMBED','NOFRAMES','NOSCRIPT','PLAINTEXT','TEXTAREA','STYLE','SCRIPT','TITLE']);
-    const decoded = fields.map(field => {
-      const text = [], spaced = [], attributes = [];
-      function visit(node, depth = 0) {
-        if (node.nodeType === 3) { text.push(node.nodeValue); spaced.push(node.nodeValue); return; }
-        if (blocks.has(node.tagName)) text.push(' ');
-        if (node.nodeType === 1) spaced.push(' ');
-        for (const attr of node.attributes || []) attributes.push(attr.value);
-        // KSES may strip a raw-text wrapper and expose its inner HTML. Reparse
-        // with the HTML parser (quote-safe), never execute scripts or fetch URLs.
-        if (rawText.has(node.tagName) && node.textContent.includes('<')) {
-          if (depth >= 8) throw new Error('HTML normalization depth exceeded');
-          visit(JSDOM.fragment(node.textContent), depth + 1);
-        } else {
-          // Template content may become visible after WordPress sanitization.
-          for (const child of (node.content || node).childNodes || []) visit(child, depth);
-        }
-        if (blocks.has(node.tagName)) text.push(' ');
-        if (node.nodeType === 1) spaced.push(' ');
-      }
-      // Parse fields separately: an unclosed tag in a title must not hide body text.
-      visit(JSDOM.fragment(field));
-      return [text.join(''), attributes.join('\n'), spaced.join('')].join('\n');
-    }).join('\n');
-    if (raw.length + decoded.length + 1 > MAX_OUTPUT_SCAN_CHARS) {
+    const text = require('../ai_governance/wordpress_text').wordpressGateText([title, content, excerpt, ...tags]);
+    if (text === null) {
       return res.status(403).json(contentSafetyHttpBody({ error: 'content_safety_blocked',
         userMessage: 'This post exceeds the supported content safety scan limit. Shorten it before publishing.' }));
     }
     gated = await gateRouteText({tenantId: tid, userId: req.user?.id || null,
-      surface: 'wordpress', action: 'generate_content', text: raw + '\n' + decoded});
+      surface: 'wordpress', action: 'generate_content', text});
   } catch (_) {
     return res.status(503).json({...contentSafetyUnavailableBody(),
       userMessage: 'Content safety checks are temporarily unavailable. Nothing was sent to WordPress. Try again later.'});
