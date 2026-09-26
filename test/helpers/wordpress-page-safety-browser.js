@@ -14,8 +14,10 @@ module.exports = async function pagePublishSafety({page,baseUrl,actors,db,fx}) {
     calls.push(JSON.parse(opts.body));
     if(entered) entered();
     if(hold) await hold;
-    return new Response(JSON.stringify({id:40+calls.length,link:`https://wordpress.example.test/page/${40+calls.length}`,status:'draft'}),
-      {status:providerStatus,headers:{'Content-Type':'application/json'}});
+    // This reserved transport is a fully buffered JSON fixture, not a live fetch
+    // body stream. Keep its completion independent of the held request's stream tasks.
+    const payload={id:40+calls.length,link:`https://wordpress.example.test/page/${40+calls.length}`,status:'draft'};
+    return {ok:providerStatus>=200&&providerStatus<300,status:providerStatus,json:async()=>payload};
   };
   try {
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='enforce' WHERE tenant_id=$1",[tid]);
