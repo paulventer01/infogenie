@@ -1,23 +1,25 @@
 'use strict';
 const assert=require('node:assert/strict');
-// Real login/UI/API/policy/database; only upstream provider transports are synthetic.
+// Real login/UI/API/policy/database; only upstream provider SDK responses are synthetic.
 module.exports=async function contentClusterSafety({page,baseUrl,actors,db,fx}) {
   const pool=db.getPool(), tid=actors.owner.tid;
   const scanner=require('../../services/ai_governance/output_gate'), scan=scanner.scanOutput;
   const OpenAI=require('openai').OpenAI, transport=OpenAI.prototype.fetchWithTimeout;
-  const Anthropic=require('@anthropic-ai/sdk').default, anthropicTransport=Anthropic.prototype.fetchWithTimeout;
+  const Messages=require('@anthropic-ai/sdk/resources/messages').Messages, anthropicCreate=Messages.prototype.create;
   const clean={pillar:'Retained cluster',topics:['Planning'],questions:['How to begin?'],aiNote:'Use clear headings'};
-  let output={...clean,pillar:'guaranteed\nreturns'}, extra={}, calls=0;
+  let output={...clean,pillar:'guaranteed\nreturns'}, extra={}, calls=0, supplementalCalls=0;
   OpenAI.prototype.fetchWithTimeout=async function(url,...args){
     const u=new URL(url);
     if(u.hostname!=='api.openai.com'||u.pathname!=='/v1/chat/completions')return transport.call(this,url,...args);
     calls++;
     return new Response(JSON.stringify({choices:[{message:{content:typeof output==='string'?output:JSON.stringify(output)}}]}),{status:200,headers:{'Content-Type':'application/json'}});
   };
-  Anthropic.prototype.fetchWithTimeout=async function(url,...args){
-    const u=new URL(url);
-    if(u.hostname!=='api.anthropic.com'||u.pathname!=='/v1/messages')return anthropicTransport.call(this,url,...args);
-    return new Response(JSON.stringify({content:[{type:'text',text:JSON.stringify(extra)}]}),{status:200,headers:{'Content-Type':'application/json'}});
+  // This SDK checks credentials before transport; intercept this one synthetic
+  // operation without adding credentials or enabling a live provider.
+  Messages.prototype.create=async function(body,...args){
+    if(!body.messages?.[0]?.content?.includes('Generate 4 ADDITIONAL user questions'))return anthropicCreate.call(this,body,...args);
+    supplementalCalls++;
+    return {content:[{type:'text',text:JSON.stringify(extra)}]};
   };
   try {
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='enforce' WHERE tenant_id=$1",[tid]);
@@ -60,7 +62,8 @@ module.exports=async function contentClusterSafety({page,baseUrl,actors,db,fx}) 
     assert.ok((await page.$eval('[data-react-view=content]',el=>el.textContent)).includes(warned.body.content_safety_warnings[0]));
     await click('Remove');assert.equal(await page.$('[data-react-view=content] [role="note"]'),null);
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='enforce' WHERE tenant_id=$1",[tid]);
-    output=clean;extra={extraQuestions:['guaranteed returns']};assert.equal((await generate()).status,403);extra={};
+    output=clean;extra={extraQuestions:['guaranteed returns']};const beforeSupplement=supplementalCalls;
+    assert.equal((await generate()).status,403);assert.equal(supplementalCalls,beforeSupplement+1);extra={};
     const {login,request}=require('./index');
     const other=await fx.seedUser({tenantId:actors.other.tid,owner:true});
     const logged=await login(baseUrl,other.email,other.password);assert.equal(logged.status,200);
@@ -69,7 +72,7 @@ module.exports=async function contentClusterSafety({page,baseUrl,actors,db,fx}) 
     const viewer=await login(baseUrl,actors.viewer.email,actors.viewer.password);assert.equal(viewer.status,200);const before=calls;
     assert.equal((await request(baseUrl,'POST','/api/ai-content-clusters',{cookie:viewer.cookie,headers:{Origin:baseUrl},body:{seed:'Marketing'}})).status,403);assert.equal(calls,before);
   } finally {
-    OpenAI.prototype.fetchWithTimeout=transport;Anthropic.prototype.fetchWithTimeout=anthropicTransport;scanner.scanOutput=scan;
+    OpenAI.prototype.fetchWithTimeout=transport;Messages.prototype.create=anthropicCreate;scanner.scanOutput=scan;
     await pool.query('DELETE FROM ai_governance_events WHERE tenant_id=ANY($1::int[])',[[tid,actors.other.tid]]);
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='enforce' WHERE tenant_id=$1",[tid]);
   }
