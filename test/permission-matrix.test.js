@@ -117,6 +117,61 @@ test('matrix: component→permission half is exported and valid for the menu tas
   }
 });
 
+test('matrix: analyse spy/SEO nav views match their API route-group permissions', () => {
+  const views = {
+    'yt-comment-miner': 'compete.intel.view',
+    'biz-scanner': 'compete.intel.view',
+    'web-extractor': 'compete.intel.view',
+    'google-trends': 'compete.intel.view',
+    spyfu: 'seo.view',
+    majestic: 'seo.view',
+    serpstat: 'seo.view',
+    contentking: 'seo.view',
+    'bing-webmaster': 'seo.view',
+  };
+  const apis = {
+    'yt-comment-miner': '/api/yt-comment-miner',
+    'biz-scanner': '/api/biz-scanner',
+    'web-extractor': '/api/web-extractor',
+    'google-trends': '/api/google-trends',
+    spyfu: '/api/spyfu',
+    majestic: '/api/majestic',
+    serpstat: '/api/serpstat',
+    contentking: '/api/contentking',
+    'bing-webmaster': '/api/bing-webmaster',
+  };
+  for (const [view, perm] of Object.entries(views)) {
+    assert.equal(matrix.requiredPermissionForComponent(view), perm, `${view} component perm`);
+    const route = matrix.requiredPermissionForRequest(apis[view], 'GET');
+    assert.equal(route.matched, true, `${apis[view]} is mapped`);
+    assert.equal(route.permission, perm, `${view} nav and ${apis[view]} share the same view permission`);
+  }
+});
+
+test('enforcement-on would 403 marketers on owner-gate-allowlisted credential routes', () => {
+  // Non-owners currently reach /api/credentials/* via the legacy owner-gate
+  // allowlist (server.js _OWNER_GATE_ALLOW). The matrix still requires
+  // tenant.credentials.manage, which Marketer does not hold. Flipping
+  // PERMISSION_ENFORCEMENT=on would 403 those requests before the allowlist
+  // runs — do not enable strict mode until that seam is resolved.
+  const cred = matrix.requiredPermissionForRequest('/api/credentials/status', 'GET');
+  assert.equal(cred.matched, true);
+  assert.equal(cred.permission, 'tenant.credentials.manage');
+  const ads = matrix.requiredPermissionForRequest('/api/integrations/google-ads/status', 'GET');
+  assert.equal(ads.matched, true);
+  assert.equal(ads.permission, 'tenant.integrations.manage');
+  const marketer = SYSTEM_ROLES.find((r) => r.key === 'marketer');
+  assert.ok(marketer, 'marketer role exists');
+  assert.ok(
+    !marketer.permissions.includes('tenant.credentials.manage'),
+    'marketer is not granted credential-vault access',
+  );
+  assert.ok(
+    !marketer.permissions.includes('tenant.integrations.manage'),
+    'marketer is not granted integration-connect access',
+  );
+});
+
 // ── Enforcement: deny / allow / owner-bypass (mode 'on') ────────────────────
 test("on: Client Viewer is denied a protected action with 403", async () => {
   const { server, baseUrl } = await makeServer({
