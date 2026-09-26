@@ -95,6 +95,8 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
     if (msg.location().url.startsWith(baseUrl) &&
         /^\/api\/review-monitor\/request-rules(?:\/[1-9]\d*)?$/.test(msg.location().url.slice(baseUrl.length)) &&
         /^Failed to load resource:.*\b(403|404|409|503)\b/.test(text)) return;
+    if ([baseUrl + '/api/landing-page', baseUrl + '/api/generate-seo-article'].includes(msg.location().url) &&
+        /^Failed to load resource:.*\b(400|403|503)\b/.test(text)) return;
     if (msg.location().url === baseUrl + '/api/publish-to-wordpress' &&
         /^Failed to load resource:.*\b(403|429|502|503)\b/.test(text)) return;
     if (text.includes('ERR_BLOCKED_BY_CLIENT.Inspector')) return;
@@ -137,6 +139,8 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   await require('../helpers/review-rule-save-browser')({page,baseUrl,actors,db,fx});
 
   await require('../helpers/wordpress-page-safety-browser')({page,baseUrl,actors,db,fx});
+
+  await require('../helpers/generated-content-metadata-browser')({page,baseUrl,actors,db,fx});
 
   await context.close();
 });

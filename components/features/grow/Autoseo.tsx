@@ -167,6 +167,8 @@ interface TopicsResp {
 }
 interface ArticleResp {
   ok?: boolean;
+  userMessage?: string;
+  content_safety_warnings?: string[];
   content?: string;
   wordCount?: number;
 }
@@ -419,11 +421,11 @@ export default function Autoseo() {
       tone: schedule.tone,
     });
     if (data.content) {
-      updateArticle(idx, { generatedHtml: data.content, status: "generated", wordCount: data.wordCount });
+      updateArticle(idx, { generatedHtml: data.content, status: "generated", wordCount: data.wordCount, content_safety_warnings: data.content_safety_warnings || [] });
       toast(`✅ Article written: "${art.title.substring(0, 40)}…"`);
     } else {
       updateArticle(idx, { status: "pending" });
-      toast("⚠️ Could not write article");
+      toast(data.userMessage || "⚠️ Could not write article");
     }
   }
 

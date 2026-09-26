@@ -262,3 +262,21 @@ drafts and refusal of an additional draft with no provider call. This is a
 correction to CR-054, not another completed audit row: totals remain 43 covered,
 11 partial, 41 gap, 30 out of scope (52 rows in 13 paused batches). Exact-head
 hosted verification is required. No live publishing, production, CI or hosting changes.
+
+
+Generated Content Metadata Safety completes PR-8d / CR-052–053. The existing
+landing-page and SEO-article routes gate every returned copy field (HTML/body,
+campaign name/domain or article title/keyword), using bounded raw and decoded HTML
+text. Non-text metadata is refused; the aggregate 100,000-character scan ceiling
+also applies in warning-only mode. Unsafe output returns 403, unavailable checks
+503, without returning generated copy; tenant policy comes from the authenticated
+context. Successful warnings reach AutoSEO articles and the legacy landing-page
+preview. Refused articles remain unwritten; no publish operation is added.
+Focused tests and the existing hosted real-login/API/PostgreSQL/browser chain
+cover metadata refusal, outages, clean output, warnings and tenant-policy isolation;
+only the upstream generation transport is synthetic. Final-head hosted evidence
+is required before readiness. Inventory: 45 covered, 9 partial, 41 gap, 30 out of
+scope; 50 rows in 12 paused batches. Step 6 and production acceptance remain partial.
+This does not certify HTML sanitization, live-provider output quality, persistent
+article/warning restoration or production acceptance. No CI, hosting, billing,
+credential or deployment changes.
