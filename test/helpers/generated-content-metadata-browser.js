@@ -54,7 +54,7 @@ module.exports=async function generatedMetadata({page,baseUrl,actors,db,fx}) {
     };
     assert.equal((await write()).status,403);
     await page.waitForFunction(()=>[...document.querySelectorAll('#view-autoseo button')].some(b=>b.textContent.trim()==='✍️ Write'));
-    assert.equal(await page.$eval('#view-autoseo',e=>e.textContent.includes('🟦 Publish')),false);
+    assert.equal(await page.$$eval('#view-autoseo button',buttons=>buttons.some(b=>b.textContent.trim()==='🟦 Publish')),false);
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='warning_only' WHERE tenant_id=$1",[tid]);
     const warned=await write();assert.equal(warned.status,200);assert.ok(warned.body.content_safety_warnings.length);
     await page.waitForFunction(()=>document.querySelector('#view-autoseo')?.textContent.includes('CONTENT SAFETY WARNINGS'));
