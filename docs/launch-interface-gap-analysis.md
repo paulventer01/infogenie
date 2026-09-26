@@ -373,3 +373,21 @@ quality, durable reload and production acceptance remain unproven. Inventory:
 49 covered, 5 partial, 41 gap, 30 out of scope; 46 rows in 12 paused batches,
 four PR-8c rows remaining. Step 6 remains partial. No CI, credentials, billing,
 permissions or hosting changes.
+
+Content Cluster Safety completes CR-027, one bounded PR-8c row. The server scans
+normalized retained cluster fields as decoded, whitespace-normalized JSON text,
+including cross-field claims and merged supplemental questions/tips. A raw-output
+size/depth/node bound applies before normalization, including warning-only mode.
+Missing tenant or unavailable safety checks fail closed (503); unsafe output is
+withheld (403), and malformed primary output returns a fixed 502 without provider
+text. The React cluster builder no longer fabricates an unchecked local template
+on failure. It serializes builds, preserves existing clusters on refusal, displays
+actionable errors, and keeps warnings with each accepted cluster until removal.
+Hosted real-login/API/PostgreSQL/Chromium acceptance uses synthetic provider
+transports for refusal, outage, malformed output, warning retention, clean additions,
+removal and tenant/permission isolation. Final-head gates are required before
+readiness. Clusters remain in memory; reload persistence, provider quality, live
+publishing and production acceptance are not claimed. Inventory: 50 covered,
+4 partial, 41 gap, 30 out of scope; 45 rows in 12 paused batches, three PR-8c rows
+remaining. Step 6 remains partial. No CI, credentials, billing, permissions or
+hosting changes.

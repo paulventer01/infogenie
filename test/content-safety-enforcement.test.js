@@ -9,6 +9,7 @@ require('./safe-agent-generation-safety.test');
 require('./article-topic-safety.test');
 require('./keyword-research-safety.test');
 require('./backlink-opportunity-safety.test');
+require('./content-cluster-safety.test');
 require('./review-reply-approval-safety.test');
 require('./marketing-brief-safety.test');
 require('./marketing-brief-delivery.test');
