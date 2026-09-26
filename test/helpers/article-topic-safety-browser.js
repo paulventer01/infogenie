@@ -43,8 +43,13 @@ module.exports=async function articleTopicSafety({page,baseUrl,actors,db,fx}) {
     output={topics:[{title:'crypto',keyword:'guaranteed safe investment'}]};
     const crypto=await generate();assert.equal(crypto.status,403);assert.equal(crypto.body.topics,undefined);
     output={topics:[{title:'crypto\nsafe investment',keyword:'demo'}]};assert.equal((await generate()).status,403);
+    // A duplicate scan representation must not invent "safe investment".
+    output={topics:[{title:'Investment options',keyword:'portfolio'},{keyword:'crypto news',title:'safe'}]};
+    const safe=await generate();assert.equal(safe.status,200);assert.deepEqual(safe.body.topics,output.topics);
+    assert.equal(safe.body.content_safety_warnings?.length||0,0);
+    await page.waitForFunction(()=>document.querySelector('#view-autoseo')?.textContent.includes('Investment options'));
     output={topics:[{title:'act now',keyword:'free offer'}]};
-    const urgency=await generate();assert.equal(urgency.status,200);assert.ok(urgency.body.content_safety_warnings.length);
+    const urgency=await generate('✨ Regenerate Topics');assert.equal(urgency.status,200);assert.ok(urgency.body.content_safety_warnings.length);
     await page.waitForFunction(()=>document.querySelector('#view-autoseo')?.textContent.includes('CONTENT SAFETY WARNINGS'));
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='warning_only' WHERE tenant_id=$1",[tid]);
     // Warning comes from an extra retained topic field; article generation itself is clean.
