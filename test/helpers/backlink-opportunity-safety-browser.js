@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 
 // Real UI/login/API/tenant policy/PostgreSQL audit; synthetic upstream SDK only.
 module.exports=async function backlinkOpportunitySafety({page,baseUrl,actors,db,fx}) {
+  await require('../../services/admin/schema').ensureAdminSchema();
   const pool=db.getPool(), tid=actors.owner.tid;
   const scanner=require('../../services/ai_governance/output_gate'), scan=scanner.scanOutput;
   const OpenAI=require('openai').OpenAI, transport=OpenAI.prototype.fetchWithTimeout;
