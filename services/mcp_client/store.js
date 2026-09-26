@@ -5,6 +5,35 @@ const _mem = new Map(); // tid -> servers[]
 let _seq = 1;
 let _schemaReady = false;
 
+function _resolveAuthFromPreset(preset, body = {}) {
+  if (body.auth_header) return String(body.auth_header);
+  if (body.api_key && preset?.authHeaderName) {
+    return `${preset.authHeaderName}:${body.api_key}`;
+  }
+  const envName = preset?.authEnv;
+  if (!envName) return body.auth_header || null;
+  let token = '';
+  try {
+    const pk = require('../credentials/platform_keys');
+    token = pk.resolvePlatformKey(envName) || process.env[envName] || '';
+  } catch {
+    token = process.env[envName] || '';
+  }
+  if (!token) return null;
+  const headerName = preset.authHeaderName || 'Authorization';
+  if (headerName.toLowerCase() === 'authorization') return `Bearer ${token}`;
+  return `${headerName}:${token}`;
+}
+
+function _hasAuthEnv(preset) {
+  if (!preset?.authEnv) return false;
+  try {
+    const pk = require('../credentials/platform_keys');
+    if (pk.resolvePlatformKey(preset.authEnv)) return true;
+  } catch { /* ignore */ }
+  return !!process.env[preset.authEnv];
+}
+
 async function ensureSchema() {
   if (!_db.hasDb() || _schemaReady) return;
   const pool = _db.getPool();
@@ -35,11 +64,13 @@ async function ensureSchema() {
 function _rowOut(r) {
   if (!r) return r;
   const key = r.api_key || '';
+  const meta = typeof r.meta === 'string' ? (() => { try { return JSON.parse(r.meta); } catch { return {}; } })() : (r.meta || {});
   return {
     ...r,
+    meta,
     api_key: undefined,
     auth_header: r.auth_header ? '[set]' : undefined,
-    has_api_key: !!key,
+    has_api_key: !!key || !!r.auth_header,
     api_key_preview: key ? key.slice(0, 4) + '…' + key.slice(-4) : '',
   };
 }
@@ -85,6 +116,12 @@ async function getServer(tid, id) {
 async function addServer(tid, body = {}) {
   await ensureSchema();
   const preset = body.preset_id ? PRESET_CATALOG.find((p) => p.id === body.preset_id) : null;
+  const auth_header = _resolveAuthFromPreset(preset, body);
+  if (preset?.authEnv && !auth_header && !body.api_key) {
+    const err = new Error(`${preset.authEnv} not configured — save it in Manage → Platform APIs first`);
+    err.code = 'auth_missing';
+    throw err;
+  }
   const row = {
     name: String(body.name || preset?.name || 'MCP Server').slice(0, 120),
     category: String(body.category || preset?.category || 'community').slice(0, 40),
@@ -92,7 +129,7 @@ async function addServer(tid, body = {}) {
     builtin: body.builtin || preset?.builtin || null,
     base_url: body.base_url != null ? String(body.base_url) : (preset?.base_url || ''),
     api_key: body.api_key ? String(body.api_key) : null,
-    auth_header: body.auth_header ? String(body.auth_header) : null,
+    auth_header,
     enabled: body.enabled !== false,
     loopback: !!(body.loopback || preset?.loopback),
     meta: { ...(body.meta || {}), preset_id: body.preset_id || preset?.id || null },
@@ -175,12 +212,28 @@ async function deleteServer(tid, id) {
 
 async function seedDefaults(tid) {
   const existing = await listServers(tid);
-  if (existing.length) return existing;
-  const created = [];
-  for (const p of PRESET_CATALOG.filter((x) => x.transport === 'builtin' || x.loopback)) {
-    created.push(await addServer(tid, { preset_id: p.id }));
+  const created = existing.length ? [...existing] : [];
+  if (!existing.length) {
+    for (const p of PRESET_CATALOG.filter((x) => x.transport === 'builtin' || x.loopback)) {
+      created.push(await addServer(tid, { preset_id: p.id }));
+    }
   }
-  return created;
+  // Auto-connect keyed remote presets (e.g. Mangools) when the platform key is present.
+  const havePreset = new Set(
+    (await listServers(tid)).map((s) => (s.meta && s.meta.preset_id) || null).filter(Boolean),
+  );
+  // meta may be stripped in _rowOut — re-read raw names/base_url as fallback
+  const names = new Set((await listServers(tid)).map((s) => String(s.name || '').toLowerCase()));
+  for (const p of PRESET_CATALOG.filter((x) => x.autoSeedWhenKeyed)) {
+    if (havePreset.has(p.id) || names.has(String(p.name).toLowerCase())) continue;
+    if (!_hasAuthEnv(p)) continue;
+    try {
+      created.push(await addServer(tid, { preset_id: p.id }));
+    } catch (e) {
+      console.warn('[mcp-client] auto-seed', p.id, e.message);
+    }
+  }
+  return listServers(tid);
 }
 
 function _resetMem() {
