@@ -30,35 +30,35 @@ module.exports=async function contentClusterSafety({page,baseUrl,actors,db,fx}) 
     });
     await page.goto(baseUrl+'/create/content',{waitUntil:'networkidle2'});
     async function click(text){
-      await page.waitForFunction(text=>[...document.querySelectorAll('#view-content button')].some(b=>b.textContent.trim()===text&&!b.matches(':disabled')),{},text);
-      await page.evaluate(text=>[...document.querySelectorAll('#view-content button')].find(b=>b.textContent.trim()===text&&!b.matches(':disabled')).click(),text);
+      await page.waitForFunction(text=>[...document.querySelectorAll('[data-react-view=content] button')].some(b=>b.textContent.trim()===text&&!b.matches(':disabled')),{},text);
+      await page.evaluate(text=>[...document.querySelectorAll('[data-react-view=content] button')].find(b=>b.textContent.trim()===text&&!b.matches(':disabled')).click(),text);
     }
     await click('🧩 Topical Clusters');
-    await page.type('#view-content input[placeholder^="e.g. email marketing"]','Marketing');
+    await page.type('[data-react-view=content] input[placeholder^="e.g. email marketing"]','Marketing');
     async function generate(){
       const [r]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/ai-content-clusters'&&r.request().method()==='POST'),click('🧩 Build Cluster')]);
       return {status:r.status(),body:await r.json()};
     }
     assert.equal((await generate()).status,403);
-    await page.waitForFunction(()=>document.querySelector('#view-content [role="alert"]')?.textContent.length>0);
-    assert.ok((await page.$eval('#view-content',el=>el.textContent)).includes('No clusters yet'));
+    await page.waitForFunction(()=>document.querySelector('[data-react-view=content] [role="alert"]')?.textContent.length>0);
+    assert.ok((await page.$eval('[data-react-view=content]',el=>el.textContent)).includes('No clusters yet'));
     scanner.scanOutput=()=>{throw Error('synthetic outage');};assert.equal((await generate()).status,503);scanner.scanOutput=scan;
     output={...clean,pillar:'crypto',topics:['safe investment']};assert.equal((await generate()).status,403);
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='warning_only' WHERE tenant_id=$1",[tid]);
     output={...clean,aiNote:'guaranteed returns'};const warned=await generate();assert.equal(warned.status,200);assert.ok(warned.body.content_safety_warnings.length);
-    await page.waitForFunction(()=>document.querySelector('#view-content [role="note"]')?.textContent.includes('CONTENT SAFETY WARNINGS'));
+    await page.waitForFunction(()=>document.querySelector('[data-react-view=content] [role="note"]')?.textContent.includes('CONTENT SAFETY WARNINGS'));
     output='guaranteed returns';assert.equal((await generate()).status,502);
-    await page.waitForFunction(()=>document.querySelector('#view-content [role="alert"]')?.textContent.includes('unavailable'));
-    assert.ok((await page.$eval('#view-content',el=>el.textContent)).includes('Retained cluster'));
+    await page.waitForFunction(()=>document.querySelector('[data-react-view=content] [role="alert"]')?.textContent.includes('unavailable'));
+    assert.ok((await page.$eval('[data-react-view=content]',el=>el.textContent)).includes('Retained cluster'));
     output={...clean,extra:'x'.repeat(50001)};assert.equal((await generate()).status,403);
-    assert.equal(await page.$$eval('#view-content [role="note"]',els=>els.length),1);
+    assert.equal(await page.$$eval('[data-react-view=content] [role="note"]',els=>els.length),1);
     output={...clean,pillar:'Fresh cluster'};assert.equal((await generate()).status,200);
-    await page.waitForFunction(()=>document.querySelector('#view-content')?.textContent.includes('Fresh cluster'));
-    assert.equal(await page.$('#view-content [role="alert"]'),null);
-    assert.equal(await page.$$eval('#view-content [role="note"]',els=>els.length),1); // old warning stays with old cluster
+    await page.waitForFunction(()=>document.querySelector('[data-react-view=content]')?.textContent.includes('Fresh cluster'));
+    assert.equal(await page.$('[data-react-view=content] [role="alert"]'),null);
+    assert.equal(await page.$$eval('[data-react-view=content] [role="note"]',els=>els.length),1); // old warning stays with old cluster
     await click('Remove'); // clean first cluster removed; warned cluster remains
-    assert.ok((await page.$eval('#view-content',el=>el.textContent)).includes(warned.body.content_safety_warnings[0]));
-    await click('Remove');assert.equal(await page.$('#view-content [role="note"]'),null);
+    assert.ok((await page.$eval('[data-react-view=content]',el=>el.textContent)).includes(warned.body.content_safety_warnings[0]));
+    await click('Remove');assert.equal(await page.$('[data-react-view=content] [role="note"]'),null);
     await pool.query("UPDATE ai_governance_policies SET content_safety_mode='enforce' WHERE tenant_id=$1",[tid]);
     output=clean;extra={extraQuestions:['guaranteed returns']};assert.equal((await generate()).status,403);extra={};
     const {login,request}=require('./index');
