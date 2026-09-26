@@ -29,6 +29,8 @@ import {
   apiPost,
 } from "@/lib/api";
 
+import ContentSafetyWarnings from "@/components/layout/ContentSafetyWarnings";
+
 // ── Types ────────────────────────────────────────────────────────────────────
 type ArticleStatus =
   | "pending"
@@ -64,6 +66,7 @@ interface Article {
   wordCount?: number;
   customDate?: string;
   wpUrl?: string;
+  content_safety_warnings?: string[];
   factCheck?: FactCheck;
 }
 
@@ -169,7 +172,12 @@ interface ArticleResp {
 }
 interface PublishResp {
   ok?: boolean;
-  url?: string;
+  success?: boolean;
+  pageId?: number;
+  pageUrl?: string;
+  status?: string;
+  userMessage?: string;
+  content_safety_warnings?: string[];
   error?: string;
 }
 interface AutoCorrectResp {
@@ -259,6 +267,9 @@ function artDate(i: number, sch: Schedule, articles: Article[] | null): string {
 const esc = (s?: string): string => String(s || "");
 
 export default function Autoseo() {
+  const publishingRef = useRef(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishMessage, setPublishMessage] = useState("");
   const [tab, setTab] = useState("calendar");
   const [articles, setArticles] = useState<Article[] | null>(null);
   const [keywords, setKeywords] = useState<Keyword[] | null>(null);
@@ -415,49 +426,52 @@ export default function Autoseo() {
     }
   }
 
-  async function publishSingleArticle(idx: number) {
-    if (!articles || !articles[idx]) return;
-    const art = articles[idx];
-    if (!art.generatedHtml) {
-      toast("⚠️ Generate the article first");
-      return;
-    }
+  async function sendArticle(idx: number): Promise<boolean> {
+    const art = articles?.[idx];
+    if (!art?.generatedHtml || art.status !== "generated") return false;
     const creds = getWpCreds();
-    if (!creds || !creds.siteUrl || !creds.appPassword) {
-      toast("⚠️ Connect WordPress first");
+    if (!creds?.siteUrl || !creds.username || !creds.appPassword) {
+      setPublishMessage("Connect WordPress before sending a draft.");
       openWpModal();
-      return;
+      return false;
     }
     updateArticle(idx, { status: "publishing" });
     const data = await apiPost<PublishResp>("/api/publish-to-wordpress", {
-      siteUrl: creds.siteUrl,
-      username: creds.username,
-      appPassword: creds.appPassword,
-      title: art.title,
-      content: art.generatedHtml,
+      siteUrl: creds.siteUrl, username: creds.username, appPassword: creds.appPassword,
+      title: art.title, content: art.generatedHtml, status: "draft",
     });
-    if (data.url) {
-      updateArticle(idx, { status: "published", wpUrl: data.url });
-      toast("🟦 Published to WordPress as draft!");
-    } else {
-      updateArticle(idx, { status: "generated" });
-      toast("⚠️ Publish failed: " + (data.error || "Unknown error"));
+    if (data.ok && data.success && data.pageId && data.status === "draft") {
+      updateArticle(idx, { status: "published", wpUrl: data.pageUrl,
+        content_safety_warnings: data.content_safety_warnings || [] });
+      setPublishMessage("WordPress confirmed the draft. Review it in WordPress before making it live.");
+      return true;
     }
+    updateArticle(idx, { status: "generated" });
+    setPublishMessage(data.userMessage || "WordPress did not confirm the draft. Check WordPress before retrying to avoid a duplicate page.");
+    return false;
+  }
+
+  async function publishSingleArticle(idx: number) {
+    if (publishingRef.current || genLoading || articles?.some(a => a.status === "generating")) return;
+    publishingRef.current = true; setPublishing(true); setPublishMessage("");
+    try { await sendArticle(idx); }
+    finally { publishingRef.current = false; setPublishing(false); }
   }
 
   async function publishAllToWordPress() {
-    const arts = (articles || []).filter((a) => a.status === "generated");
-    if (!arts.length) {
-      toast("⚠️ No generated articles to publish");
-      return;
-    }
-    toast(`🚀 Publishing ${arts.length} articles…`);
-    for (const a of arts) {
-      const idx = (articles || []).indexOf(a);
-      await publishSingleArticle(idx);
-      await new Promise((r) => setTimeout(r, 600));
-    }
-    toast("✅ All articles published to WordPress!");
+    if (publishingRef.current || genLoading || articles?.some(a => a.status === "generating")) return;
+    const indexes = (articles || []).flatMap((a, i) => a.status === "generated" ? [i] : []);
+    if (!indexes.length) { setPublishMessage("Generate an article before sending a WordPress draft."); return; }
+    publishingRef.current = true; setPublishing(true); setPublishMessage("");
+    let confirmed = 0;
+    try {
+      for (const idx of indexes) {
+        // Stop on refusal or uncertainty; never retry or claim the batch succeeded.
+        if (!await sendArticle(idx)) return;
+        confirmed++;
+      }
+      setPublishMessage(`WordPress confirmed ${confirmed} draft(s). Review them in WordPress before making them live.`);
+    } finally { publishingRef.current = false; setPublishing(false); }
   }
 
   async function runArticleFactCheck(idx: number) {
@@ -754,6 +768,8 @@ ${ctx.domain || "yourdomain.com"}`;
 
   return (
     <div className="view" id="view-autoseo">
+      {publishMessage && <div role="status" style={{padding: 12}}>{publishMessage}</div>}
+      <fieldset disabled={publishing} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
       <style dangerouslySetInnerHTML={{ __html: SPIN_CSS }} />
       <div
         className="view-header ig-panel-hero"
@@ -961,6 +977,7 @@ ${ctx.domain || "yourdomain.com"}`;
       {calOpen && renderCalendarModal()}
       {editIdx !== null && renderEditPopup()}
       {previewIdx !== null && renderPreviewModal()}
+      </fieldset>
     </div>
   );
 
@@ -1302,7 +1319,7 @@ ${ctx.domain || "yourdomain.com"}`;
                             fontWeight: 700,
                           }}
                         >
-                          {a.status === "published" ? "✓ Published" : a.status === "generated" ? "✓ Written" : "Pending"}
+                          {a.status === "published" ? "✓ WordPress draft" : a.status === "generated" ? "✓ Written" : "Pending"}
                         </span>
                         <span
                           style={{
@@ -1420,6 +1437,7 @@ ${ctx.domain || "yourdomain.com"}`;
                         </button>
                       )}
                     </div>
+                    <ContentSafetyWarnings warnings={a.content_safety_warnings} />
                   </div>
                 );
               })}

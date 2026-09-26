@@ -226,3 +226,21 @@ is unavailable; final-head hosted verification remains required. Trigger/deliver
 behavior and its provider simulation are outside this save-only build and are not
 certified. Inventory: 42 covered, 12 partial, 41 gap, 30 out of scope; 53 rows in
 14 paused batches. Step 6 and production acceptance remain incomplete.
+
+
+WordPress Page Publishing Safety completes CR-054/PR-8a, the separate AutoSEO
+`/api/publish-to-wordpress` transport. Exact retained title and body use the same
+bounded raw/decoded HTML normalizer as `/api/wordpress/publish`. Over-limit copy
+is refused even under warning-only policy; blocking returns 403 and unavailable
+checks return 503 before sending. Server warnings reach the response and article
+UI. The UI recognizes the actual page response, preserves refused articles,
+serializes publishing and stops batches on refusal or uncertainty. Draft creation
+is labelled separately from going live; uncertain transport results ask for a
+WordPress check before retrying. Existing tenant/permission boundaries remain;
+a fail-closed tenant/user limiter bounds attempts. Focused tests and the existing
+hosted real-login/PostgreSQL/browser chain cover the change with only reserved
+provider transport fixtures. Final-head hosted evidence is required before readiness.
+No live publishing, CI, credential, production or hosting changes. AutoSEO articles
+remain in-memory: warning restoration after a full reload and durable idempotent
+publishing are not claimed. Inventory: 43 covered, 11 partial, 41 gap, 30 out of
+scope; 52 rows in 13 paused batches. Step 6 and production acceptance remain incomplete.

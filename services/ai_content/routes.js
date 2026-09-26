@@ -2147,43 +2147,56 @@ app.post('/api/detect-wordpress', async (req, res) => {
 });
 
 // ── Publish to WordPress ──────────────────────────────────────────────────────
-app.post('/api/publish-to-wordpress', async (req, res) => {
+const pagePublishLimiter = require('./services/security/rate_limit').createRateLimiter({
+  name: 'wordpress-page-publish', windowMs: 60_000, max: 20, failClosed: true,
+  keyFn: req => req.tenant?.id != null && req.user?.id != null
+    ? `wordpress-page-publish|${req.tenant.id}|${req.user.id}` : null,
+});
+app.post('/api/publish-to-wordpress', pagePublishLimiter, async (req, res) => {
   const { siteUrl, username, appPassword, title, content, status = 'draft' } = req.body || {};
-  if (!siteUrl || !username || !appPassword || !content) {
-    return res.status(400).json({ error: 'siteUrl, username, appPassword and content are required' });
+  if (![siteUrl, username, appPassword, content].every(v => typeof v === 'string' && v.trim()) ||
+      (title != null && typeof title !== 'string') || !['draft', 'pending', 'publish'].includes(status)) {
+    return res.status(400).json({ ok: false, error: 'invalid_publish_request',
+      userMessage: 'Provide a WordPress site, username, application password and content with a valid post status.' });
   }
+  const retainedTitle = title || 'Campaign Landing Page';
+  let gated;
   try {
-    const gated = await _gateRoutePayload(req, String(content), {
-      label: 'publish-to-wordpress',
-      surface: 'ai_content',
-      action: 'publish_content',
+    const tid = await _tenantForGate(req, 'publish-to-wordpress');
+    if (tid == null) return res.status(503).json(contentSafetyUnavailableBody());
+    const text = require('./services/ai_governance/wordpress_text').wordpressGateText([retainedTitle, content]);
+    if (text === null) return res.status(403).json(contentSafetyHttpBody({error: 'content_safety_blocked',
+      userMessage: 'This page exceeds the supported content safety scan limit. Shorten it before publishing.'}));
+    gated = await _gateRoutePayload(req, text, {
+      tenantId: tid, label: 'publish-to-wordpress', surface: 'ai_content', action: 'publish_content',
     });
-    if (!gated.ok) {
-      return res.status(403).json(contentSafetyHttpBody(gated));
-    }
+  } catch (_) {
+    return res.status(503).json({...contentSafetyUnavailableBody(),
+      userMessage: 'Content safety checks are temporarily unavailable. Nothing was sent to WordPress. Try again later.'});
+  }
+  if (!gated.ok) return res.status(gated.error === 'content_safety_unavailable' ? 503 : 403).json({
+    ...contentSafetyHttpBody(gated),
+    userMessage: gated.error === 'content_safety_unavailable'
+      ? 'Content safety checks are temporarily unavailable. Nothing was sent to WordPress. Try again later.'
+      : 'This page did not pass content safety checks. Revise its title and content before trying again.',
+  });
+  try {
     const base = siteUrl.startsWith('http') ? siteUrl.replace(/\/$/, '') : 'https://' + siteUrl.replace(/\/$/, '');
     const creds = Buffer.from(`${username}:${appPassword}`).toString('base64');
-    const body  = {
-      title:   title || 'Campaign Landing Page',
-      content: content,
-      status:  status,
-      comment_status: 'closed'
-    };
     const wpRes = await fetch(`${base}/wp-json/wp/v2/pages`, {
-      method:  'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Basic ${creds}`
-      },
-      body: JSON.stringify(body)
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${creds}` },
+      body: JSON.stringify({ title: retainedTitle, content, status, comment_status: 'closed' }),
+      signal: AbortSignal.timeout(20_000),
     });
     const data = await wpRes.json();
-    if (!wpRes.ok) {
-      return res.status(400).json({ error: data.message || 'WordPress API error', code: data.code });
-    }
-    res.json({ success: true, pageId: data.id, pageUrl: data.link, editUrl: `${base}/wp-admin/post.php?post=${data.id}&action=edit`, status: data.status });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (!wpRes.ok) return res.status(502).json({ok: false, error: 'wordpress_rejected',
+      userMessage: 'WordPress rejected this page. Check the connection and permissions before retrying.'});
+    res.json(attachContentSafetyWarnings({ok: true, success: true, pageId: data.id, pageUrl: data.link,
+      editUrl: `${base}/wp-admin/post.php?post=${data.id}&action=edit`, status: data.status}, gated.warnings));
+  } catch (_) {
+    res.status(502).json({ok: false, error: 'wordpress_unconfirmed',
+      userMessage: 'WordPress did not confirm the result. Check WordPress before retrying to avoid a duplicate page.'});
   }
 });
 };
