@@ -173,6 +173,7 @@ interface ArticleResp {
 interface PublishResp {
   ok?: boolean;
   success?: boolean;
+  retryAfterSec?: number;
   pageId?: number;
   pageUrl?: string;
   status?: string;
@@ -447,7 +448,10 @@ export default function Autoseo() {
       return true;
     }
     updateArticle(idx, { status: "generated" });
-    setPublishMessage(data.userMessage || "WordPress did not confirm the draft. Check WordPress before retrying to avoid a duplicate page.");
+    const waitSeconds = Number.isFinite(data.retryAfterSec) ? Math.max(1, Math.ceil(data.retryAfterSec!)) : 60;
+    setPublishMessage(data.error === "rate_limited"
+      ? `This draft was not sent because the publishing limit was reached. Wait ${waitSeconds} seconds before trying again. Previously confirmed drafts remain marked and will not be included in Publish All again.`
+      : data.userMessage || "WordPress did not confirm the draft. Check WordPress before retrying to avoid a duplicate page.");
     return false;
   }
 

@@ -96,7 +96,7 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
         /^\/api\/review-monitor\/request-rules(?:\/[1-9]\d*)?$/.test(msg.location().url.slice(baseUrl.length)) &&
         /^Failed to load resource:.*\b(403|404|409|503)\b/.test(text)) return;
     if (msg.location().url === baseUrl + '/api/publish-to-wordpress' &&
-        /^Failed to load resource:.*\b(403|502|503)\b/.test(text)) return;
+        /^Failed to load resource:.*\b(403|429|502|503)\b/.test(text)) return;
     if (text.includes('ERR_BLOCKED_BY_CLIENT.Inspector')) return;
     if (msg.location().url === baseUrl + '/api/wordpress/publish' &&
         /^Failed to load resource:.*\b(403|404|503)\b/.test(text)) return;

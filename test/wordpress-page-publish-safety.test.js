@@ -67,9 +67,9 @@ test('WordPress page publish gates exact title/body, fails closed, returns warni
   t.after(()=>new Promise(resolve=>server.close(resolve)));
   const endpoint=`http://127.0.0.1:${server.address().port}/publish`;
   const send=headers=>realFetch(endpoint,{method:'POST',headers});
-  for(let i=0;i<20;i++) assert.equal((await send({'x-tenant':'11','x-user':'7'})).status,200);
+  for(let i=0;i<60;i++) assert.equal((await send({'x-tenant':'11','x-user':'7'})).status,200);
   const limited=await send({'x-tenant':'11','x-user':'7'});assert.equal(limited.status,429);assert.ok(limited.headers.get('retry-after'));
   assert.equal((await send({'x-tenant':'22','x-user':'7'})).status,200);
   assert.equal((await send({'x-tenant':'11','x-user':'8'})).status,200);
-  assert.equal((await send({})).status,429);assert.equal(reached,22);
+  assert.equal((await send({})).status,429);assert.equal(reached,62);
 });

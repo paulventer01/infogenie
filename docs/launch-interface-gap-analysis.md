@@ -249,3 +249,16 @@ No live publishing, CI, credential, production or hosting changes. AutoSEO artic
 remain in-memory: warning restoration after a full reload and durable idempotent
 publishing are not claimed. Inventory: 43 covered, 11 partial, 41 gap, 30 out of
 scope; 52 rows in 13 paused batches. Step 6 and production acceptance remain incomplete.
+
+
+A post-merge review of #232 identified that its 20-attempt WordPress page limit
+could stop the supported AutoSEO default batch (30 articles). The bounded limit
+now permits up to 60 attempts per tenant/user per minute, matching the existing
+maximum supported batch. The 61st attempt is still refused before delivery;
+missing identities fail closed and users/tenants retain separate allowances.
+The UI explains rate-limit refusals and the wait without automatic retries.
+The existing real-login/PostgreSQL/browser chain verifies 60 sequential synthetic
+drafts and refusal of an additional draft with no provider call. This is a
+correction to CR-054, not another completed audit row: totals remain 43 covered,
+11 partial, 41 gap, 30 out of scope (52 rows in 13 paused batches). Exact-head
+hosted verification is required. No live publishing, production, CI or hosting changes.
