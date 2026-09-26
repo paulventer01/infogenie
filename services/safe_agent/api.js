@@ -5,6 +5,7 @@ const _tenantCtx = require('../tenants/context');
 const OpenAI = require('openai');
 const { createRateLimiter } = require('../security/rate_limit');
 const { approvalText } = require('./approval_text');
+const { generationText } = require('./generation_text');
 const approveLimiter = createRateLimiter({
   name: 'safe-agent-approve', windowMs: 60_000, max: 20, failClosed: true,
   keyFn: req => req.tenant?.id != null && req.user?.id != null
@@ -17,7 +18,7 @@ router.post('/propose', async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'safe-agent:propose' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const { objective, context = {}, budget_guardrail } = req.body;
-  if (!objective) return res.status(400).json({ ok:false, error:'objective required' });
+  if (typeof objective !== 'string' || !objective.trim()) return res.status(400).json({ ok:false, error:'objective required', userMessage:'Enter a text objective.' });
 
   let proposal = {}, simulation = {};
   try {
@@ -82,10 +83,14 @@ Return strict JSON:
     simulation = { expected_outcome:'Incremental improvement in campaign efficiency', confidence:55, best_case:'15% ROAS lift', worst_case:'No significant change', risk_factors:['Market conditions may vary'], estimated_revenue_impact:0, estimated_roas_change:0 };
   }
 
+  const title = proposal._title || objective.slice(0,100);
+  let proposalText;
+  try { proposalText = generationText({title,proposal,simulation}); } catch (_) {
+    return res.status(403).json({ok:false,error:'content_safety_blocked',userMessage:'This proposal is too large or complex to check safely. Shorten the objective or context and try again.'});
+  }
   let contentSafetyWarnings = [];
   try {
     const { gateRouteText } = require('../ai_governance/route_gate');
-    const proposalText = JSON.stringify({ proposal, simulation, title: proposal._title || objective });
     const gated = await gateRouteText({
       tenantId: tid,
       userId: req.user?.id || null,
@@ -110,7 +115,6 @@ Return strict JSON:
     });
   }
 
-  const title = proposal._title || objective.slice(0,100);
   const p = await _db.getPool();
   const row = await p.query(
     `INSERT INTO safe_agent_proposals(tenant_id,title,proposal,simulation,budget_guardrail,content_safety_warnings,status)

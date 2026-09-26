@@ -56,6 +56,7 @@ interface ProposalDetail {
 }
 interface ProposeResponse extends ProposalDetail {
   ok?: boolean;
+  userMessage?: string;
   error?: string;
 }
 interface ProposalListItem {
@@ -99,6 +100,7 @@ export default function SafeAgent() {
   const objRef = useRef<HTMLTextAreaElement>(null);
   const ctxRef = useRef<HTMLTextAreaElement>(null);
   const [proposing, setProposing] = useState(false);
+  const [proposalError, setProposalError] = useState("");
   const [detail, setDetail] = useState<ProposalDetail | null>(null);
   const [proposals, setProposals] = useState<ProposalListItem[]>([]);
   const approvingRef = useRef<number | null>(null);
@@ -129,6 +131,7 @@ export default function SafeAgent() {
       const [k, ...vs] = line.split(":");
       if (k && vs.length) context[k.trim()] = vs.join(":").trim();
     });
+    setProposalError("");
     setProposing(true);
     const gr = parseFloat(guardrail);
     const d = await apiPost<ProposeResponse>("/api/safe-agent/propose", {
@@ -138,7 +141,7 @@ export default function SafeAgent() {
     });
     setProposing(false);
     if (!d.ok) {
-      window.alert(d.error || "Error");
+      setProposalError(d.userMessage || d.error || "Proposal generation failed.");
       return;
     }
     setDetail(d);
@@ -319,6 +322,7 @@ export default function SafeAgent() {
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
           <div className="ig-card" style={{ flex: 1, minWidth: 300 }}>
             <h3 style={{ fontWeight: 600, marginBottom: 16 }}>New Proposal</h3>
+            {proposalError && <div role="alert">{proposalError}</div>}
             <div className="form-group">
               <label>Objective</label>
               <textarea ref={objRef} className="form-control" rows={3} placeholder="e.g. Improve ROAS from 1.8x to 2.5x across all paid channels while keeping CAC below $300" value={obj} onChange={(e) => setObj(e.target.value)} />
