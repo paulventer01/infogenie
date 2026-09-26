@@ -31,6 +31,7 @@ interface AnalysisData {
 }
 
 interface Cluster {
+  content_safety_warnings?: string[];
   pillar: string;
   topics?: string[];
   questions?: string[];
@@ -92,6 +93,8 @@ interface PageAuditResult {
 }
 
 interface ClusterResult {
+  userMessage?: string;
+  content_safety_warnings?: string[];
   cluster?: Cluster;
 }
 
@@ -199,6 +202,8 @@ export default function Content() {
   const [seedInput, setSeedInput] = useState("");
   const [seedSuggestions, setSeedSuggestions] = useState<string[]>([]);
   const [clusterBuilding, setClusterBuilding] = useState(false);
+  const [clusterError, setClusterError] = useState("");
+  const clusterPending = useRef(false);
   const [suggestBusy, setSuggestBusy] = useState(false);
 
   // Page audit + lighthouse
@@ -300,29 +305,25 @@ export default function Content() {
       toast("⚠️ Enter a seed topic first");
       return;
     }
+    if (clusterPending.current) return;
+    clusterPending.current = true;
     setClusterBuilding(true);
-    const clusterIndustry = ad?.industry?.name || "digital marketing";
-    const clusterDomain = ad?.url?.replace(/https?:\/\//, "").split("/")[0] || "yourdomain.com";
-    const res = await apiPost<ClusterResult & { ok?: boolean }>("/api/ai-content-clusters", {
-      seed,
-      domain: clusterDomain,
-      industry: clusterIndustry,
-    });
-    if (res.cluster) {
-      setClusters((prev) => [res.cluster as Cluster, ...prev]);
+    setClusterError("");
+    try {
+      const res = await apiPost<ClusterResult & { ok?: boolean }>("/api/ai-content-clusters", {
+        seed, domain: ad?.url?.replace(/https?:\/\//, "").split("/")[0] || "yourdomain.com",
+        industry: ad?.industry?.name || "digital marketing",
+      });
+      if (res.ok === false || !res.cluster) {
+        setClusterError(res.userMessage || "Cluster generation failed. Existing clusters have not changed. Try again.");
+        return;
+      }
+      setClusters(prev => [{...res.cluster!, content_safety_warnings: res.content_safety_warnings || []}, ...prev]);
       toast(`✅ Topical cluster built for "${seed}"!`);
-    } else {
-      // Legacy fallback: built-in template cluster when the AI call returns none.
-      const fallback: Cluster = {
-        pillar: seed,
-        topics: [`What is ${seed}?`, `${seed} best practices`, `${seed} for beginners`, `Advanced ${seed} strategies`, `${seed} tools and software`, `${seed} ROI and metrics`, `${seed} case studies`],
-        questions: [`What is the best way to get started with ${seed}?`, `How does ${seed} improve business results?`, `What are the most common ${seed} mistakes to avoid?`, `How long does it take to see results from ${seed}?`, `What budget do I need for ${seed}?`, `How does ${seed} compare to traditional methods?`],
-        aiNote: `Create a pillar page on "${seed}" and link to all subtopics. Include FAQ schema to maximise LLM citation chances. Publish one supporting page per week for best cluster authority.`,
-      };
-      setClusters((prev) => [fallback, ...prev]);
-      toast(`✅ Cluster built for "${seed}" — built-in template (add an OpenAI key for richer AI suggestions)`);
+    } finally {
+      clusterPending.current = false;
+      setClusterBuilding(false);
     }
-    setClusterBuilding(false);
   }
 
   async function suggestSeedTopic() {
@@ -500,6 +501,7 @@ export default function Content() {
               suggestBusy={suggestBusy}
               onGenerate={generateCluster}
               building={clusterBuilding}
+              error={clusterError}
               onRemove={(i) => setClusters((prev) => prev.filter((_, idx) => idx !== i))}
             />
           )}
@@ -638,6 +640,7 @@ function ClustersTab({
   suggestBusy,
   onGenerate,
   building,
+  error,
   onRemove,
 }: {
   clusters: Cluster[];
@@ -649,6 +652,7 @@ function ClustersTab({
   suggestBusy: boolean;
   onGenerate: () => void;
   building: boolean;
+  error: string;
   onRemove: (i: number) => void;
 }) {
   return (
@@ -681,6 +685,7 @@ function ClustersTab({
             ))}
           </div>
         )}
+        {error && <div role="alert" style={{color:"#B91C1C", marginTop:10}}>{error}</div>}
         {building && <div style={{ marginTop: 10, fontSize: "0.78rem", color: "#059669", fontWeight: 600 }}>⏳ Building topical cluster with GPT-4o + Claude Sonnet…</div>}
       </div>
       <div>
@@ -725,6 +730,7 @@ function ClustersTab({
                   </div>
                 </div>
               </div>
+              {!!cl.content_safety_warnings?.length && <div role="note" style={{color:"#92400E", marginTop:12}}><strong>CONTENT SAFETY WARNINGS</strong>{cl.content_safety_warnings.map((warning, i) => <div key={i}>{warning}</div>)}</div>}
               {cl.aiNote && (
                 <div style={{ marginTop: 12, padding: "10px 14px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, fontSize: "0.75rem", color: "#92400E", lineHeight: 1.5 }}>
                   <strong>💡 LLM Tip:</strong> {cl.aiNote}

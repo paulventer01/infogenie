@@ -3,6 +3,7 @@
  * Strips unexpected fields before gate/persist/return.
  */
 
+const { jsonGateText } = require('./json_text');
 const { sanitiseAudienceRules } = require('../audiences/rules_sanitise');
 
 function _str(v, max = 8000) {
@@ -150,7 +151,7 @@ function normalizeContentCluster(raw) {
 
 function contentClusterGateText(raw) {
   const c = normalizeContentCluster(raw);
-  return JSON.stringify(c);
+  return jsonGateText(c);
 }
 
 function normalizeColdEmailItem(raw, stepFallback) {

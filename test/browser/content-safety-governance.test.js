@@ -78,7 +78,7 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   page.on('console', (msg) => {
     if (msg.type() !== 'error') return;
     const text = msg.text();
-    if ([baseUrl + '/api/generate-article-topics',baseUrl + '/api/keyword-research',baseUrl + '/api/backlink-opportunities'].includes(msg.location().url) &&
+    if ([baseUrl + '/api/generate-article-topics',baseUrl + '/api/keyword-research',baseUrl + '/api/backlink-opportunities',baseUrl + '/api/ai-content-clusters'].includes(msg.location().url) &&
         /^Failed to load resource:.*\b(403|502|503)\b/.test(text)) return;
     if (msg.location().url === baseUrl + '/api/safe-agent/propose' &&
         /^Failed to load resource:.*\b(400|403|503)\b/.test(text)) return;
@@ -153,6 +153,8 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   await require('../helpers/keyword-research-safety-browser')({page,baseUrl,actors,db,fx});
 
   await require('../helpers/backlink-opportunity-safety-browser')({page,baseUrl,actors,db,fx});
+
+  await require('../helpers/content-cluster-safety-browser')({page,baseUrl,actors,db,fx});
 
   await context.close();
 });

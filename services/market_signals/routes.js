@@ -14,6 +14,7 @@ module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
   const { _chargeBudget, anthropic, callDataForSEO, callRapidAPI, https, openai, openaiChatWithRetry } = ctx;
+  const { jsonGateText } = require('./services/ai_governance/json_text');
   const _tenantCtx = require('./services/tenants/context');
   const {
     gateRouteText,
@@ -1415,7 +1416,9 @@ Headline: 5-10 words. Body: 1-3 sentences. CTA: 3-5 words. Hashtags: 3-5 relevan
 // ── POST /api/ai-content-clusters ─────────────────────────────────────────────
 app.post('/api/ai-content-clusters', async (req, res) => {
   try {
-    const { seed, domain='yourdomain.com', industry='your industry' } = req.body;
+    const { seed, domain='yourdomain.com', industry='your industry' } = req.body || {};
+    if (typeof seed !== 'string' || !seed.trim()) return res.status(400).json({ok:false,error:'seed_required'});
+    if (await _resolveTenant(req, 'ai-content-clusters:generate') == null) return _gateBlocked(res, {error:'content_safety_unavailable'});
 
     const systemPrompt = `You are an expert SEO strategist and content architect specialising in topical authority and LLM visibility. Return JSON only.`;
     const gptPrompt = `Build a comprehensive topical cluster for the seed topic: "${seed}"
@@ -1447,7 +1450,10 @@ Return ONLY raw JSON: {
     if (gptResult.status === 'fulfilled') {
       try { cluster = JSON.parse(gptResult.value.choices[0]?.message?.content || '{}'); } catch {}
     }
-    if (!cluster.pillar) cluster.pillar = seed;
+    if (!cluster || Array.isArray(cluster) || typeof cluster.pillar !== 'string' || !cluster.pillar.trim() ||
+        !Array.isArray(cluster.topics) || !cluster.topics.length || !cluster.topics.every(t => typeof t === 'string') ||
+        !Array.isArray(cluster.questions) || !cluster.questions.every(q => typeof q === 'string') ||
+        (cluster.aiNote != null && typeof cluster.aiNote !== 'string')) throw Error('invalid_cluster');
 
     if (claudeResult.status === 'fulfilled') {
       try {
@@ -1465,12 +1471,15 @@ Return ONLY raw JSON: {
       } catch {}
     }
 
+    if (jsonGateText(cluster) === null) return _gateBlocked(res, {error:'content_safety_blocked',
+      userMessage:'Generated cluster is too large or complex to check safely. Request fewer topics and try again.'});
     const normalizedCluster = normalizeContentCluster(cluster);
     const gated = await _gateMarketText(req, contentClusterGateText(normalizedCluster), 'ai-content-clusters:generate');
     if (!gated.ok) return _gateBlocked(res, gated);
     res.json(attachContentSafetyWarnings({ cluster: normalizedCluster }, gated.warnings));
   } catch(err) {
-    res.json({ cluster: null, error: err.message });
+    res.status(502).json({ok:false,error:'content_cluster_unavailable',
+      userMessage:'Cluster generation is unavailable. Existing clusters have not changed. Try again.'});
   }
 });
 
