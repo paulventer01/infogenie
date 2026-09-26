@@ -30,6 +30,19 @@ test('topic scan preserves dot-based compliance across fields and decoded whites
   assert.equal(jsonGateText({title:' '.repeat(50001)}),null,'original size is bounded before whitespace folding');
 });
 
+test('topic scan never wraps claims between duplicated representations',()=>{
+  for(const payload of [
+    {topics:[{title:'Investment options',keyword:'portfolio'},{keyword:'crypto news',title:'safe'}]},
+    {title:'returns',keyword:'guaranteed'},
+    {title:'free offer',keyword:'act now'},
+  ]) assert.equal(scanOutput({text:jsonGateText(payload)}).verdict,'pass');
+  assert.equal(scanOutput({text:jsonGateText({title:'crypto',keyword:'safe investment'})}).verdict,'block');
+  assert.equal(scanOutput({text:jsonGateText({title:'guaranteed',keyword:'returns'})}).verdict,'block');
+  const bounded=jsonGateText({title:'x'.repeat(49990)});
+  assert.ok(bounded.length<=100000);
+  assert.equal(jsonGateText({title:'x'.repeat(50000)}),null);
+});
+
 test('article topics gate exact retained output, isolate policy and withhold refused content',async t=>{
   const gate=require('../services/ai_governance/route_gate'), real=gate.gateRouteText;
   let output={topics:[{title:'DEMO guide',keyword:'marketing'}]}, mode='enforce', scans=[];

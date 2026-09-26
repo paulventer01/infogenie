@@ -5,7 +5,8 @@ const {MAX_OUTPUT_SCAN_CHARS}=require('./output_gate');
 // not interrupt phrases. Never truncate a retained suffix, even in warning mode.
 function jsonGateText(value) {
   const keyed=[], leaves=[];
-  let length=0, nodes=0;
+  // Reserve the representation separator before visiting any source text.
+  let length=3, nodes=0;
   function append(list,text) {
     length+=text.length+1;
     if(length>MAX_OUTPUT_SCAN_CHARS) throw Error('scan_limit');
@@ -25,7 +26,12 @@ function jsonGateText(value) {
   }
   // Dot-based compliance rules must also match across fields and decoded line breaks.
   // Bound the original text first; normalization never makes oversized output admissible.
-  try {visit(value);return [...keyed,...leaves].join(' ').replace(/\s+/g,' ');}
+  // Keep duplicate representations apart: neither dot nor whitespace-based
+  // phrases may wrap from the final value back to the first value.
+  try {
+    visit(value);
+    return [keyed,leaves].map(parts=>parts.join(' ').replace(/\s+/g,' ')).join('\n|\n');
+  }
   catch (_) {return null;}
 }
 module.exports={jsonGateText};

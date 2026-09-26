@@ -323,3 +323,12 @@ regressions cover crypto blocking and urgency warnings; the hosted topic journey
 checks both through the real interface/API/policy chain. This corrects PR #236's
 confirmed review finding, adds no coverage row and leaves launch counts unchanged.
 No live-provider, production reload or deployment acceptance is claimed.
+
+CR-048 representation-boundary correction: keyed and key-free scan streams keep
+an explicit line/punctuation separator after independent whitespace normalization.
+This prevents duplicated-stream wraparound from inventing crypto/urgency or
+whitespace-based claims, while retaining genuine cross-field matching within each
+stream. The separator is included in the original scan budget. Focused regressions
+and the hosted topic UI journey verify clean output is accepted and actual risky
+claims remain blocked. This resolves PR #237's confirmed follow-up finding; no
+new coverage row, launch-count change or production acceptance claim is added.
