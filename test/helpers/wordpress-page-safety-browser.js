@@ -40,7 +40,21 @@ module.exports = async function pagePublishSafety({page,baseUrl,actors,db,fx}) {
       await page.evaluate(text=>[...document.querySelectorAll('#view-autoseo button')].find(b=>b.textContent.trim()===text&&!b.matches(':disabled')).click(),text);
     }
     await page.waitForFunction(()=>!document.querySelector('#view-autoseo')?.textContent.includes('Set Domain →'));
-    await click('✨ Generate 30 Article Topics');await click('✍️ Write');
+    async function writeArticle(topicsButton) {
+      const [topics]=await Promise.all([
+        page.waitForResponse(r=>new URL(r.url()).pathname==='/api/generate-article-topics'),click(topicsButton),
+      ]);
+      assert.equal(topics.status(),200);
+      await page.waitForFunction(title=>document.querySelector('#view-autoseo')?.textContent.includes(title)&&
+        [...document.querySelectorAll('#view-autoseo button')].some(b=>b.textContent.trim()==='✨ Regenerate Topics'&&!b.matches(':disabled')),{},title);
+      const [article]=await Promise.all([
+        page.waitForResponse(r=>new URL(r.url()).pathname==='/api/generate-seo-article'),click('✍️ Write'),
+      ]);
+      assert.equal(article.status(),200);
+      await page.waitForFunction(()=>![...document.querySelectorAll('#view-autoseo button')].some(b=>b.textContent.includes('Writing…'))&&
+        [...document.querySelectorAll('#view-autoseo button')].some(b=>b.textContent.trim()==='🟦 Publish'&&!b.matches(':disabled')));
+    }
+    await writeArticle('✨ Generate 30 Article Topics');
     async function submit(button='🟦 Publish') {
       const [r]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/publish-to-wordpress'&&r.request().method()==='POST'),click(button)]);
       return {status:r.status(),body:await r.json()};
@@ -49,7 +63,7 @@ module.exports = async function pagePublishSafety({page,baseUrl,actors,db,fx}) {
     await page.waitForFunction(()=>document.querySelector('#view-autoseo [role="status"]')?.textContent.includes('Revise its title'));
     assert.equal(calls.length,0);
     assert.ok((await page.$eval('#view-autoseo',e=>e.textContent)).includes(title),'refused article remains available');
-    title='DEMO revised guide';await click('✨ Regenerate Topics');await click('✍️ Write');
+    title='DEMO revised guide';await writeArticle('✨ Regenerate Topics');
     scanner.scanOutput=()=>{throw Error('synthetic outage');};
     assert.equal((await submit()).status,503);assert.equal(calls.length,0);
     await page.waitForFunction(()=>document.querySelector('#view-autoseo [role="status"]')?.textContent.includes('Nothing was sent'));
@@ -71,11 +85,14 @@ module.exports = async function pagePublishSafety({page,baseUrl,actors,db,fx}) {
       tenant_id:tid,siteUrl:'https://wordpress.example.test',username:'fixture',appPassword:'synthetic-only',title:'guaranteed returns',content:'DEMO'}});
     assert.equal(foreign.status,403);assert.equal(calls.length,1);
     // Warnings reach the existing article UI; rapid repeated actions send once.
-    title='guaranteed returns';await click('✨ Regenerate Topics');await click('✍️ Write');providerStatus=201;
+    title='guaranteed returns';await writeArticle('✨ Regenerate Topics');providerStatus=201;
     hold=new Promise(r=>{release=r;});const started=new Promise(r=>{entered=r;});
-    const pending=submit();await started;
+    const pending=submit();
+    await Promise.race([started,pending.then(()=>{throw Error('WordPress response arrived before held transport');})]);
+    console.log('[wordpress acceptance] held transport entered');
     await page.waitForFunction(()=>document.querySelector('#view-autoseo fieldset').disabled);
     await page.evaluate(()=>[...document.querySelectorAll('#view-autoseo button')].find(b=>b.textContent.trim()==='🟦 Publish All to WP').click());
+    console.log('[wordpress acceptance] duplicate action checked; releasing transport');
     release();hold=null;entered=null;
     const accepted=await pending;assert.equal(accepted.status,200);assert.ok(accepted.body.content_safety_warnings.length);
     await page.waitForFunction(()=>document.querySelector('#view-autoseo [role="status"]')?.textContent.includes('confirmed the draft'));
@@ -109,7 +126,7 @@ module.exports = async function pagePublishSafety({page,baseUrl,actors,db,fx}) {
     assert.deepEqual(calls.slice(beforeBatch).map(c=>c.title),Array.from({length:60},(_,i)=>`DEMO batch article ${i+1}`));
     assert.ok(calls.slice(beforeBatch).every(c=>c.status==='draft'));
     // The next attempt is refused before provider delivery, with actionable UI.
-    topicCount=1;title='DEMO extra draft';await click('✨ Regenerate Topics');await click('✍️ Write');
+    topicCount=1;title='DEMO extra draft';await writeArticle('✨ Regenerate Topics');
     assert.equal((await submit()).status,429);
     await page.waitForFunction(()=>document.querySelector('#view-autoseo [role="status"]')?.textContent.includes('Wait 60 seconds'));
     assert.equal(calls.length-beforeBatch,60);
