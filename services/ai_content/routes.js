@@ -2148,7 +2148,8 @@ app.post('/api/detect-wordpress', async (req, res) => {
 
 // ── Publish to WordPress ──────────────────────────────────────────────────────
 const pagePublishLimiter = require('./services/security/rate_limit').createRateLimiter({
-  name: 'wordpress-page-publish', windowMs: 60_000, max: 20, failClosed: true,
+  // One AutoSEO batch supports up to 60 articles; keep a bounded per-user/tenant window.
+  name: 'wordpress-page-publish', windowMs: 60_000, max: 60, failClosed: true,
   keyFn: req => req.tenant?.id != null && req.user?.id != null
     ? `wordpress-page-publish|${req.tenant.id}|${req.user.id}` : null,
 });

@@ -8,13 +8,13 @@ module.exports = async function pagePublishSafety({page,baseUrl,actors,db,fx}) {
   const scanner=require('../../services/ai_governance/output_gate'), scan=scanner.scanOutput;
   const realFetch=global.fetch, calls=[];
   let release;
-  let title='guaranteed returns', providerStatus=201, hold, entered;
+  let title='guaranteed returns', topicCount=1, providerStatus=201, hold, entered;
   global.fetch=async (url,opts)=>{
     if(String(url)!=='https://wordpress.example.test/wp-json/wp/v2/pages') return realFetch(url,opts);
     calls.push(JSON.parse(opts.body));
     if(entered) entered();
     if(hold) await hold;
-    return new Response(JSON.stringify({id:41,link:'https://wordpress.example.test/page/41',status:'draft'}),
+    return new Response(JSON.stringify({id:40+calls.length,link:`https://wordpress.example.test/page/${40+calls.length}`,status:'draft'}),
       {status:providerStatus,headers:{'Content-Type':'application/json'}});
   };
   try {
@@ -23,7 +23,7 @@ module.exports = async function pagePublishSafety({page,baseUrl,actors,db,fx}) {
     page.on('request',request=>{
       const u=new URL(request.url());
       if(!['data:','blob:'].includes(u.protocol)&&u.origin!==baseUrl) return void request.abort('blockedbyclient');
-      const fixture=u.pathname==='/api/generate-article-topics'?{topics:[{title,keyword:'DEMO marketing'}]}:
+      const fixture=u.pathname==='/api/generate-article-topics'?{topics:Array.from({length:topicCount},(_,i)=>({title:topicCount===1?title:`${title} ${i+1}`,keyword:'DEMO marketing'}))}:
         u.pathname==='/api/generate-seo-article'?{content:'<p>A useful DEMO guide.</p>',wordCount:5}:null;
       if(fixture) return void request.respond({status:200,contentType:'application/json',body:JSON.stringify(fixture)});
       if(request.method()==='GET'&&u.pathname.startsWith('/api/')&&u.pathname!=='/api/auth/me')
@@ -82,6 +82,38 @@ module.exports = async function pagePublishSafety({page,baseUrl,actors,db,fx}) {
     await page.waitForFunction(()=>document.querySelector('#view-autoseo')?.textContent.includes('CONTENT SAFETY WARNINGS'));
     assert.equal(calls.length,2);assert.equal(calls.at(-1).status,'draft');assert.equal(calls.at(-1).title,title);
     assert.ok((await pool.query('SELECT id FROM ai_governance_events WHERE tenant_id=$1',[tid])).rows.length,'real policy audit was recorded');
+    // Fresh real login gives the supported maximum batch its full bounded window.
+    const batchOwner=await fx.seedUser({tenantId:tid,owner:true});
+    await page.goto(baseUrl+'/login?next=/grow/autoseo',{waitUntil:'domcontentloaded'});
+    await page.locator('#email').fill(batchOwner.email);await page.locator('#pass').fill(batchOwner.password);
+    const [logged]=await Promise.all([
+      page.waitForResponse(r=>new URL(r.url()).pathname==='/api/auth/login'&&r.request().method()==='POST'),
+      page.waitForNavigation({waitUntil:'domcontentloaded'}),page.locator('form button[type="submit"]').click(),
+    ]);assert.equal(logged.status(),200);
+    await page.evaluate(()=>{
+      window.analysisData={domain:'demo.example.test',industry:'Marketing',competitors:[]};
+      window._wpCreds={siteUrl:'https://wordpress.example.test',username:'fixture',appPassword:'synthetic-only'};
+    });
+    await page.waitForFunction(()=>!document.querySelector('#view-autoseo')?.textContent.includes('Set Domain →'));
+    title='DEMO batch article';topicCount=60;
+    await click('✨ Generate 30 Article Topics');
+    for(let i=0;i<60;i++) {
+      const [written]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/generate-seo-article'),click('✍️ Write')]);
+      assert.equal(written.status(),200);
+    }
+    await page.waitForFunction(()=>![...document.querySelectorAll('#view-autoseo button')].some(b=>b.textContent.includes('Writing…')));
+    const beforeBatch=calls.length;
+    await click('🟦 Publish All to WP');
+    await page.waitForFunction(()=>document.querySelector('#view-autoseo [role="status"]')?.textContent.includes('confirmed 60 draft(s)'));
+    assert.equal(calls.length-beforeBatch,60);
+    assert.deepEqual(calls.slice(beforeBatch).map(c=>c.title),Array.from({length:60},(_,i)=>`DEMO batch article ${i+1}`));
+    assert.ok(calls.slice(beforeBatch).every(c=>c.status==='draft'));
+    // The next attempt is refused before provider delivery, with actionable UI.
+    topicCount=1;title='DEMO extra draft';await click('✨ Regenerate Topics');await click('✍️ Write');
+    assert.equal((await submit()).status,429);
+    await page.waitForFunction(()=>document.querySelector('#view-autoseo [role="status"]')?.textContent.includes('Wait 60 seconds'));
+    assert.equal(calls.length-beforeBatch,60);
+
   } finally {
     if(release) release();
     global.fetch=realFetch;scanner.scanOutput=scan;
