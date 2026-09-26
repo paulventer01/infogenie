@@ -82,6 +82,7 @@ interface Keyword {
 }
 
 interface BacklinkOpp {
+  content_safety_warnings?: string[];
   site: string;
   url: string;
   dr: number | string;
@@ -193,6 +194,8 @@ interface AutoCorrectResp {
   edits?: { before?: string; after?: string; reason?: string }[];
 }
 interface BacklinkResp {
+  userMessage?: string;
+  content_safety_warnings?: string[];
   ok?: boolean;
   opportunities?: BacklinkOpp[];
   data_unavailable?: boolean;
@@ -305,6 +308,8 @@ export default function Autoseo() {
   const [genLoading, setGenLoading] = useState(false);
   const [genTimer, setGenTimer] = useState(0);
   const [blLoading, setBlLoading] = useState(false);
+  const [blError, setBlError] = useState<string | null>(null);
+  const blPending = useRef(false);
   const [kwLoading, setKwLoading] = useState(false);
   const [kwError, setKwError] = useState<string | null>(null);
   const kwPending = useRef(false);
@@ -539,22 +544,34 @@ export default function Autoseo() {
       toast("⚠️ Enter your domain in the field above first");
       return;
     }
+    if (blPending.current) return;
+    blPending.current = true;
     setBlLoading(true);
-    const kws = (keywords || []).slice(0, 5).map((k) => k.keyword);
-    const data = await apiPost<BacklinkResp>("/api/backlink-opportunities", {
-      domain: ctx.domain,
-      industry: ctx.industry,
-      competitors: ctx.comps,
-      keywords: kws,
-    });
-    setBlLoading(false);
-    const unavailable = data.data_unavailable === true;
-    setBacklinksUnavailable(unavailable);
-    setBacklinks(data.opportunities || []);
-    if (unavailable) {
-      toast("📭 Backlink data unavailable — Demo Data Mode is off (admin can enable it).");
-    } else {
-      toast(`✅ Found ${(data.opportunities || []).length} backlink opportunities!`);
+    setBlError(null);
+    try {
+      const data = await apiPost<BacklinkResp>("/api/backlink-opportunities", {
+        domain: ctx.domain, industry: ctx.industry, competitors: ctx.comps,
+        keywords: (keywords || []).slice(0, 5).map(k => k.keyword),
+      });
+      if (data.data_unavailable === true) {
+        setBacklinksUnavailable(true);
+        setBacklinks([]);
+        setOutreach({});
+        return;
+      }
+      if (data.ok === false || !Array.isArray(data.opportunities)) {
+        setBlError(data.userMessage || "Backlink research failed. Your existing results have not been replaced. Try again.");
+        return;
+      }
+      setBacklinksUnavailable(false);
+      setBacklinks(data.opportunities.map(o => ({...o, content_safety_warnings: data.content_safety_warnings || []})));
+      setOutreach({});
+      toast(`✅ Found ${data.opportunities.length} estimated backlink opportunities!`);
+    } catch {
+      setBlError("Backlink research failed. Your existing results have not been replaced. Try again.");
+    } finally {
+      blPending.current = false;
+      setBlLoading(false);
     }
   }
 
@@ -636,7 +653,8 @@ export default function Autoseo() {
   function copyOutreachEmail(idx: number) {
     const opp = backlinks && backlinks[idx];
     if (!opp) return;
-    const email = `Subject: Guest Post Opportunity — ${ctx.domain || "Our Site"}
+    const warningNote = opp.content_safety_warnings?.length ? `CONTENT SAFETY WARNINGS: ${opp.content_safety_warnings.join("; ")}\n\n` : "";
+    const email = warningNote + `Subject: Guest Post Opportunity — ${ctx.domain || "Our Site"}
 
 Hi ${opp.site} Team,
 
@@ -1522,6 +1540,9 @@ ${ctx.domain || "yourdomain.com"}`;
           </button>
         </div>
         <div style={{ padding: "20px 24px" }}>
+          {blError && <div role="alert" style={{color:"#B91C1C",marginBottom:12}}>{blError}</div>}
+          <ContentSafetyWarnings warnings={[...new Set((opps || []).flatMap(o => o.content_safety_warnings || []))]} />
+          {!backlinksUnavailable && !!opps?.length && <p>DEMO DATA — AI-generated suggestions; sites and authority estimates are not verified.</p>}
           {backlinksUnavailable ? (
             <div
               style={{
@@ -1551,6 +1572,7 @@ ${ctx.domain || "yourdomain.com"}`;
               </div>
               <button
                 onClick={loadBacklinkOpps}
+                disabled={blLoading}
                 style={{
                   padding: "12px 28px",
                   background: "linear-gradient(135deg,#0066FF,#0052CC)",
@@ -1754,6 +1776,7 @@ ${ctx.domain || "yourdomain.com"}`;
 
     return (
       <div style={{ background: "white", borderRadius: 16, border: "1.5px solid #E5E7EB", overflow: "hidden" }}>
+        <ContentSafetyWarnings warnings={[...new Set(opps.flatMap(o => o.content_safety_warnings || []))]} />
         <div
           style={{
             padding: "20px 24px",

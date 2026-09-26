@@ -2065,13 +2065,26 @@ Return ONLY valid JSON, no markdown.`;
     });
     let raw = completion.choices[0]?.message?.content || '{}';
     const parsed = JSON.parse(raw);
-    const opportunities = parsed.opportunities || parsed.backlinks || parsed.sites || Object.values(parsed)[0] || [];
+    const opportunities = Array.isArray(parsed) ? parsed : (parsed?.opportunities ?? parsed?.backlinks ?? parsed?.sites);
+    if (!Array.isArray(opportunities) || opportunities.some(o => !o ||
+        ['site','url','type','angle','difficulty'].some(field => typeof o[field] !== 'string') ||
+        (o.dr != null && !['number','string'].includes(typeof o.dr)) ||
+        !/^https?:\/\//i.test(o.url))) {
+      return res.status(502).json({ok:false,error:'invalid_generated_backlinks',
+        userMessage:'The provider returned invalid backlink opportunities. Your existing results have not been replaced. Try again.'});
+    }
     // These targets are AI-generated, NOT verified live backlink data (the
     // DataForSEO Backlinks source is not active for this deployment). Tag the
     // payload as fabricated so the central data-mode enforcement layer can badge
     // it in demo mode or withhold it (data_unavailable) in strict mode.
     const payload = { opportunities, source: 'demo', _estimated: true };
-    return await _respondGatedJson(res, req, JSON.stringify(payload), payload, { label: 'backlink-opportunities' });
+    const text = require('./services/ai_governance/json_text').jsonGateText(payload);
+    if (text === null) return res.status(403).json(contentSafetyHttpBody({
+      error:'content_safety_blocked', userMessage:'Generated opportunities are too large or complex to check safely. Request fewer results and try again.',
+    }));
+    const tenantId = await _tenantForGate(req, 'backlink-opportunities');
+    if (tenantId == null) return res.status(503).json(contentSafetyUnavailableBody());
+    return await _respondGatedJson(res, req, text, payload, { label:'backlink-opportunities', tenantId });
   } catch(err) {
     if (isContentSafetyError(err)) {
       return res.status(403).json({ error: err.code, userMessage: err.message });
@@ -2084,14 +2097,15 @@ Return ONLY valid JSON, no markdown.`;
         source: 'backlinks',
         code: 'backlink-opportunities:generation_failed',
         title: 'Backlink opportunity generation failed',
-        detail: `AI generation of backlink opportunities failed: ${err.message}`,
+        detail: 'AI generation of backlink opportunities failed; no provider content retained.',
         context: { domain: req.body && req.body.domain },
         route: '/api/backlink-opportunities',
         tenantId: req.tenant ? req.tenant.id : null,
         clientId: require('./services/admin/data_mode').clientIdFromReq(req),
       });
     } catch (_) {}
-    res.status(500).json({ error: err.message });
+    res.status(502).json({ok:false,error:'backlink_research_unavailable',
+      userMessage:'Backlink research is unavailable. Your existing results have not been replaced. Try again.'});
   }
 });
 

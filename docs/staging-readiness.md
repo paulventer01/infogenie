@@ -349,3 +349,22 @@ Keywords/calendar remain in memory; reload persistence, factual keyword metrics,
 provider quality and production acceptance are not claimed. Inventory: 48 covered,
 6 partial, 41 gap, 30 out of scope; 47 rows in 12 paused batches, five PR-8c rows
 remaining. Step 6 remains partial. No CI, credentials, billing or hosting changes.
+
+Backlink Opportunity Safety completes CR-049, one bounded PR-8c row. All retained
+fields use the corrected decoded JSON gate; malformed/invalid provider output
+returns fixed 502 errors without generated text in responses or admin diagnostics.
+Unsafe output is withheld (403), unavailable checks fail closed (503), and scan
+ceilings apply in warning-only mode. The authenticated tenant controls policy.
+AutoSEO preserves previous targets on failed refresh, serializes requests, displays
+warnings in targets/outreach, and includes warnings in copied pitch templates.
+Successful target replacement clears obsolete indexed outreach state. Existing
+fabrication markers remain: demo results show an explicit unverified-data notice;
+strict-mode responses clear old targets/outreach and show data unavailable.
+Hosted real-login/API/PostgreSQL/Chromium acceptance uses synthetic provider data
+for refusal, outage, malformed output, warning/copy retention, clean refresh,
+strict-mode withholding and tenant/permission isolation. Final-head gates are
+required before readiness. No outreach is sent; target validity, live-provider
+quality, durable reload and production acceptance remain unproven. Inventory:
+49 covered, 5 partial, 41 gap, 30 out of scope; 46 rows in 12 paused batches,
+four PR-8c rows remaining. Step 6 remains partial. No CI, credentials, billing,
+permissions or hosting changes.
