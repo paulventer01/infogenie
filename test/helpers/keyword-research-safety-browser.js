@@ -48,6 +48,10 @@ module.exports=async function keywordResearchSafety({page,baseUrl,actors,db,fx})
     await click('📋 Copy as CSV');
     assert.match(await page.evaluate(()=>window.__keywordCSV),/Safety Warnings/);
     assert.ok((await page.evaluate(()=>window.__keywordCSV)).includes(warned.body.content_safety_warnings[0]));
+    output='guaranteed returns';const malformed=await generate('🔍 Refresh');assert.equal(malformed.status,502);
+    assert.doesNotMatch(JSON.stringify(malformed.body),/guaranteed|Unexpected token/);
+    await page.waitForFunction(()=>document.querySelector('#view-autoseo [role="alert"]')?.textContent.includes('unavailable'));
+    assert.ok((await page.$eval('#view-autoseo',el=>el.textContent)).includes('DEMO retained keyword'));
     output={keywords:[{keyword:'x'.repeat(50001)}]};assert.equal((await generate('🔍 Refresh')).status,403);
     await page.waitForFunction(()=>document.querySelector('#view-autoseo [role="alert"]')?.textContent.includes('fewer results'));
     assert.ok((await page.$eval('#view-autoseo',el=>el.textContent)).includes('DEMO retained keyword'));

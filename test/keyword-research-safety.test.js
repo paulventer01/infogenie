@@ -16,7 +16,7 @@ test('keyword research gate exact retained output, isolate policy and withhold r
   let route;
   require('../services/ai_content/routes')({get(){},post(path,...handlers){if(path==='/api/keyword-research')route=handlers.at(-1);}}, {
     _tkvCtx:{resolveTenantId:async req=>req.tenant.id},
-    openai:{chat:{completions:{create:async()=>({choices:[{message:{content:JSON.stringify(output)}}]})}}},
+    openai:{chat:{completions:{create:async()=>({choices:[{message:{content:typeof output==='string'?output:JSON.stringify(output)}}]})}}},
   });
   gate.gateRouteText=real;t.after(()=>{gate.gateRouteText=real;});
   async function send(tid=17){let status=200,body;await route({tenant:{id:tid},user:{id:31},body:{domain:'demo.example.test',tenant_id:99}},
@@ -34,5 +34,10 @@ test('keyword research gate exact retained output, isolate policy and withhold r
   output={keywords:[{keyword:'x'.repeat(50001),content_angle:'marketing'}]};assert.equal((await send()).status,403);
   output={keywords:[{keyword:'DEMO guide',content_angle:'marketing'}]};assert.equal((await send(null)).status,503);
   mode='enforce';const clean=await send();assert.equal(clean.status,200);assert.deepEqual(clean.body.keywords,output.keywords);
-  for(const keywords of [{title:'bad'},[null],[{keyword:{text:'bad'}}]]) {output={keywords};const r=await send();assert.equal(r.status,502);assert.equal(r.body.keywords,undefined);}
+  for(const keywords of [undefined,null,false,0,'',{title:'bad'},[null],[{keyword:{text:'bad'}}]]) {output={keywords};const r=await send();assert.equal(r.status,502);assert.equal(r.body.keywords,undefined);}
+  output='guaranteed returns';const malformed=await send();
+  assert.equal(malformed.status,502);assert.equal(malformed.body.keywords,undefined);
+  assert.doesNotMatch(JSON.stringify(malformed.body),/guaranteed|Unexpected token/);
+  output={keywords:[]};assert.deepEqual((await send()).body.keywords,[]);
+
 });
