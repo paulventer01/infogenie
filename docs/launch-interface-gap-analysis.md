@@ -337,3 +337,20 @@ stream. The separator is included in the original scan budget. Focused regressio
 and the hosted topic UI journey verify clean output is accepted and actual risky
 claims remain blocked. This resolves PR #237's confirmed follow-up finding; no
 new coverage row, launch-count change or production acceptance claim is added.
+
+Keyword Research Safety completes CR-050, one bounded PR-8c row. The existing
+route scans all retained decoded keys/leaves with the corrected bounded JSON
+helper; unsafe output is withheld (403), unavailable checks fail closed (503),
+and invalid provider shapes return an actionable 502. Authenticated tenant policy
+remains authoritative; size/depth/node ceilings apply even in warning-only mode.
+AutoSEO preserves previous keywords on refusal, shows actionable errors, serializes
+research requests and replaces warnings with each successful result. Aggregate
+warnings display with results and survive CSV copying and content-calendar handoff,
+including existing matching calendar entries. Hosted synthetic-provider acceptance
+uses real login/API/PostgreSQL/Chromium for refusal, outage, warning retention,
+clean replacement and tenant/permission isolation. Final-head hosted gates are
+required before readiness. No new publishing action or live provider is exercised.
+Keywords/calendar remain in memory; reload persistence, factual keyword metrics,
+provider quality and production acceptance are not claimed. Inventory: 48 covered,
+6 partial, 41 gap, 30 out of scope; 47 rows in 12 paused batches, five PR-8c rows
+remaining. Step 6 remains partial. No CI, credentials, billing or hosting changes.

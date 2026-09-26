@@ -2123,14 +2123,28 @@ Return a JSON object with a "keywords" array. Return ONLY valid JSON.`;
       response_format: { type: 'json_object' }
     });
     const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
-    const keywords = parsed.keywords || [];
+    const keywords = parsed?.keywords;
     const payload = { keywords };
-    return await _respondGatedJson(res, req, JSON.stringify(payload), payload, { label: 'keyword-research' });
+    if (!Array.isArray(keywords) || keywords.some(k => !k || typeof k.keyword !== 'string' ||
+        ['intent','content_angle'].some(field => k[field] != null && typeof k[field] !== 'string') ||
+        ['monthly_volume','difficulty','opportunity_score'].some(field => k[field] != null && typeof k[field] !== 'number') ||
+        (k.cpc != null && !['number','string'].includes(typeof k.cpc)))) {
+      return res.status(502).json({ok:false,error:'invalid_generated_keywords',
+        userMessage:'The provider returned invalid keywords. Your existing results have not been replaced. Try again.'});
+    }
+    const text = require('./services/ai_governance/json_text').jsonGateText(payload);
+    if (text === null) return res.status(403).json(contentSafetyHttpBody({
+      error:'content_safety_blocked', userMessage:'Generated keywords are too large or complex to check safely. Request fewer results and try again.',
+    }));
+    const tenantId = await _tenantForGate(req, 'keyword-research');
+    if (tenantId == null) return res.status(503).json(contentSafetyUnavailableBody());
+    return await _respondGatedJson(res, req, text, payload, { label:'keyword-research', tenantId });
   } catch(err) {
     if (isContentSafetyError(err)) {
       return res.status(403).json({ error: err.code, userMessage: err.message });
     }
-    res.status(500).json({ error: err.message });
+    res.status(502).json({ok:false,error:'keyword_research_unavailable',
+      userMessage:'Keyword research is unavailable. Your existing results have not been replaced. Try again.'});
   }
 });
 

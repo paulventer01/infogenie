@@ -71,6 +71,7 @@ interface Article {
 }
 
 interface Keyword {
+  content_safety_warnings?: string[];
   keyword: string;
   monthly_volume?: number;
   difficulty?: number;
@@ -199,6 +200,8 @@ interface BacklinkResp {
   _demo?: boolean;
 }
 interface KeywordResp {
+  userMessage?: string;
+  content_safety_warnings?: string[];
   ok?: boolean;
   keywords?: Keyword[];
 }
@@ -303,6 +306,8 @@ export default function Autoseo() {
   const [genTimer, setGenTimer] = useState(0);
   const [blLoading, setBlLoading] = useState(false);
   const [kwLoading, setKwLoading] = useState(false);
+  const [kwError, setKwError] = useState<string | null>(null);
+  const kwPending = useRef(false);
   const [trafficLoading, setTrafficLoading] = useState(false);
   const [seqLoading, setSeqLoading] = useState<number | null>(null);
 
@@ -558,16 +563,26 @@ export default function Autoseo() {
       toast("⚠️ Enter your domain in the field above first");
       return;
     }
+    if (kwPending.current) return;
+    kwPending.current = true;
     setKwLoading(true);
-    const data = await apiPost<KeywordResp>("/api/keyword-research", {
-      domain: ctx.domain,
-      industry: ctx.industry,
-      seedKeyword: kwSeed.trim(),
-      competitors: ctx.comps,
-    });
-    setKwLoading(false);
-    setKeywords(data.keywords || []);
-    toast(`✅ Found ${(data.keywords || []).length} keyword opportunities!`);
+    setKwError(null);
+    try {
+      const data = await apiPost<KeywordResp>("/api/keyword-research", {
+        domain: ctx.domain, industry: ctx.industry, seedKeyword: kwSeed.trim(), competitors: ctx.comps,
+      });
+      if (data.ok === false || !Array.isArray(data.keywords)) {
+        setKwError(data.userMessage || "Keyword research failed. Your existing results have not been replaced. Try again.");
+        return;
+      }
+      setKeywords(data.keywords.map(k => ({...k, content_safety_warnings: data.content_safety_warnings || []})));
+      toast(`✅ Found ${data.keywords.length} keyword opportunities!`);
+    } catch {
+      setKwError("Keyword research failed. Your existing results have not been replaced. Try again.");
+    } finally {
+      kwPending.current = false;
+      setKwLoading(false);
+    }
   }
 
   function addKeywordsToCalendar() {
@@ -581,9 +596,15 @@ export default function Autoseo() {
     setArticles((prev) => {
       const next = prev ? prev.slice() : [];
       top5.forEach((k) => {
-        if (!next.find((a) => a.keyword === k.keyword)) {
+        const existing = next.findIndex(a => a.keyword === k.keyword);
+        if (existing >= 0) {
+          next[existing] = {...next[existing], content_safety_warnings: [...new Set([
+            ...(next[existing].content_safety_warnings || []), ...(k.content_safety_warnings || []),
+          ])]};
+        } else {
           next.push({
             title: k.content_angle || `Complete Guide to ${k.keyword}`,
+            content_safety_warnings: k.content_safety_warnings || [],
             keyword: k.keyword,
             intent: k.intent,
             status: "pending",
@@ -603,10 +624,10 @@ export default function Autoseo() {
       return;
     }
     const csv = [
-      "Keyword,Volume,Difficulty,CPC,Intent,Score,Content Angle",
+      "Keyword,Volume,Difficulty,CPC,Intent,Score,Content Angle,Safety Warnings",
       ...keywords.map(
         (k) =>
-          `"${k.keyword}",${k.monthly_volume || 0},${k.difficulty || 0},$${k.cpc || 0},"${k.intent || ""}",${k.opportunity_score || 0},"${k.content_angle || ""}"`,
+          `"${k.keyword}",${k.monthly_volume || 0},${k.difficulty || 0},$${k.cpc || 0},"${k.intent || ""}",${k.opportunity_score || 0},"${k.content_angle || ""}","${(k.content_safety_warnings || []).join("; ").replace(/"/g, '""')}"`,
       ),
     ].join("\n");
     navigator.clipboard.writeText(csv).then(() => toast("📋 Keywords copied as CSV!"));
@@ -2045,6 +2066,8 @@ ${ctx.domain || "yourdomain.com"}`;
           </div>
         </div>
         <div style={{ padding: "20px 24px" }}>
+          {kwError && <div role="alert" style={{color:"#B91C1C",marginBottom:12}}>{kwError}</div>}
+          <ContentSafetyWarnings warnings={[...new Set((kws || []).flatMap(k => k.content_safety_warnings || []))]} />
           {kws ? (
             renderKeywordTable(kws)
           ) : (
@@ -2059,6 +2082,7 @@ ${ctx.domain || "yourdomain.com"}`;
               </div>
               <button
                 onClick={loadKeywordResearch}
+                disabled={kwLoading}
                 style={{
                   padding: "12px 28px",
                   background: "linear-gradient(135deg,#7C3AED,#5B21B6)",
